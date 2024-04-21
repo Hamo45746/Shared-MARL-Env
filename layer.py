@@ -100,8 +100,9 @@ class JammerLayer(AgentLayer):
         self.update_layer_state()
         return self.layer_state
     
-class TargetLayer:
-    def __init__(self, targets, map_matrix):
+class TargetLayer(AgentLayer):
+    def __init__(self, xs, ys, targets, map_matrix, seed=None):
+        super().__init__(xs, ys, targets, seed)
         self.targets = targets
         self.layer_state = map_matrix
 
