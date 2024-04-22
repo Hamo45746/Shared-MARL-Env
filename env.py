@@ -14,8 +14,6 @@ class Environment:
         with open(config_path, 'r') as file:
             config = yaml.safe_load(file)
         
-        
-        
         # Initialize from config
         self.X = config['grid_size']['X']
         self.Y = config['grid_size']['Y']
@@ -26,9 +24,9 @@ class Environment:
         
         # Load the map
         self.map_matrix = np.load(config['map_path'])[:, :, 0] 
+        self.obstacle_map = np.load('city_image_1.npy')
         print("Shape of map_matrix:", self.map_matrix.shape)
         self.resolution = np.array(config['resolution'])
-        # self.targets = []  # To store the coordinates of the targets
         
         # Global state includes layers for map, agents, targets, and jammers
         self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.float32)
@@ -46,15 +44,11 @@ class Environment:
         # Created jammers at random positions - TODO: Update this to position jammers from config file
         self.jammers = jammer_utils.create_jammers(self.num_jammers, self.map_matrix, self.np_random, config['jamming_radius'])
         self.jammer_layer = JammerLayer(self.X, self.Y, self.jammers)
-
+    
     def mark_obstacles(self):
         # assume the obstacles are marked by a non-zero value
-        obstacles = self.map_matrix != 0
+        obstacles = self.obstacle_map != 0
         return obstacles
-    
-    def mark_target(self, x, y):
-        # Mark a target on the map at the specified grid coordinates
-        self.targets.append((x, y))
 
     def draw_map(self):
         # Plot the map with obstacles and overlay the grid
@@ -66,40 +60,48 @@ class Environment:
 
         # Mark targets
         for i in range(self.target_layer.n_agents()):
-            x, y = self.target_layer.get_position(i)
-            plt.scatter(x, y, s=100, c='yellow', marker='o')  # x and y are reversed in plt.scatter
+            #x, y = self.target_layer.get_position(i)
+            target = self.add_random_targets()
+            plt.scatter(target[1], target[0], s=100, c='yellow', marker='o')  # x and y are reversed in plt.scatter
+            self.target_layer.set_position(i, target[0], target[1])
+
+        # Mark jammers
+        #for i in range(self.jammer_layer.n_agents()):
+           # x, y = self.jammer_layer.get_position(i)
+            #plt.scatter(100, 100, s=100, c='blue', marker='o')  # x and y are reversed in plt.scatter
+
+        # Mark agents
+        for i in range(self.agent_layer.n_agents()):
+            x, y = self.agent_layer.get_position(i)
+            plt.scatter(x, y, s=100, c='red', marker='o')  # x and y are reversed in plt.scatter
 
         plt.show()
 
-    def add_random_targets(self, num_targets):
+    def add_random_targets(self):
         obstacles = self.mark_obstacles()
-        potential_locations = np.argwhere(obstacles == True)  
-
+        potential_locations = np.argwhere(obstacles == True) 
         # Randomly select from the potential locations
-        for _ in range(num_targets):
-            target = random.choice(potential_locations)
-            self.targets.append(target)
+        target = random.choice(potential_locations)
+        return target
+    
             
     def _seed(self, seed=None):
         self.np_random, seed_ = seeding.np_random(seed)
-        
     
     def update(self):
         for i in range(self.target_layer.n_agents()):
             self.target_layer.move_agent(i, 1)
+            y,x = self.target_layer.get_position(i)
+            plt.scatter(x, y, s=10, c='yellow', marker='o') 
             
-            
 
-config_path = '/Users/hamishmacintosh/Uni Work/METR4911/Shared Repo/Shared-MARL-Env/config.yaml' 
-
-
+config_path = 'config.yaml' 
 map_processor = Environment(config_path)
 
-map_processor.add_random_targets(3)
+#map_processor.add_random_targets(3)
 plt.ion()
 map_processor.draw_map()
 for i in range(100):
     map_processor.update()
-    plt.pause(0.1)
-
+plt.pause(5)
 plt.ioff()
