@@ -1,10 +1,10 @@
 # Configuration for MARL Environment
 grid_size:
-  X: 50          # Width of the grid
-  Y: 50          # Height of the grid
-  D: 1           # Number of layers in the grid (e.g., environment, targets, jammers, agent positions)
+  X: 281         # Width of the grid
+  Y: 500         # Height of the grid
+  D: 4           # Number of layers in the grid (e.g., environment, targets, jammers, agent positions)
 
-resolution: 30
+pixel_scale: 2
 obs_range: 5  
 
 map_path: '/Users/hamishmacintosh/Uni Work/METR4911/Shared Repo/Shared-MARL-Env/city_image_1.npy'

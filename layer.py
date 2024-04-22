@@ -75,7 +75,7 @@ class JammerLayer(AgentLayer):
 
     def activate_jammers(self, current_time):
         """Activate jammers based on the current time and their respective activation times."""
-        for i, jammer in enumerate(self.jammers):
+        for i, jammer in enumerate(self.allies):
             if current_time >= self.activation_times[i] and jammer.active == 0:
                 self.activate_jammer(jammer)
 
@@ -84,13 +84,13 @@ class JammerLayer(AgentLayer):
         jammer.active = 1
 
     def set_position(self, jammer_idx, x, y):
-        self.jammers[jammer_idx].set_position(x, y)
+        self.allies[jammer_idx].set_position(x, y)
         self.update_layer_state()
 
     def update_layer_state(self):
         """Updates the layer state matrix with current positions of all jammers."""
         self.layer_state.fill(0)
-        for jammer in self.jammers:
+        for jammer in self.allies:
             x, y = jammer.position
             if jammer.active == 1:
                 self.layer_state[x, y] += 1
@@ -99,6 +99,7 @@ class JammerLayer(AgentLayer):
         """Returns a matrix representing the positions of active jammers."""
         self.update_layer_state()
         return self.layer_state
+    
     
 class TargetLayer(AgentLayer):
     def __init__(self, xs, ys, targets, map_matrix, seed=None):

@@ -30,5 +30,5 @@ def feasible_position(randomiser, map_matrix, constraints=None):
             yl, yu = constraints[1]
             x = randomiser.integers(xl, xu)
             y = randomiser.integers(yl, yu)
-        if map_matrix[x, y] != -1:
+        if map_matrix[x, y] != 0:
             return (x, y)
