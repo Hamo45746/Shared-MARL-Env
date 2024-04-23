@@ -17,20 +17,23 @@ class Environment:
             config = yaml.safe_load(file)
         
         # Initialize from config
-        self.X = config['grid_size']['X']
-        self.Y = config['grid_size']['Y']
+        
         self.D = config['grid_size']['D']
         self.obs_range = config['obs_range']
-        self.pixel_scale = config['pixel_scale']
+        self.pixel_scale = config['pixel_scale'] # Size in pixels of each map cell
+        self.map_scale = config['map_scale'] # Scaling factor of map resolution
         self.seed = config['seed']
         self._seed(self.seed)
         
         # Load the map
-        self.map_matrix = np.load(config['map_path'])[:, :, 0] 
-        
+        original_map = np.load(config['map_path'])[:, :, 0]
+        original_x, original_y = original_map.shape
+        # Scale map according to config
+        self.X = int(original_x * self.map_scale)
+        self.Y = int(original_y * self.map_scale)
         # Resizing the map, using nearest interpolation
-        resized_map = resize(self.map_matrix, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
-        # Assuming obstacles are represented by any non-zero value - convert to binary map
+        resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
+        # Assuming obstacles are any non-zero value - convert to binary map
         obstacle_map = (resized_map != 0).astype(int)
         self.map_matrix = obstacle_map
         
@@ -38,19 +41,20 @@ class Environment:
         self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.float32)
         
         # Initialize agents, targets, jammers
+        # Created jammers, targets and agents at random positions - TODO: Update this to position from config file
         self.num_agents = config['n_agents']
-        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random)
+        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
 
         self.num_targets = config['n_targets']
-        self.targets = agent_utils.create_agents(self.num_targets, self.map_matrix, self.obs_range, self.np_random)
+        self.targets = agent_utils.create_agents(self.num_targets, self.map_matrix, self.obs_range, self.np_random, randinit=True)
         self.target_layer = TargetLayer(self.X, self.Y, self.targets, self.map_matrix)
 
         self.num_jammers = config['n_jammers']
-        # Created jammers, targets and agents at random positions - TODO: Update this to position jammers from config file
         self.jammers = jammer_utils.create_jammers(self.num_jammers, self.map_matrix, self.np_random, config['jamming_radius'])
         self.jammer_layer = JammerLayer(self.X, self.Y, self.jammers)
         
+        # Set global state layers
         self.global_state[0] = self.map_matrix
         self.global_state[1] = self.agent_layer.get_state_matrix()
         self.global_state[2] = self.target_layer.get_state_matrix()
@@ -60,6 +64,7 @@ class Environment:
         self.render_mode = render_mode
         self.screen = None
         pygame.init()
+
 
     def draw_model_state(self):
         """
@@ -127,7 +132,7 @@ class Environment:
             )
             # Green for jammers
             col = (0, 255, 0)
-            pygame.draw.circle(self.screen, col, center, int(self.pixel_scale / 4))
+            pygame.draw.circle(self.screen, col, center, int(self.pixel_scale / 3))
             # Draw jamming radius
             jamming_radius_pixels = jammer.radius * self.pixel_scale  # Converting jamming radius to pixels
             # Semi-transparent green ellipse for jamming radius
@@ -183,6 +188,7 @@ class Environment:
 
         self.draw_targets()
         self.draw_agents()
+        self.draw_jammers()
 
         observation = pygame.surfarray.pixels3d(self.screen)
         new_observation = np.copy(observation)
@@ -190,8 +196,8 @@ class Environment:
         if self.render_mode == "human":
             pygame.event.pump()
             pygame.display.update()
-        return (new_observation
-            #np.transpose(new_observation, axes=(1, 0, 2))
+        return (new_observation,
+            np.transpose(new_observation, axes=(1, 0, 2))
             if self.render_mode == "rgb_array"
             else None
         )
@@ -208,11 +214,9 @@ class Environment:
 
 config_path = '/Users/hamishmacintosh/Uni Work/METR4911/Shared Repo/Shared-MARL-Env/config.yaml' 
 
-
 map_processor = Environment(config_path)
 
 map_processor.render()
-# for i in range(100):
-#     map_processor.update()
-    
-pygame.time.delay(5000)
+#pygame.image.save(map_processor.screen, "/Users/hamishmacintosh/Desktop/environment_snapshot.png")
+pygame.time.delay(10000)
+

@@ -107,6 +107,7 @@ class TargetLayer(AgentLayer):
         self.targets = targets
         self.layer_state = map_matrix
 
+    # TODO: Fix these, they are broken
     def update(self, a_star_search_func=None):
         for target in self.targets:
             if target.policy == 'a_star':
@@ -124,7 +125,7 @@ class TargetLayer(AgentLayer):
     def move_randomly(self, target):
         x, y = target.current_position()
         possible_moves = [(x + dx, y + dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if dx != 0 or dy != 0]
-        valid_moves = [move for move in possible_moves if self.layer_state.is_valid_position(*move)]
+        valid_moves = [move for move in possible_moves if self.layer_state.is_valid_position(*move)] 
         if valid_moves:
             target.set_position(*valid_moves[np.random.randint(len(valid_moves))])
 

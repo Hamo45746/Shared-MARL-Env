@@ -6,3 +6,6 @@ class Jammer:
 
     def set_position(self, x, y):
         self.position = (x, y)
+    
+    def current_position(self):
+        return self.position
