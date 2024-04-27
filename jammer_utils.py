@@ -2,14 +2,17 @@ import numpy as np
 from jammer import Jammer
 
 
-def create_jammers(n_jammers, map_matrix, randomiser, jam_radius, constraints=None):
+def create_jammers(n_jammers, map_matrix, randomiser, jam_radius, pos_list=None, constraints=None):
     """
     Initializes jammers on a map (map_matrix) at random positions.
     REF: PettingZoo's pursuit example: PettingZoo/sisl/pursuit/agent_utils
     """
     jammers = []
-    for _ in range(n_jammers):
-        x, y = feasible_position(randomiser, map_matrix, constraints=constraints)
+    for i in range(n_jammers):
+        if pos_list and i < len(pos_list):
+            x, y = pos_list[i]
+        else:
+            x, y = feasible_position(randomiser, map_matrix, constraints=constraints)
         jammer = Jammer(jam_radius)
         jammer.set_position(x, y)
         jammers.append(jammer)

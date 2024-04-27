@@ -7,13 +7,23 @@ grid_size:
 pixel_scale: 20
 map_scale: 0.05
 
-obs_range: 5  
+obs_range: 5
 
 map_path: '/Users/hamishmacintosh/Uni Work/METR4911/Shared Repo/Shared-MARL-Env/city_image_1.npy'
 
-n_agents: 10     # Number of agents in the environment
-n_targets: 15    # Number of targets in the environment
-n_jammers: 5     # Number of jammers in the environment
-jamming_radius: 20 # Radius of jamming effect from each jammer
+n_agents: 10
+n_targets: 15
+n_jammers: 5
+jamming_radius: 20
 
 seed: 1
+
+# Example locations
+agent_positions:
+  - [0, 0]
+  - [0, 0]
+target_positions:
+  - [0, 0]
+  - [0, 0]
+jammer_positions:
+  - [0, 0]
