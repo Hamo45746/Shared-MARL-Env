@@ -96,6 +96,8 @@ class TargetLayer(AgentLayer):
         """Returns the position of the given target."""
         return self.targets[target_idx].current_position()
 
+    def n_targets(self):
+        return self.ntargets
 
 class JammerLayer(AgentLayer):
     def __init__(self, xs, ys, jammers, activation_times=None, seed=1):
