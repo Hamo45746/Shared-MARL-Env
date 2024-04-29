@@ -140,12 +140,12 @@ class Environment:
         reward = 0
 
         target_identified = False
-
+        #TODO: Fix this up 
         for step in path_steps:
             # Check for jammer destruction
             if step == chosen_location and self.is_jammer_location(step):
                 reward += self.DESTRUCTION_REWARD
-                self.destroy_jammer(step)
+                self.destroy_jammer(step) #
 
             # Check for target identification and tracking
             if self.is_target_in_observation(agent_id, step):
@@ -175,10 +175,9 @@ class Environment:
         """
         agent_pos = self.agents[agent_id].position
         for jammer in self.jammers:
-            if not jammer.is_destroyed and np.linalg.norm(np.array(agent_pos) - np.array(jammer.position)) <= self.config['jamming_radius']:
+            if jammer.active and np.linalg.norm(np.array(agent_pos) - np.array(jammer.position)) <= self.config['jamming_radius']:
                 return True
         return False
-
 
 
     def step(self, action, agent_id, is_last):
