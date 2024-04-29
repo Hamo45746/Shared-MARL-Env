@@ -10,7 +10,7 @@ map_scale: 0.05
 obs_range: 5
 comm_range: 10
 
-map_path: '/Users/hamishmacintosh/Uni Work/METR4911/Shared Repo/Shared-MARL-Env/city_image_1.npy'
+map_path: 'city_image_1.npy'
 
 n_agents: 10
 n_targets: 15

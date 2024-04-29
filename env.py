@@ -1,14 +1,12 @@
 import numpy as np
 import yaml
-import agent_utils
+from pettingzoo.sisl.pursuit.utils import agent_utils
 import jammer_utils
 import heapq
 import pygame
 from skimage.transform import resize
 from layer import AgentLayer, JammerLayer, TargetLayer
 from gymnasium.utils import seeding
-
-
 
 class Environment:
     def __init__(self, config_path, render_mode="human"):
@@ -36,6 +34,7 @@ class Environment:
         
         # Load the map
         original_map = np.load(self.config['map_path'])[:, :, 0]
+        original_map = original_map.transpose() 
         original_x, original_y = original_map.shape
         # Scale map according to config
         self.X = int(original_x * self.map_scale)
@@ -59,14 +58,14 @@ class Environment:
         if 'target_positions' in self.config:
             target_positions = [tuple(pos) for pos in self.config['target_positions']]
         else:
-            agent_positions = None
+            target_positions = None
         
         self.num_agents = self.config['n_agents']
-        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, pos_list=agent_positions, randinit=True)
+        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
 
         self.num_targets = self.config['n_targets']
-        self.targets = agent_utils.create_agents(self.num_targets, self.map_matrix, self.obs_range, self.np_random, pos_list=target_positions, randinit=True)
+        self.targets = agent_utils.create_agents(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, randinit=True)
         self.target_layer = TargetLayer(self.X, self.Y, self.targets, self.map_matrix)
 
         self.num_jammers = self.config['n_jammers']
@@ -103,7 +102,7 @@ class Environment:
         else:
             agent_positions = None
 
-        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, pos_list=agent_positions, randinit=True)
+        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
 
         # Reinitialize target positions
@@ -112,7 +111,7 @@ class Environment:
         else:
             target_positions = None
 
-        self.targets = agent_utils.create_agents(self.num_targets, self.map_matrix, self.obs_range, self.np_random, pos_list=target_positions, randinit=True)
+        self.targets = agent_utils.create_agents(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, randinit=True)
         self.target_layer = TargetLayer(self.X, self.Y, self.targets, self.map_matrix)
 
         # Reinitialize jammers
@@ -199,7 +198,6 @@ class Environment:
 
             for i in range(opponent_layer.n_agents()):
                 # controller input should be an observation, but doesn't matter right now
-                a = 
                 opponent_layer.move_agent(i, a)
 
             self.latest_reward_state += self.catch_reward * pursuers_who_remove
@@ -260,7 +258,7 @@ class Environment:
         Use pygame to draw targets.
         REF: PettingZoo's pursuit example: PettingZoo/sisl/pursuit/pursuit_base.py
         """
-        for i in range(self.target_layer.n_agents()):
+        for i in range(self.target_layer.ntargets):
             x, y = self.target_layer.get_position(i)
             center = (
                 int(self.pixel_scale * x + self.pixel_scale / 2),
@@ -440,10 +438,10 @@ class Environment:
         
       
 
-config_path = '/Users/hamishmacintosh/Uni Work/METR4911/Shared Repo/Shared-MARL-Env/config.yaml' 
+config_path = 'config.yaml' 
 
 map_processor = Environment(config_path)
 
 map_processor.render()
-#pygame.image.save(map_processor.screen, "/Users/hamishmacintosh/Desktop/environment_snapshot.png")
-pygame.time.delay(10000)
+pygame.image.save(map_processor.screen, "environment_snapshot.png")
+#pygame.time.delay(10000)
