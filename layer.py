@@ -65,9 +65,9 @@ class AgentLayer:
         return self.layer_state[:]
 
     def get_state(self):
-        pos = np.zeros(2 * len(self.allies))
+        pos = np.zeros(2 * len(self.agents))
         idx = 0
-        for ally in self.allies:
+        for ally in self.agents:
             pos[idx : (idx + 2)] = ally.get_state()
             idx += 2
         return pos
@@ -85,13 +85,16 @@ class AgentLayer:
             x, y = agent.current_position()
             self.layer_state[x, y] = 0  # Set current agent positions to 0
     
-    
 class TargetLayer(AgentLayer):
     def __init__(self, xs, ys, targets, map_matrix, seed=None):
         self.targets = targets
         self.map_matrix = map_matrix
         self.layer_state = np.full((xs, ys), -np.inf)
         self.ntargets = len(targets)
+
+    def get_position(self, target_idx):
+        """Returns the position of the given target."""
+        return self.targets[target_idx].current_position()
 
 
 class JammerLayer(AgentLayer):
@@ -101,7 +104,7 @@ class JammerLayer(AgentLayer):
 
     def activate_jammers(self, current_time):
         """Activate jammers based on the current time and their respective activation times."""
-        for i, jammer in enumerate(self.allies):
+        for i, jammer in enumerate(self.agents):
             if current_time >= self.activation_times[i] and jammer.active == 0:
                 self.activate_jammer(jammer)
 
@@ -110,13 +113,13 @@ class JammerLayer(AgentLayer):
         jammer.active = 1
 
     def set_position(self, jammer_idx, x, y):
-        self.allies[jammer_idx].set_position(x, y)
+        self.agents[jammer_idx].set_position(x, y)
         self.update_layer_state()
 
     def update_layer_state(self):
         """Updates the layer state matrix with current positions of all jammers."""
         self.layer_state.fill(0)
-        for jammer in self.allies:
+        for jammer in self.agents:
             x, y = jammer.position
             if jammer.active == 1:
                 self.layer_state[x, y] += 1
