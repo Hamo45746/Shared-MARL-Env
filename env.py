@@ -23,7 +23,16 @@ class Environment:
         self.pixel_scale = self.config['pixel_scale'] # Size in pixels of each map cell
         self.map_scale = self.config['map_scale'] # Scaling factor of map resolution
         self.seed = self.config['seed']
+        self.comm_range = self.config['comm_range']
         self._seed(self.seed)
+        
+        # Constants for rewards and penalties
+        self.JAMMER_DISCOVERY_REWARD = self.config['jammer_discovery_reward']
+        self.TARGET_DISCOVERY_REWARD = self.config['target_discovery_reward']
+        self.TRACKING_REWARD = self.config['tracking_reward']
+        self.DESTRUCTION_REWARD = self.config['destruction_reward']
+        self.MOVEMENT_PENALTY = self.config['movement_penalty']
+        self.EXPLORATION_REWARD = self.config['exploration_reward']
         
         # Load the map
         original_map = np.load(self.config['map_path'])[:, :, 0]
@@ -114,6 +123,101 @@ class Environment:
         self.global_state[1] = self.agent_layer.get_state_matrix()
         self.global_state[2] = self.target_layer.get_state_matrix()
         self.global_state[3] = self.jammer_layer.get_state_matrix()
+
+
+    def compute_path_reward(self, agent_id, chosen_location, path_steps):
+        """
+        Compute the reward based on the agent's path and the encounters along it, including exploration of outdated areas.
+
+        Args:
+        - agent_id (int): ID of the agent.
+        - chosen_location (tuple): The final destination chosen by the agent.
+        - path_steps (list): A list of tuples representing the path coordinates.
+
+        Returns:
+        - float: The computed reward for the path taken.
+        """
+        reward = 0
+
+        target_identified = False
+
+        for step in path_steps:
+            # Check for jammer destruction
+            if step == chosen_location and self.is_jammer_location(step):
+                reward += self.DESTRUCTION_REWARD
+                self.destroy_jammer(step)
+
+            # Check for target identification and tracking
+            if self.is_target_in_observation(agent_id, step):
+                if not target_identified:
+                    reward += self.TARGET_DISCOVERY_REWARD
+                    target_identified = True
+                else:
+                    reward += self.TRACKING_REWARD
+
+            # Reward for exploring outdated regions
+            if self.is_information_outdated(step, self.OUTDATED_INFO_THRESHOLD):
+                reward += self.EXPLORATION_REWARD
+                self.update_global_state(agent_id, step)
+
+        return reward
+    
+    
+    def is_comm_blocked(self, agent_id):
+        """
+        Determine if an agent's communication is currently blocked by any active jammers.
+
+        Args:
+        - agent_id (int): ID of the agent to check.
+
+        Returns:
+        - bool: True if communication is blocked, False otherwise.
+        """
+        agent_pos = self.agents[agent_id].position
+        for jammer in self.jammers:
+            if not jammer.is_destroyed and np.linalg.norm(np.array(agent_pos) - np.array(jammer.position)) <= self.config['jamming_radius']:
+                return True
+        return False
+
+
+
+    def step(self, action, agent_id, is_last):
+        agent_layer = self.agent_layer
+        opponent_layer = self.target_layer
+
+        # actual action application, change the pursuer layer
+        agent_layer.move_agent(agent_id, action)
+
+        # Update only the agent layer
+        self.global_state[1] = self.agent_layer.get_state_matrix()
+
+        self.latest_reward_state = self.reward() / self.num_agents # Reward not implemented
+
+        if is_last:
+            # Possibly change the evader layer
+            ev_remove, pr_remove, pursuers_who_remove = self.remove_agents()
+
+            for i in range(opponent_layer.n_agents()):
+                # controller input should be an observation, but doesn't matter right now
+                a = 
+                opponent_layer.move_agent(i, a)
+
+            self.latest_reward_state += self.catch_reward * pursuers_who_remove
+            self.latest_reward_state += self.urgency_reward
+            self.frames = self.frames + 1
+
+        # Update the remaining layers
+        self.global_state[2] = self.target_layer.get_state_matrix()
+
+        global_val = self.latest_reward_state.mean()
+        local_val = self.latest_reward_state
+        self.latest_reward_state = (
+            self.local_ratio * local_val + (1 - self.local_ratio) * global_val
+        )
+
+        if self.render_mode == "human":
+            self.render()
+    
 
     def draw_model_state(self):
         """
@@ -250,8 +354,10 @@ class Environment:
             else None
         )
         
+        
     def state(self) -> np.ndarray:
         return self.global_state
+    
     
     def close(self):
         """
@@ -264,24 +370,28 @@ class Environment:
             pygame.quit()
             self.screen = None
             
+            
     ## OBSERVATION FUNCTIONS ## - TODO: Not currently sharing agent observations
     def safely_observe(self, agent_id):
         obs = self.collect_obs(self.agent_layer, agent_id)
         return obs
 
+
     def collect_obs(self, agent_layer, agent_id):
         return self.collect_obs_by_idx(agent_layer, agent_id)
 
+
     def collect_obs_by_idx(self, agent_layer, agent_idx):
-        obs = np.zeros((3, self.obs_range, self.obs_range), dtype=np.float32) # With shared observations later these will need to change
-        obs[0].fill(1.0)  # TODO: Change this default: -np.inf?
+        obs = np.zeros((3, self.obs_range, self.obs_range), dtype=np.float32) # With shared observations later these may need to change
+        obs[0].fill(-np.inf)
         xp, yp = agent_layer.get_position(agent_idx)
 
         xlo, xhi, ylo, yhi, xolo, xohi, yolo, yohi = self.obs_clip(xp, yp)
 
         # Adjust observation data retrieval based on global state and its layers
-        obs[0:3, xolo:xohi, yolo:yohi] = np.abs(self.global_state[0:3, xlo:xhi, ylo:yhi])
+        obs[0:3, xolo:xohi, yolo:yohi] = self.global_state[0:3, xlo:xhi, ylo:yhi]
         return obs
+
 
     def obs_clip(self, x, y):
         xld = x - self.obs_range // 2
@@ -298,16 +408,37 @@ class Environment:
         xohi, yohi = xolo + (xhi - xlo), yolo + (yhi - ylo)
         return xlo, xhi + 1, ylo, yhi + 1, xolo, xohi + 1, yolo, yohi + 1
 
-        
+
+    def share_and_update_observations(self):
+        for i, agent in enumerate(self.agents):
+            current_obs, _ = self.safely_observe(i)  # Gets current observations for agent i
+            for j, other_agent in enumerate(self.agents):
+                if i != j and self.within_comm_range(agent, other_agent):
+                    self.update_global_state_from_observation(other_agent, current_obs)
+
+
+    def update_global_state_from_observation(self, receiving_agent, obs):
+        # Extract the current position of the receiving agent
+        agent_pos = receiving_agent.current_position()
+        # Determine the offset based on the agent's position and the observation range
+        for dx in range(-self.obs_range // 2, self.obs_range // 2 + 1):
+            for dy in range(-self.obs_range // 2, self.obs_range // 2 + 1):
+                global_x = agent_pos[0] + dx
+                global_y = agent_pos[1] + dy
+                # Update the global state at the receiving agent’s location
+                if 0 <= global_x < self.X and 0 <= global_y < self.Y:
+                    receiving_agent.global_state[0:3, global_x, global_y] = obs[0:3, self.obs_range//2 + dx, self.obs_range//2 + dy]
+                    
+    
+    def within_comm_range(self, agent1, agent2):
+        distance = np.linalg.norm(np.array(agent1.current_position()) - np.array(agent2.current_position()))
+        return distance <= self.comm_range
+
+    
     def _seed(self, seed=None):
         self.np_random, seed_ = seeding.np_random(seed)
         
-    
-
-    
-    
-            
-            
+      
 
 config_path = '/Users/hamishmacintosh/Uni Work/METR4911/Shared Repo/Shared-MARL-Env/config.yaml' 
 
