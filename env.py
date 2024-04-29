@@ -59,7 +59,7 @@ class Environment:
         if 'target_positions' in self.config:
             target_positions = [tuple(pos) for pos in self.config['target_positions']]
         else:
-            agent_positions = None
+            target_positions = None
         
         self.num_agents = self.config['n_agents']
         self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, pos_list=agent_positions, randinit=True)
@@ -180,42 +180,42 @@ class Environment:
         return False
 
 
-    def step(self, action, agent_id, is_last):
-        agent_layer = self.agent_layer
-        opponent_layer = self.target_layer
+    # def step(self, action, agent_id, is_last):
+    #     agent_layer = self.agent_layer
+    #     opponent_layer = self.target_layer
 
-        # actual action application, change the pursuer layer
-        agent_layer.move_agent(agent_id, action)
+    #     # actual action application, change the pursuer layer
+    #     agent_layer.move_agent(agent_id, action)
 
-        # Update only the agent layer
-        self.global_state[1] = self.agent_layer.get_state_matrix()
+    #     # Update only the agent layer
+    #     self.global_state[1] = self.agent_layer.get_state_matrix()
 
-        self.latest_reward_state = self.reward() / self.num_agents # Reward not implemented
+    #     self.latest_reward_state = self.reward() / self.num_agents # Reward not implemented
 
-        if is_last:
-            # Possibly change the evader layer
-            ev_remove, pr_remove, pursuers_who_remove = self.remove_agents()
+    #     if is_last:
+    #         # Possibly change the evader layer
+    #         ev_remove, pr_remove, pursuers_who_remove = self.remove_agents()
 
-            for i in range(opponent_layer.n_agents()):
-                # controller input should be an observation, but doesn't matter right now
-                a = 
-                opponent_layer.move_agent(i, a)
+    #         for i in range(opponent_layer.n_agents()):
+    #             # controller input should be an observation, but doesn't matter right now
+    #             a = 
+    #             opponent_layer.move_agent(i, a)
 
-            self.latest_reward_state += self.catch_reward * pursuers_who_remove
-            self.latest_reward_state += self.urgency_reward
-            self.frames = self.frames + 1
+    #         self.latest_reward_state += self.catch_reward * pursuers_who_remove
+    #         self.latest_reward_state += self.urgency_reward
+    #         self.frames = self.frames + 1
 
-        # Update the remaining layers
-        self.global_state[2] = self.target_layer.get_state_matrix()
+    #     # Update the remaining layers
+    #     self.global_state[2] = self.target_layer.get_state_matrix()
 
-        global_val = self.latest_reward_state.mean()
-        local_val = self.latest_reward_state
-        self.latest_reward_state = (
-            self.local_ratio * local_val + (1 - self.local_ratio) * global_val
-        )
+    #     global_val = self.latest_reward_state.mean()
+    #     local_val = self.latest_reward_state
+    #     self.latest_reward_state = (
+    #         self.local_ratio * local_val + (1 - self.local_ratio) * global_val
+    #     )
 
-        if self.render_mode == "human":
-            self.render()
+    #     if self.render_mode == "human":
+    #         self.render()
     
 
     def draw_model_state(self):
