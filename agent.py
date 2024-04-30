@@ -28,7 +28,7 @@ class DiscreteAgent(Agent):
         map_matrix,
         randomizer,
         obs_range=3,
-        n_channels=4,
+        n_layers=4,
         seed=1,
         flatten=False,
     ):
@@ -61,11 +61,11 @@ class DiscreteAgent(Agent):
         # Initialize the local observation state
         self._obs_range = obs_range
         self.X, self.Y = self.map_matrix.shape
-        self.observation_state = np.full((n_channels, obs_range, obs_range), fill_value=-np.inf)
-        self.local_state = np.full((n_channels, self.X, self.Y), fill_value=-np.inf)
+        self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-np.inf)
+        self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-np.inf)
         
         if flatten:
-            self._obs_shape = (n_channels * obs_range**2 + 1,)
+            self._obs_shape = (n_layers * obs_range**2 + 1,)
         else:
             self._obs_shape = (obs_range, obs_range, 4)
             # self._obs_shape = (4, obs_range, obs_range)
@@ -139,22 +139,24 @@ class DiscreteAgent(Agent):
         return self.last_pos
     
     def update_local_state(self, observed_state, observer_position):
-        """Update agents local representation of the environment state based on an allies observation."""
+        """Update the agent's global representation of the environment state based on another agent's observations."""
         observer_x, observer_y = observer_position
-        agent_x, agent_y = self.current_position()
+        obs_half_range = self._obs_range // 2
 
-        # Calculate the relative offset from the observer to the agent
-        rel_x = observer_x - agent_x + self._obs_range // 2
-        rel_y = observer_y - agent_y + self._obs_range // 2
+        # Iterate through each layer in the observed_state
+        for layer in range(observed_state.shape[0]):
+            # Iterate through each cell in the observed state grid
+            for dx in range(-obs_half_range, obs_half_range + 1):
+                for dy in range(-obs_half_range, obs_half_range + 1):
+                    global_x = observer_x + dx
+                    global_y = observer_y + dy
 
-        # Update local state using the observed state from another agent
-        for dx in range(-self._obs_range // 2, self._obs_range // 2 + 1):
-            for dy in range(-self._obs_range // 2, self._obs_range // 2 + 1):
-                global_x = rel_x + dx
-                global_y = rel_y + dy
-                # Update the local state at the observing agent’s location
-                if 0 <= global_x < self._obs_range and 0 <= global_y < self._obs_range:
-                    self.local_state[:, global_x, global_y] = observed_state[:, self._obs_range//2 + dx, self._obs_range//2 + dy]
-                    
+                    # Check bounds and update the local state within bounds
+                    if self.inbounds(global_x, global_y):
+                        obs_x = obs_half_range + dx
+                        obs_y = obs_half_range + dy
+                        # Update the specific layer at the global position with the observed data
+                        self.local_state[layer, global_x, global_y] = observed_state[layer, obs_x, obs_y]
+                            
     def set_observation_state(self, observation):
         self.observation_state = observation

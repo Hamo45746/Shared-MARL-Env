@@ -381,16 +381,20 @@ class Environment:
 
 
     def collect_obs_by_idx(self, agent_layer, agent_idx):
-        obs = np.zeros((3, self.obs_range, self.obs_range), dtype=np.float32) # With shared observations later these may need to change
-        obs[0].fill(-np.inf)
+        # Initialize the observation array for all layers, ensuring no information loss
+        obs = np.full((self.global_state.shape[0], self.obs_range, self.obs_range), fill_value=-np.inf, dtype=np.float32)
+
+        # Get the current position of the agent
         xp, yp = agent_layer.get_position(agent_idx)
 
+        # Calculate bounds for the observation based on the agent's position and the observation range
         xlo, xhi, ylo, yhi, xolo, xohi, yolo, yohi = self.obs_clip(xp, yp)
 
-        # Adjust observation data retrieval based on global state and its layers
-        obs[0:3, xolo:xohi, yolo:yohi] = self.global_state[0:3, xlo:xhi, ylo:yhi]
-        return obs
+        # Populate the observation array with data from all layers
+        for layer in range(self.global_state.shape[0]):
+            obs[layer, xolo:xohi, yolo:yohi] = self.global_state[layer, xlo:xhi, ylo:yhi]
 
+        return obs
 
     def obs_clip(self, x, y):
         xld = x - self.obs_range // 2
