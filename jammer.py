@@ -10,6 +10,15 @@ class Jammer:
     
     def current_position(self):
         return self.position
+    
+    def activate(self):
+        self.active = 1
+
+    def deactivate(self):
+        self.active = 0
+
+    def is_active(self):
+        return self.active == 1 and not self.is_destroyed
 
     def set_destroyed(self):
         self.is_destroyed = True
