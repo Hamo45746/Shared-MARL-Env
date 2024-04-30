@@ -370,7 +370,7 @@ class Environment:
             self.screen = None
             
             
-    ## OBSERVATION FUNCTIONS ## - TODO: Not currently sharing agent observations
+    ## OBSERVATION FUNCTIONS ## 
     def safely_observe(self, agent_id):
         obs = self.collect_obs(self.agent_layer, agent_id)
         return obs
@@ -409,27 +409,26 @@ class Environment:
 
 
     def share_and_update_observations(self):
+        """
+        Updates each agent classes internal observation state and internal local (entire env) state.
+        Will merge current observations of agents within communication range into each agents local state.
+        This function should be run in the step function.
+        """
         for i, agent in enumerate(self.agents):
-            current_obs, _ = self.safely_observe(i)  # Gets current observations for agent i
+            # safely_observe returns the current observation of agent i
+            current_obs = self.safely_observe(i)
+            current_pos = agent.current_position()
+            agent.set_observation_state(current_obs)
+            
             for j, other_agent in enumerate(self.agents):
-                if i != j and self.within_comm_range(agent, other_agent):
-                    self.update_global_state_from_observation(other_agent, current_obs)
-
-
-    def update_global_state_from_observation(self, receiving_agent, obs):
-        # Extract the current position of the receiving agent
-        agent_pos = receiving_agent.current_position()
-        # Determine the offset based on the agent's position and the observation range
-        for dx in range(-self.obs_range // 2, self.obs_range // 2 + 1):
-            for dy in range(-self.obs_range // 2, self.obs_range // 2 + 1):
-                global_x = agent_pos[0] + dx
-                global_y = agent_pos[1] + dy
-                # Update the global state at the receiving agent’s location
-                if 0 <= global_x < self.X and 0 <= global_y < self.Y:
-                    receiving_agent.global_state[0:3, global_x, global_y] = obs[0:3, self.obs_range//2 + dx, self.obs_range//2 + dy]
-                    
+                if i != j:
+                    other_pos = other_agent.current_position()
+                    if self.within_comm_range(current_pos, other_pos):
+                        other_agent.update_local_state(current_obs, current_pos)
+    
     
     def within_comm_range(self, agent1, agent2):
+        """Checks two agents are within communication range. Assumes constant comm range for all agents."""
         distance = np.linalg.norm(np.array(agent1.current_position()) - np.array(agent2.current_position()))
         return distance <= self.comm_range
 

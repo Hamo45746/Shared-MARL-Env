@@ -1,7 +1,7 @@
 import numpy as np
 from gymnasium import spaces
 
-# Reference: This is a direct copy from PettingZoos DiscreteAgent and Agent classes.
+# Reference: This is largely copied from PettingZoos DiscreteAgent and Agent classes.
 
 class Agent:
     def __new__(cls, *args, **kwargs):
@@ -28,11 +28,11 @@ class DiscreteAgent(Agent):
         map_matrix,
         randomizer,
         obs_range=3,
-        n_channels=3,
+        n_channels=4,
         seed=1,
         flatten=False,
     ):
-        # map_matrix is the may of the environment (-1 are buildings)
+        # map_matrix is the map of the environment (!0 are buildings)
         # n channels is the number of observation channels
 
         self.random_state = randomizer
@@ -57,11 +57,13 @@ class DiscreteAgent(Agent):
         self.map_matrix = map_matrix
 
         self.terminal = False
-
+        
         # Initialize the local observation state
         self._obs_range = obs_range
-        self.local_state = np.full((n_channels, obs_range, obs_range), fill_value=-np.inf)
-
+        self.X, self.Y = self.map_matrix.shape
+        self.observation_state = np.full((n_channels, obs_range, obs_range), fill_value=-np.inf)
+        self.local_state = np.full((n_channels, self.X, self.Y), fill_value=-np.inf)
+        
         if flatten:
             self._obs_shape = (n_channels * obs_range**2 + 1,)
         else:
@@ -135,3 +137,24 @@ class DiscreteAgent(Agent):
 
     def last_position(self):
         return self.last_pos
+    
+    def update_local_state(self, observed_state, observer_position):
+        """Update agents local representation of the environment state based on an allies observation."""
+        observer_x, observer_y = observer_position
+        agent_x, agent_y = self.current_position()
+
+        # Calculate the relative offset from the observer to the agent
+        rel_x = observer_x - agent_x + self._obs_range // 2
+        rel_y = observer_y - agent_y + self._obs_range // 2
+
+        # Update local state using the observed state from another agent
+        for dx in range(-self._obs_range // 2, self._obs_range // 2 + 1):
+            for dy in range(-self._obs_range // 2, self._obs_range // 2 + 1):
+                global_x = rel_x + dx
+                global_y = rel_y + dy
+                # Update the local state at the observing agent’s location
+                if 0 <= global_x < self._obs_range and 0 <= global_y < self._obs_range:
+                    self.local_state[:, global_x, global_y] = observed_state[:, self._obs_range//2 + dx, self._obs_range//2 + dy]
+                    
+    def set_observation_state(self, observation):
+        self.observation_state = observation
