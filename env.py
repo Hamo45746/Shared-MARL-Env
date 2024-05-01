@@ -1,6 +1,6 @@
 import numpy as np
 import yaml
-from pettingzoo.sisl.pursuit.utils import agent_utils
+import agent_utils
 import jammer_utils
 import heapq
 import pygame
@@ -16,7 +16,6 @@ class Environment:
             self.config = yaml.safe_load(file)
         
         # Initialize from config
-        
         self.D = self.config['grid_size']['D']
         self.obs_range = self.config['obs_range']
         self.pixel_scale = self.config['pixel_scale'] # Size in pixels of each map cell
@@ -36,6 +35,7 @@ class Environment:
         # Load the map
         original_map = np.load(self.config['map_path'])[:, :, 0]
         original_map = original_map.transpose() 
+        np.set_printoptions(threshold=np.inf)
         original_x, original_y = original_map.shape
         # Scale map according to config
         self.X = int(original_x * self.map_scale)
@@ -45,7 +45,7 @@ class Environment:
         # Assuming obstacles are any non-zero value - convert to binary map
         obstacle_map = (resized_map != 0).astype(int)
         self.map_matrix = obstacle_map
-        
+        print(self.map_matrix)
         # Global state includes layers for map, agents, targets, and jammers
         self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.float32)
         
@@ -60,18 +60,23 @@ class Environment:
             target_positions = [tuple(pos) for pos in self.config['target_positions']]
         else:
             target_positions = None
+        if 'target_goals' in self.config:
+            target_goals = [tuple(pos) for pos in self.config['target_goals']]
+        else:
+            target_goals = None
         
         self.num_agents = self.config['n_agents']
         self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
 
         self.num_targets = self.config['n_targets']
-        self.targets = agent_utils.create_agents(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, randinit=True)
+        self.targets = agent_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, target_goals, randinit=True)
         self.target_layer = TargetLayer(self.X, self.Y, self.targets, self.map_matrix)
 
         self.num_jammers = self.config['n_jammers']
         self.jammers = jammer_utils.create_jammers(self.num_jammers, self.map_matrix, self.np_random, self.config['jamming_radius'])
         self.jammer_layer = JammerLayer(self.X, self.Y, self.jammers)
+        self.jammed_positions = None
         self.update_jammed_areas()
         
         # Set global state layers
@@ -510,10 +515,10 @@ class Environment:
         
       
 
-config_path = 'config.yaml' 
+config_path = '/Users/hamishmacintosh/Uni Work/METR4911/Shared Repo/Shared-MARL-Env/config.yaml' 
 
 map_processor = Environment(config_path)
 
 map_processor.render()
-pygame.image.save(map_processor.screen, "environment_snapshot.png")
-#pygame.time.delay(10000)
+#pygame.image.save(map_processor.screen, "environment_snapshot2.png")
+pygame.time.delay(10000)

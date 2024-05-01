@@ -1,15 +1,10 @@
 import numpy as np
 from agent import DiscreteAgent
+from target import Target
 
 
 def create_agents(nagents, map_matrix, obs_range, randomizer, pos_list=None, flatten=False, randinit=False, constraints=None):
-    """Initializes the agents on a map (map_matrix).
-
-     -nagents: the number of agents to put on the map
-     -randinit: if True will place agents in random, feasible locations
-                if False will place all agents at 0
-     expanded_mat: This matrix is used to spawn non-adjacent agents
-     """
+    """Initializes the agents on a map (map_matrix)."""
     xs, ys = map_matrix.shape
     agents = []
 
@@ -31,12 +26,44 @@ def create_agents(nagents, map_matrix, obs_range, randomizer, pos_list=None, fla
         agents.append(agent)
     return agents
 
+def create_targets(nagents, map_matrix, obs_range, randomizer, pos_list=None, goal_pos_list=None, flatten=False, randinit=False, constraints=None):
+    """Initializes the targets on a map (map_matrix)."""
+    xs, ys = map_matrix.shape
+    agents = []
+
+    # Precompute feasible positions
+    feasible_positions = get_feasible_positions(map_matrix)#, expanded_mat)
+
+    for i in range(nagents):
+        xinit, yinit = (0, 0)
+        if pos_list and i < len(pos_list):
+            xinit, yinit = pos_list[i]
+        elif randinit and feasible_positions:
+            idx = randomizer.integers(0, len(feasible_positions))
+            xinit, yinit = feasible_positions.pop(idx)  # Remove to avoid reuse
+        else:
+            xinit, yinit = 0, 0
+
+        xgoal, ygoal = (0, 0)
+        if goal_pos_list and i < len(goal_pos_list):
+            xgoal, ygoal = goal_pos_list[i]
+        elif randinit and feasible_positions:
+            idx = randomizer.integers(0, len(feasible_positions))
+            xgoal, ygoal = feasible_positions.pop(idx)  # Remove to avoid reuse
+        else:
+            xgoal, ygoal = (0, 0)
+        
+        agent = Target(xs, ys, map_matrix, randomizer, start_pos=[xinit, yinit], goal_pos=[xgoal, ygoal], obs_range=obs_range, flatten=flatten)
+        agent.set_position(xinit, yinit)
+        agents.append(agent)
+    return agents
+
 def get_feasible_positions(map_matrix):#, expanded_mat):
     feasible_positions = []
     xs, ys = map_matrix.shape
     for x in range(xs):
         for y in range(ys):
-            if map_matrix[x, y] != 0:# and expanded_mat[x + 1, y + 1] != 0:
+            if map_matrix[x, y] != 0:
                 feasible_positions.append((x, y))
     return feasible_positions
 
