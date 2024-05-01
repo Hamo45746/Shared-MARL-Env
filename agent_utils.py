@@ -26,17 +26,7 @@ def create_agents(nagents, map_matrix, obs_range, randomizer, pos_list=None, fla
         else:
             xinit, yinit = 0, 0
 
-
-        xgoal, ygoal = (0, 0)
-        if goal_pos_list and i < len(goal_pos_list):
-            xgoal, ygoal = goal_pos_list[i]
-        elif randinit and feasible_positions:
-            idx = randomizer.integers(0, len(feasible_positions))
-            xgoal, ygoal = feasible_positions.pop(idx)  # Remove to avoid reuse
-        else:
-            xgoal, ygoal = 0, 0
-
-        agent = Target(xs, ys, map_matrix, randomizer, start_pos=[xinit,yinit], goal_pos= [xgoal, ygoal], obs_range=obs_range, flatten=flatten)
+        agent = DiscreteAgent(xs, ys, map_matrix, randomizer, obs_range=obs_range, flatten=flatten)
         agent.set_position(xinit, yinit)
         agents.append(agent)
     return agents

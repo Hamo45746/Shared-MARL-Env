@@ -46,7 +46,6 @@ class Environment:
         # Assuming obstacles are any non-zero value - convert to binary map
         obstacle_map = (resized_map != 0).astype(int)
         self.map_matrix = obstacle_map
-        print(self.map_matrix)
         # Global state includes layers for map, agents, targets, and jammers
         self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.float32)
         
@@ -79,7 +78,7 @@ class Environment:
         self.jammers = jammer_utils.create_jammers(self.num_jammers, self.map_matrix, self.np_random, self.config['jamming_radius'])
         self.jammer_layer = JammerLayer(self.X, self.Y, self.jammers)
         self.jammed_positions = None
-        self.update_jammed_areas()
+        #self.update_jammed_areas()
         
         # Set global state layers
         self.global_state[0] = self.map_matrix
