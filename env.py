@@ -1,12 +1,13 @@
 import numpy as np
 import yaml
-from pettingzoo.sisl.pursuit.utils import agent_utils
+import agent_utils
 import jammer_utils
 import heapq
 import pygame
 from skimage.transform import resize
 from layer import AgentLayer, JammerLayer, TargetLayer
 from gymnasium.utils import seeding
+from target import Target
 
 
 class Environment:
@@ -60,14 +61,19 @@ class Environment:
             target_positions = [tuple(pos) for pos in self.config['target_positions']]
         else:
             target_positions = None
+        if 'target_goals' in self.config:
+            target_goals = [tuple(pos) for pos in self.config['target_goals']]
+        else:
+            target_goals = None
         
         self.num_agents = self.config['n_agents']
         self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
 
         self.num_targets = self.config['n_targets']
-        self.targets = agent_utils.create_agents(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, randinit=True)
+        self.targets = agent_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, target_goals, randinit=True)
         self.target_layer = TargetLayer(self.X, self.Y, self.targets, self.map_matrix)
+
 
         self.num_jammers = self.config['n_jammers']
         self.jammers = jammer_utils.create_jammers(self.num_jammers, self.map_matrix, self.np_random, self.config['jamming_radius'])
@@ -178,9 +184,30 @@ class Environment:
             if jammer.active and np.linalg.norm(np.array(agent_pos) - np.array(jammer.position)) <= self.config['jamming_radius']:
                 return True
         return False
+    
+    def step(self):
+        #for target in self.targets:
+        #    action = target.get_next_action()
+        #    target.step(action)  # This moves the target according to the next action
+        #self.render()
 
+        #for target in self.targets:
+            #x, y = target.step(target.get_next_action())
+            #target.set_position(x,y)
 
-    # def step(self, action, agent_id, is_last):
+        for i in range(self.target_layer.n_targets()):
+            a = self.targets[i].get_next_action()
+            self.target_layer.move_targets(i,a)
+
+        self.global_state[2] = self.target_layer.get_state_matrix()
+
+            #print(target.current_position())
+    #def step(self, action, agent_id, is_last):
+
+    #    for target in self.target_layer.targets:
+    #        target.move()
+    #    self.render()
+
     #     agent_layer = self.agent_layer
     #     opponent_layer = self.target_layer
 
@@ -213,10 +240,6 @@ class Environment:
     #     self.latest_reward_state = (
     #         self.local_ratio * local_val + (1 - self.local_ratio) * global_val
     #     )
-
-    #     if self.render_mode == "human":
-    #         self.render()
-    
 
     def draw_model_state(self):
         """
@@ -335,6 +358,7 @@ class Environment:
                     (self.pixel_scale * self.X, self.pixel_scale * self.Y)
                 )
 
+        self.screen.fill((0, 0, 0))  # Clears the screen with black
         self.draw_model_state()
         self.draw_targets()
         self.draw_agents()
@@ -352,8 +376,7 @@ class Environment:
             if self.render_mode == "rgb_array"
             else None
         )
-        
-        
+
     def state(self) -> np.ndarray:
         return self.global_state
     
@@ -439,13 +462,30 @@ class Environment:
     
     def _seed(self, seed=None):
         self.np_random, seed_ = seeding.np_random(seed)
-        
-      
+
+    def run_simulation(env, max_steps=1000):
+        running = True
+        step_count = 0
+        while running and step_count < max_steps:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+
+            env.step()  # Update environment states
+            env.render()  # Render the current state to the screen
+
+            pygame.display.flip()  # Update the full display Surface to the screen
+            pygame.time.wait(100)  # Wait some time so it's visually comprehensible
+
+            step_count += 1
+
+        pygame.quit()
 
 config_path = 'config.yaml' 
 
-map_processor = Environment(config_path)
+env = Environment(config_path)
+Environment.run_simulation(env)
 
-map_processor.render()
-pygame.image.save(map_processor.screen, "environment_snapshot.png")
+#map_processor.render()
+#pygame.image.save(map_processor.screen, "environment_snapshot.png")
 #pygame.time.delay(10000)

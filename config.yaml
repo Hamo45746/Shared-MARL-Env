@@ -12,22 +12,20 @@ comm_range: 10
 
 map_path: 'city_image_1.npy'
 
-n_agents: 10
-n_targets: 15
+n_agents: 5
+n_targets: 10
 n_jammers: 5
 jamming_radius: 20
 
 seed: 1
 
 # Example locations
-agent_positions:
-  - [0, 0]
-  - [0, 0]
-target_positions:
-  - [0, 0]
-  - [0, 0]
-jammer_positions:
-  - [0, 0]
+#agent_positions:
+#  - [2000, 2000]
+#target_positions:
+#  - [1000, 1000]
+#jammer_positions:
+#  - [0, 0]
 
 jammer_discovery_reward: 50
 target_discovery_reward: 100

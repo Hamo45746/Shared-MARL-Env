@@ -1,4 +1,6 @@
 import numpy as np
+from target import Target
+import random
 
 class AgentLayer:
     def __init__(self, xs, ys, agents, seed=1):
@@ -91,10 +93,21 @@ class TargetLayer(AgentLayer):
         self.map_matrix = map_matrix
         self.layer_state = np.full((xs, ys), -np.inf)
         self.ntargets = len(targets)
+        self.goal = None
 
     def get_position(self, target_idx):
         """Returns the position of the given target."""
         return self.targets[target_idx].current_position()
+    
+    def move_targets(self, target_idx, action):
+        """Moves the agent according to the defined action and updates the layer state.
+           This is where the policies should come in, providing the action for each agent."""
+        o_pos = self.targets[target_idx].current_position()
+        n_pos = self.targets[target_idx].step(action)
+
+        # Update the layer state for old and new positions
+        self.update_positions(o_pos, n_pos)
+        return n_pos
 
     def n_targets(self):
         return self.ntargets

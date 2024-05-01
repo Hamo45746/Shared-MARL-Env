@@ -83,11 +83,12 @@ class DiscreteAgent(Agent):
         cpos = self.current_pos
         lpos = self.last_pos
         # if dead or reached goal dont move
-        if self.terminal:
-            return cpos
-        # if in building, dead, and stay there
+        # if self.terminal:
+        #     print('here1')
+        #     return cpos
+        # # if in building, dead, and stay there
         if self.inbuilding(cpos[0], cpos[1]):
-            self.terminal = True
+            print("here2")
             return cpos
         tpos = self.temp_pos
         tpos[0] = cpos[0]
@@ -99,17 +100,19 @@ class DiscreteAgent(Agent):
         y = tpos[1]
 
         # check bounds
-        if not self.inbounds(x, y):
-            return cpos
+        # if not self.inbounds(x, y):
+        #     print("here3")
+        #     return cpos
         # if bumped into building, then stay
-        if self.inbuilding(x, y):
-            return cpos
-        else:
-            lpos[0] = cpos[0]
-            lpos[1] = cpos[1]
-            cpos[0] = x
-            cpos[1] = y
-            return cpos
+        # if self.inbuilding(x, y):
+        #     print("here")
+        #     return cpos
+        #deleted else statement
+        lpos[0] = cpos[0]
+        lpos[1] = cpos[1]
+        cpos[0] = x
+        cpos[1] = y
+        return cpos
 
     def get_state(self):
         return self.current_pos
@@ -121,7 +124,7 @@ class DiscreteAgent(Agent):
         return False
 
     def inbuilding(self, x, y):
-        if self.map_matrix[x, y] != 0:
+        if self.map_matrix[x, y] == 0:
             return True
         return False
 

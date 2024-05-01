@@ -1,6 +1,7 @@
 import numpy as np
 from agent import DiscreteAgent
 import heapq
+import random
 
 class Target(DiscreteAgent):
     def __init__(
@@ -78,4 +79,6 @@ class Target(DiscreteAgent):
             if self.path_index >= len(self.path):
                 self.path_index = 0  # Optionally loop the path
             return self.determine_action(current_pos, next_pos)
-        return 4  # Default to 'stay' if path ended or not valid
+        movements = [0,1,2,3,4]
+        move = random.choice(movements)
+        return move  # Default to 'stay' if path ended or not valid
