@@ -124,20 +124,26 @@ class JammerLayer(AgentLayer):
                 self.activate_jammer(jammer)
 
     def activate_jammer(self, jammer):
-        """Activates the given jammer."""
-        jammer.active = 1
+        if not jammer.is_active() and not jammer.get_destroyed():
+            jammer.activate()
+            self.update_layer_state()
 
-    def set_position(self, jammer_idx, x, y):
-        self.agents[jammer_idx].set_position(x, y)
-        self.update_layer_state()
+    def set_position(self, jammer_idx, new_position):
+        jammer = self.agents[jammer_idx]
+        if new_position != jammer.current_position():
+            jammer.set_position(new_position[0], new_position[1])
+            self.update_layer_state()
 
     def update_layer_state(self):
-        """Updates the layer state matrix with current positions of all jammers."""
-        self.layer_state.fill(0)
+        """
+        Updates the layer state matrix with current positions of all jammers. 
+        0 in the matrix is a current jammer position.
+        """
+        self.layer_state.fill(-np.inf)
         for jammer in self.agents:
-            x, y = jammer.position
-            if jammer.active == 1:
-                self.layer_state[x, y] += 1
+            x, y = jammer.current_position()
+            if jammer.is_active():
+                self.layer_state[x, y] = 0
 
     def get_state_matrix(self):
         """Returns a matrix representing the positions of active jammers."""

@@ -17,7 +17,6 @@ class Environment:
             self.config = yaml.safe_load(file)
         
         # Initialize from config
-        
         self.D = self.config['grid_size']['D']
         self.obs_range = self.config['obs_range']
         self.pixel_scale = self.config['pixel_scale'] # Size in pixels of each map cell
@@ -37,6 +36,7 @@ class Environment:
         # Load the map
         original_map = np.load(self.config['map_path'])[:, :, 0]
         original_map = original_map.transpose() 
+        np.set_printoptions(threshold=np.inf)
         original_x, original_y = original_map.shape
         # Scale map according to config
         self.X = int(original_x * self.map_scale)
@@ -46,7 +46,7 @@ class Environment:
         # Assuming obstacles are any non-zero value - convert to binary map
         obstacle_map = (resized_map != 0).astype(int)
         self.map_matrix = obstacle_map
-        
+        print(self.map_matrix)
         # Global state includes layers for map, agents, targets, and jammers
         self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.float32)
         
@@ -78,6 +78,8 @@ class Environment:
         self.num_jammers = self.config['n_jammers']
         self.jammers = jammer_utils.create_jammers(self.num_jammers, self.map_matrix, self.np_random, self.config['jamming_radius'])
         self.jammer_layer = JammerLayer(self.X, self.Y, self.jammers)
+        self.jammed_positions = None
+        self.update_jammed_areas()
         
         # Set global state layers
         self.global_state[0] = self.map_matrix
@@ -124,6 +126,8 @@ class Environment:
         # Reinitialize jammers
         self.jammers = jammer_utils.create_jammers(self.num_jammers, self.map_matrix, self.np_random, self.config['jamming_radius'])
         self.jammer_layer = JammerLayer(self.X, self.Y, self.jammers)
+        
+        self.jammed_positions = set()
 
         # Update layers in global state
         self.global_state[1] = self.agent_layer.get_state_matrix()
@@ -458,8 +462,73 @@ class Environment:
         """Checks two agents are within communication range. Assumes constant comm range for all agents."""
         distance = np.linalg.norm(np.array(agent1.current_position()) - np.array(agent2.current_position()))
         return distance <= self.comm_range
-
     
+    
+    # JAMMING HELPER FUNCTIONS #
+    
+    def activate_jammer(self, jammer_index):
+        jammer = self.jammer_layer.agents[jammer_index]
+        if not jammer.is_active():
+            self.jammer_layer.activate_jammer(jammer)
+            self.update_jammed_areas()
+
+
+    def deactivate_jammer(self, jammer_index):
+        jammer = self.jammer_layer.agents[jammer_index]
+        if jammer.is_active():
+            jammer.deactivate()
+            self.update_jammed_areas()
+
+
+    def move_jammer(self, jammer_index, new_position):
+        self.jammer_layer.set_position(jammer_index, *new_position)
+        self.update_jammed_areas()
+
+
+    def update_jammed_areas(self):
+        """
+        Recalculate the jammed areas based on the current state of all jammers.
+        Stores the jammed grid positions in a cache. This function should be called any time a 
+        jammers position, activation, and destruction status changes.
+        """
+        self.jammed_positions.clear()
+        for jammer in self.jammer_layer.agents:
+            if jammer.is_active() and not jammer.get_destroyed():
+                jammed_area = self.calculate_jammed_area(jammer.current_position(), jammer.radius)
+                self.jammed_positions.update(jammed_area)
+
+
+    def calculate_jammed_area(self, position, radius):
+        """
+        Calculate the set of grid coordinates affected by a jammer's radius given its position.
+        
+        Parameters:
+        - position (tuple): The (x, y) coordinates of the jammer on the grid.
+        - radius (int): The radius within which the jammer affects other units.
+        
+        Returns:
+        - set of tuples: Set of (x, y) coordinates representing the jammed area.
+        """
+        center_x, center_y = position
+        jammed_area = set()
+
+        # Determine the grid bounds of the jammed area
+        x_lower_bound = max(center_x - radius, 0)
+        x_upper_bound = min(center_x + radius, self.X - 1)
+        y_lower_bound = max(center_y - radius, 0)
+        y_upper_bound = min(center_y + radius, self.Y - 1)
+
+        # Iterate over the range defined by the radius around the jammer's position
+        for x in range(x_lower_bound, x_upper_bound + 1):
+            for y in range(y_lower_bound, y_upper_bound + 1):
+                # Calculate the distance from the center to ensure it's within the circle defined by the radius
+                distance = np.sqrt((center_x - x) ** 2 + (center_y - y) ** 2)
+                if distance <= radius:
+                    jammed_area.add((x, y))
+
+        return jammed_area
+
+
     def _seed(self, seed=None):
         self.np_random, seed_ = seeding.np_random(seed)
 
@@ -487,5 +556,5 @@ env = Environment(config_path)
 Environment.run_simulation(env)
 
 #map_processor.render()
-#pygame.image.save(map_processor.screen, "environment_snapshot.png")
+#pygame.image.save(map_processor.screen, "environment_snapshot2.png")
 #pygame.time.delay(10000)
