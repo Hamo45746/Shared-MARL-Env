@@ -46,7 +46,7 @@ class DiscreteAgent(Agent):
             2,  # move up
             3,  # move down
             4,  # stay
-        ] 
+        ]
 
         self.motion_range = [[-1, 0], [1, 0], [0, 1], [0, -1], [0, 0]]
 
