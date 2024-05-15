@@ -8,6 +8,7 @@ from skimage.transform import resize
 from layer import AgentLayer, JammerLayer, TargetLayer
 from gymnasium.utils import seeding
 from target import Target
+import os
 
 
 class Environment:
@@ -43,9 +44,10 @@ class Environment:
         self.Y = int(original_y * self.map_scale)
         # Resizing the map, using nearest interpolation
         resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
-        # Assuming obstacles are any non-zero value - convert to binary map
+        # Obstacles are any non-zero value - convert to binary map
         obstacle_map = (resized_map != 0).astype(int)
         self.map_matrix = obstacle_map
+        print(obstacle_map)
         # Global state includes layers for map, agents, targets, and jammers
         self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.float32)
         
@@ -438,7 +440,7 @@ class Environment:
         return xlo, xhi + 1, ylo, yhi + 1, xolo, xohi + 1, yolo, yohi + 1
 
 
-    def share_and_update_observations(self):
+    def share_and_update_observations(self): # Change this to one agent sharing its observation with any agent in range
         """
         Updates each agent classes internal observation state and internal local (entire env) state.
         Will merge current observations of agents within communication range into each agents local state.
@@ -534,6 +536,9 @@ class Environment:
     def run_simulation(env, max_steps=1000):
         running = True
         step_count = 0
+        # image_folder = 'simulation_frames'
+        # os.makedirs(image_folder, exist_ok=True)
+
         while running and step_count < max_steps:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -543,13 +548,15 @@ class Environment:
             env.render()  # Render the current state to the screen
 
             pygame.display.flip()  # Update the full display Surface to the screen
+            # frame_filename = f"{image_folder}/frame_{step_count:04d}.png"  # Save frames as frame_0001.png, frame_0002.png, etc.
+            # pygame.image.save(env.screen, frame_filename)
             pygame.time.wait(100)  # Wait some time so it's visually comprehensible
 
             step_count += 1
 
         pygame.quit()
 
-config_path = 'config.yaml' 
+config_path = 'Shared-MARL-Env/config.yaml' 
 
 env = Environment(config_path)
 Environment.run_simulation(env)
