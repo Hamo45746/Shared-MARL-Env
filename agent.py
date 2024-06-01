@@ -1,6 +1,6 @@
 import numpy as np
 from gymnasium import spaces
-
+import random
 # Reference: This is largely copied from PettingZoos DiscreteAgent and Agent classes.
 
 class Agent:
@@ -29,7 +29,7 @@ class DiscreteAgent(Agent):
         randomizer,
         obs_range=3,
         n_layers=4,
-        seed=1,
+        seed=10,
         flatten=False,
     ):
         # map_matrix is the map of the environment (!0 are buildings)
@@ -44,11 +44,15 @@ class DiscreteAgent(Agent):
             0,  # move left
             1,  # move right
             2,  # move up
-            3,  # move down
+            3,  # move down 
             4,  # stay
+            5, #cross up right
+            6, #cross up left
+            7, #cross down left
+            8, #cross down right 
         ] 
 
-        self.motion_range = [[-1, 0], [1, 0], [0, 1], [0, -1], [0, 0]]
+        self.motion_range = [[-1, 0], [1, 0], [0, 1], [0, -1], [0, 0], [1, 1], [-1, 1], [-1, -1], [1, -1]]
 
         self.current_pos = np.zeros(2, dtype=np.int32)  # x and y position
         self.last_pos = np.zeros(2, dtype=np.int32)
@@ -100,13 +104,13 @@ class DiscreteAgent(Agent):
         y = tpos[1]
 
         # check bounds
-        # if not self.inbounds(x, y):
-        #     print("here3")
-        #     return cpos
+        if not self.inbounds(x, y):
+            print("here3")
+            return cpos
         # if bumped into building, then stay
-        # if self.inbuilding(x, y):
-        #     print("here")
-        #     return cpos
+        if self.inbuilding(x, y):
+            print("here")
+            return cpos
         #deleted else statement
         lpos[0] = cpos[0]
         lpos[1] = cpos[1]
@@ -163,3 +167,26 @@ class DiscreteAgent(Agent):
                             
     def set_observation_state(self, observation):
         self.observation_state = observation
+
+    def get_next_action(self):
+        random_actions = self.eactions
+        temp = []
+        for action in self.eactions:
+                temp.append(action)
+        a = random.choice(random_actions)
+        x, y = self.step(a)
+        while self.inbuilding(x,y) or not self.inbounds(x,y):
+            self.current_pos = self.last_pos
+            self.current_position()
+            return 4
+        # while self.inbuilding(x,y) or not self.inbounds(x,y):
+        #     temp.remove(a)
+        #     b = a
+        #     a = random.choice(temp)
+        #     self.current_pos = self.last_pos
+        #     x, y = self.step(a)
+        #     temp.append(b)
+        if self.inbuilding(x,y):
+            print("grrrrrr")
+        return a
+

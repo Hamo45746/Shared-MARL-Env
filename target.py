@@ -76,9 +76,7 @@ class Target(DiscreteAgent):
             current_pos = self.current_position()
             next_pos = self.path[self.path_index]
             self.path_index += 1
-            if self.path_index >= len(self.path):
-                self.path_index = 0  # Optionally loop the path
+            #if self.path_index >= len(self.path):
+                #self.path_index = 0  # Optionally loop the path
             return self.determine_action(current_pos, next_pos)
-        movements = [0,1,2,3,4]
-        move = random.choice(movements)
-        return move  # Default to 'stay' if path ended or not valid
+        return self.eactions[4]  # Default to 'stay' if path ended or not valid

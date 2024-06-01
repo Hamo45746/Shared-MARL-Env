@@ -1,3 +1,6 @@
+#import os
+#os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
 import numpy as np
 import yaml
 import agent_utils
@@ -8,6 +11,8 @@ from skimage.transform import resize
 from layer import AgentLayer, JammerLayer, TargetLayer
 from gymnasium.utils import seeding
 from target import Target
+#from stable_baselines3.common.env_checker import check_env
+
 
 
 class Environment:
@@ -72,7 +77,6 @@ class Environment:
         self.num_targets = self.config['n_targets']
         self.targets = agent_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, target_goals, randinit=True)
         self.target_layer = TargetLayer(self.X, self.Y, self.targets, self.map_matrix)
-
 
         self.num_jammers = self.config['n_jammers']
         self.jammers = jammer_utils.create_jammers(self.num_jammers, self.map_matrix, self.np_random, self.config['jamming_radius'])
@@ -202,7 +206,13 @@ class Environment:
             a = self.targets[i].get_next_action()
             self.target_layer.move_targets(i,a)
 
+        for i in range(self.agent_layer.n_agents()):
+            b = self.agents[i].get_next_action()
+            self.agent_layer.move_agent(i,b)
+
         self.global_state[2] = self.target_layer.get_state_matrix()
+        self.global_state[2] = self.agent_layer.get_state_matrix()
+
 
             #print(target.current_position())
     #def step(self, action, agent_id, is_last):
@@ -531,7 +541,7 @@ class Environment:
     def _seed(self, seed=None):
         self.np_random, seed_ = seeding.np_random(seed)
 
-    def run_simulation(env, max_steps=1000):
+    def run_simulation(env, max_steps=100):
         running = True
         step_count = 0
         while running and step_count < max_steps:
@@ -552,6 +562,7 @@ class Environment:
 config_path = 'config.yaml' 
 
 env = Environment(config_path)
+#check_env(env)
 Environment.run_simulation(env)
 
 #map_processor.render()
