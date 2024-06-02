@@ -10,10 +10,7 @@ import pygame
 from skimage.transform import resize
 from layer import AgentLayer, JammerLayer, TargetLayer
 from gymnasium.utils import seeding
-from target import Target
 #from stable_baselines3.common.env_checker import check_env
-
-
 
 class Environment:
     def __init__(self, config_path, render_mode="human"):

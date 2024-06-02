@@ -1,5 +1,4 @@
 import numpy as np
-from target import Target
 import random
 
 class AgentLayer:
