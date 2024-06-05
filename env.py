@@ -244,7 +244,7 @@ class Environment:
             observations[agent_id] = self.safely_observe(agent_id)
 
         # Share and update observations among agents within communication range
-        self.share_and_update_observations()
+        self.share_and_update_observations() # TODO: Does this func work?
 
         # Calc rewards for each agent
         rewards = {}
