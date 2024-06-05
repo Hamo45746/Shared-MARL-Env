@@ -119,7 +119,9 @@ class Environment:
 
         self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
-
+        # get agent id for class instance
+        self.agent_name_mapping = dict(zip(self.agents, list(range(self.num_agents))))
+        
         # Reinitialise target positions
         if 'target_positions' in self.config:
             target_positions = [tuple(pos) for pos in self.config['target_positions']]
