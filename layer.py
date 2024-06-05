@@ -30,7 +30,6 @@ class AgentLayer:
            This is where the policies should come in, providing the action for each agent."""
         o_pos = self.agents[agent_idx].current_position()
         n_pos = self.agents[agent_idx].step(action)
-
         # Update the layer state for old and new positions
         self.update_positions(o_pos, n_pos)
         return n_pos
@@ -68,8 +67,8 @@ class AgentLayer:
     def get_state(self):
         pos = np.zeros(2 * len(self.agents))
         idx = 0
-        for ally in self.agents:
-            pos[idx : (idx + 2)] = ally.get_state()
+        for agent in self.agents:
+            pos[idx : (idx + 2)] = agent.get_state()
             idx += 2
         return pos
     
@@ -77,10 +76,8 @@ class AgentLayer:
         # Decay previous positions
         mask = self.layer_state > -np.inf
         self.layer_state[mask] -= 1  # Decrement the state of previously occupied positions
-
         # Reset positions that were more than 20 time steps ago
         self.layer_state[self.layer_state < -20] = -np.inf
-
         # Update positions based on current agent locations
         for agent in self.agents:
             x, y = agent.current_position()
@@ -88,9 +85,10 @@ class AgentLayer:
     
 class TargetLayer(AgentLayer):
     def __init__(self, xs, ys, targets, map_matrix, seed=None):
+        super()._init_(xs, ys, targets, seed)
         self.targets = targets
         self.map_matrix = map_matrix
-        self.layer_state = np.full((xs, ys), -np.inf)
+        #self.layer_state = np.full((xs, ys), -np.inf)
         self.ntargets = len(targets)
         self.goal = None
 

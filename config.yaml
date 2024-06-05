@@ -9,6 +9,7 @@ map_scale: 0.05
 
 obs_range: 5
 comm_range: 10
+agent_type: 'discrete'
 
 map_path: 'city_image_1.npy'
 

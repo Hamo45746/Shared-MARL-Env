@@ -5,6 +5,7 @@ import numpy as np
 import yaml
 import agent_utils
 import jammer_utils
+import target_utils
 import heapq
 import pygame
 from skimage.transform import resize
@@ -68,11 +69,12 @@ class Environment:
             target_goals = None
         
         self.num_agents = self.config['n_agents']
-        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, randinit=True)
+        self.agent_type = self.config.get('agent_type', 'discrete')
+        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
 
         self.num_targets = self.config['n_targets']
-        self.targets = agent_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, target_goals, randinit=True)
+        self.targets = target_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, target_goals, randinit=True)
         self.target_layer = TargetLayer(self.X, self.Y, self.targets, self.map_matrix)
 
         self.num_jammers = self.config['n_jammers']
@@ -115,7 +117,7 @@ class Environment:
         else:
             agent_positions = None
 
-        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, randinit=True)
+        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
 
         # Reinitialise target positions
@@ -124,7 +126,7 @@ class Environment:
         else:
             target_positions = None
 
-        self.targets = agent_utils.create_agents(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, randinit=True)
+        self.targets = target_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, randinit=True)
         self.target_layer = TargetLayer(self.X, self.Y, self.targets, self.map_matrix)
 
         # Reinitialise jammers
@@ -563,11 +565,7 @@ class Environment:
         pygame.quit()
 
 config_path = 'config.yaml' 
-
 env = Environment(config_path)
-#check_env(env)
 Environment.run_simulation(env)
 
-#map_processor.render()
-#pygame.image.save(map_processor.screen, "environment_snapshot2.png")
-#pygame.time.delay(10000)
+
