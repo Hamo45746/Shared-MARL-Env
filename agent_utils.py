@@ -32,7 +32,7 @@ def create_agents(nagents, map_matrix, obs_range, randomizer, pos_list=None, fla
     return agents
 
 def create_targets(nagents, map_matrix, obs_range, randomizer, pos_list=None, goal_pos_list=None, flatten=False, randinit=False, constraints=None):
-    """Initializes the targets on a map (map_matrix)."""
+    """Initialises the targets on a map (map_matrix)."""
     xs, ys = map_matrix.shape
     agents = []
 

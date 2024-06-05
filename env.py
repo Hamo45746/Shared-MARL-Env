@@ -17,7 +17,7 @@ class Environment:
         with open(config_path, 'r') as file:
             self.config = yaml.safe_load(file)
         
-        # Initialize from config
+        # Initialise from config
         self.D = self.config['grid_size']['D']
         self.obs_range = self.config['obs_range']
         self.pixel_scale = self.config['pixel_scale'] # Size in pixels of each map cell
@@ -26,7 +26,7 @@ class Environment:
         self.comm_range = self.config['comm_range']
         self._seed(self.seed)
         
-        # Constants for rewards and penalties
+        # Constants for rewards and penalties - TODO: THIS STUFF GOES TO REWARD FILE
         self.JAMMER_DISCOVERY_REWARD = self.config['jammer_discovery_reward']
         self.TARGET_DISCOVERY_REWARD = self.config['target_discovery_reward']
         self.TRACKING_REWARD = self.config['tracking_reward']
@@ -47,7 +47,7 @@ class Environment:
         # Obstacles are any non-zero value - convert to binary map
         obstacle_map = (resized_map != 0).astype(int)
         self.map_matrix = obstacle_map
-        print(obstacle_map)
+        # print(obstacle_map)
         # Global state includes layers for map, agents, targets, and jammers
         self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.float32)
         
@@ -115,7 +115,7 @@ class Environment:
         self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
 
-        # Reinitialize target positions
+        # Reinitialise target positions
         if 'target_positions' in self.config:
             target_positions = [tuple(pos) for pos in self.config['target_positions']]
         else:
@@ -124,7 +124,7 @@ class Environment:
         self.targets = agent_utils.create_agents(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, randinit=True)
         self.target_layer = TargetLayer(self.X, self.Y, self.targets, self.map_matrix)
 
-        # Reinitialize jammers
+        # Reinitialise jammers
         self.jammers = jammer_utils.create_jammers(self.num_jammers, self.map_matrix, self.np_random, self.config['jamming_radius'])
         self.jammer_layer = JammerLayer(self.X, self.Y, self.jammers)
         
@@ -135,7 +135,7 @@ class Environment:
         self.global_state[2] = self.target_layer.get_state_matrix()
         self.global_state[3] = self.jammer_layer.get_state_matrix()
 
-
+    # Move to Hamish stuff
     def compute_path_reward(self, agent_id, chosen_location, path_steps):
         """
         Compute the reward based on the agent's path and the encounters along it, including exploration of outdated areas.
@@ -439,7 +439,7 @@ class Environment:
         xohi, yohi = xolo + (xhi - xlo), yolo + (yhi - ylo)
         return xlo, xhi + 1, ylo, yhi + 1, xolo, xohi + 1, yolo, yohi + 1
 
-
+    # Will change - 
     def share_and_update_observations(self): # Change this to one agent sharing its observation with any agent in range
         """
         Updates each agent classes internal observation state and internal local (entire env) state.
