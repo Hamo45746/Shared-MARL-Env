@@ -85,7 +85,7 @@ class AgentLayer:
     
 class TargetLayer(AgentLayer):
     def __init__(self, xs, ys, targets, map_matrix, seed=None):
-        super()._init_(xs, ys, targets, seed)
+        super().__init__(xs, ys, targets, seed)
         self.targets = targets
         self.map_matrix = map_matrix
         #self.layer_state = np.full((xs, ys), -np.inf)

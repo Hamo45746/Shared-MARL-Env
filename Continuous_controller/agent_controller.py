@@ -44,3 +44,4 @@ class AgentController:
     def update_agent_positions(self, actions):
         for agent, action in zip(self.agents, actions):
             agent.step(action)
+
