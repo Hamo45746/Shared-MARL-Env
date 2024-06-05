@@ -62,7 +62,7 @@ class DiscreteAgent(Agent):
 
         self.terminal = False
         
-        # Initialize the local observation state
+        # Initialise the local observation state
         self._obs_range = obs_range
         self.X, self.Y = self.map_matrix.shape
         self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-np.inf)
@@ -87,12 +87,10 @@ class DiscreteAgent(Agent):
         cpos = self.current_pos
         lpos = self.last_pos
         # if dead or reached goal dont move
-        # if self.terminal:
-        #     print('here1')
-        #     return cpos
-        # # if in building, dead, and stay there
+        if self.terminal:
+            return cpos
+        # if in building, dead, and stay there
         if self.inbuilding(cpos[0], cpos[1]):
-            print("here2")
             return cpos
         tpos = self.temp_pos
         tpos[0] = cpos[0]
