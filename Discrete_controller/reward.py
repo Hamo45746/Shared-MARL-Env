@@ -1,3 +1,12 @@
+# Constants for rewards and penalties
+        # self.JAMMER_DISCOVERY_REWARD = self.config['jammer_discovery_reward']
+        # self.TARGET_DISCOVERY_REWARD = self.config['target_discovery_reward']
+        # self.TRACKING_REWARD = self.config['tracking_reward']
+        # self.DESTRUCTION_REWARD = self.config['destruction_reward']
+        # self.MOVEMENT_PENALTY = self.config['movement_penalty']
+        # self.EXPLORATION_REWARD = self.config['exploration_reward']
+
+
 def compute_path_reward(self, agent_id, chosen_location, path_steps):
         """
         Compute the reward based on the agent's path and the encounters along it, including exploration of outdated areas.

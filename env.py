@@ -28,18 +28,10 @@ class Environment:
         self.comm_range = self.config['comm_range']
         self._seed(self.seed)
         
-        # Constants for rewards and penalties
-        self.JAMMER_DISCOVERY_REWARD = self.config['jammer_discovery_reward']
-        self.TARGET_DISCOVERY_REWARD = self.config['target_discovery_reward']
-        self.TRACKING_REWARD = self.config['tracking_reward']
-        self.DESTRUCTION_REWARD = self.config['destruction_reward']
-        self.MOVEMENT_PENALTY = self.config['movement_penalty']
-        self.EXPLORATION_REWARD = self.config['exploration_reward']
-        
         # Load the map
         original_map = np.load(self.config['map_path'])[:, :, 0]
         original_map = original_map.transpose() 
-        np.set_printoptions(threshold=np.inf)
+ 
         original_x, original_y = original_map.shape
         # Scale map according to config
         self.X = int(original_x * self.map_scale)
