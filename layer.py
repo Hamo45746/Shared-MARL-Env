@@ -113,12 +113,14 @@ class TargetLayer(AgentLayer):
 
 class JammerLayer(AgentLayer):
     def __init__(self, xs, ys, jammers, activation_times=None, seed=1):
-        super().__init__(xs, ys, jammers, seed)
+        self.jammers = jammers
+        self.nagents = len(jammers)
+        self.layer_state = np.full((xs, ys), -np.inf)
         self.activation_times = activation_times or [0] * len(jammers)  # Default to immediate activation
 
     def activate_jammers(self, current_time):
         """Activate jammers based on the current time and their respective activation times."""
-        for i, jammer in enumerate(self.agents):
+        for i, jammer in enumerate(self.jammers):
             if current_time >= self.activation_times[i] and jammer.active == 0:
                 self.activate_jammer(jammer)
 
@@ -139,7 +141,7 @@ class JammerLayer(AgentLayer):
         0 in the matrix is a current jammer position.
         """
         self.layer_state.fill(-np.inf)
-        for jammer in self.agents:
+        for jammer in self.jammers:
             x, y = jammer.current_position()
             if jammer.is_active():
                 self.layer_state[x, y] = 0

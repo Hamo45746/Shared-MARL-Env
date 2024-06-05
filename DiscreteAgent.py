@@ -46,7 +46,7 @@ class DiscreteAgent(BaseAgent):
 
         self.terminal = False
         
-        # Initialize the local observation state
+        # Initialise the local observation state
         self._obs_range = obs_range
         self.X, self.Y = self.map_matrix.shape
         self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-np.inf)
@@ -129,6 +129,7 @@ class DiscreteAgent(BaseAgent):
     def last_position(self):
         return self.last_pos
     
+    #TODO: Maybe move this - its unnecessary for target subclass to have
     def update_local_state(self, observed_state, observer_position):
         """Update the agent's global representation of the environment state based on another agent's observations."""
         observer_x, observer_y = observer_position

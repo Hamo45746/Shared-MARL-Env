@@ -51,7 +51,7 @@ class Environment:
         # Global state includes layers for map, agents, targets, and jammers
         self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.float32)
         
-        # Initialize agents, targets, jammers
+        # Initialise agents, targets, jammers
         # Created jammers, targets and agents at random positions if not given a position from config
         if 'agent_positions' in self.config:
             agent_positions = [tuple(pos) for pos in self.config['agent_positions']]
@@ -81,6 +81,10 @@ class Environment:
         self.jammed_positions = None
         #self.update_jammed_areas()
         
+        # TODO: Need these set up
+        # self.action_space = 
+        # self.observation_space = 
+        
         # Set global state layers
         self.global_state[0] = self.map_matrix
         self.global_state[1] = self.agent_layer.get_state_matrix()
@@ -105,7 +109,7 @@ class Environment:
         self.global_state.fill(0)
         self.global_state[0] = self.map_matrix # Uncomment above code if map_matrix is changed by sim
 
-        # Reinitialize agent positions
+        # Reinitialise agent positions
         if 'agent_positions' in self.config:
             agent_positions = [tuple(pos) for pos in self.config['agent_positions']]
         else:
@@ -114,7 +118,7 @@ class Environment:
         self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
 
-        # Reinitialize target positions
+        # Reinitialise target positions
         if 'target_positions' in self.config:
             target_positions = [tuple(pos) for pos in self.config['target_positions']]
         else:
@@ -123,7 +127,7 @@ class Environment:
         self.targets = agent_utils.create_agents(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, randinit=True)
         self.target_layer = TargetLayer(self.X, self.Y, self.targets, self.map_matrix)
 
-        # Reinitialize jammers
+        # Reinitialise jammers
         self.jammers = jammer_utils.create_jammers(self.num_jammers, self.map_matrix, self.np_random, self.config['jamming_radius'])
         self.jammer_layer = JammerLayer(self.X, self.Y, self.jammers)
         
@@ -150,7 +154,7 @@ class Environment:
         reward = 0
 
         target_identified = False
-        #TODO: Fix this up 
+        #TODO: Fix this up - move to reward file
         for step in path_steps:
             # Check for jammer destruction
             if step == chosen_location and self.is_jammer_location(step):
@@ -189,7 +193,7 @@ class Environment:
                 return True
         return False
     
-    def step(self):
+    #def step(self):
         #for target in self.targets:
         #    action = target.get_next_action()
         #    target.step(action)  # This moves the target according to the next action
@@ -199,57 +203,59 @@ class Environment:
             #x, y = target.step(target.get_next_action())
             #target.set_position(x,y)
 
-        for i in range(self.target_layer.n_targets()):
-            a = self.targets[i].get_next_action()
-            self.target_layer.move_targets(i,a)
+        ## This won't work - get action increments the action path index ##
+        # for i in range(self.target_layer.n_targets()):
+        #     a = self.targets[i].get_next_action()
+        #     self.target_layer.move_targets(i,a)
 
-        for i in range(self.agent_layer.n_agents()):
-            b = self.agents[i].get_next_action()
-            self.agent_layer.move_agent(i,b)
+        # for i in range(self.agent_layer.n_agents()):
+        #     b = self.agents[i].get_next_action()
+        #     self.agent_layer.move_agent(i,b)
 
+        # self.global_state[2] = self.target_layer.get_state_matrix()
+        # self.global_state[2] = self.agent_layer.get_state_matrix()
+            
+    def step(self, actions_dict):
+        # Need to update target position in target_layer, and target class itself
+        # Ensure three variables receive update: self.targets for each target class, self.target_layer state, target objects in target list within target_layer 
+        # Update current_position in each target instance, should be same target instance stored in self.targets and self.target_layer.targets.
+        # Then do target_layer.update() to update its representation of the current state. - same for agent
+        # Update target positions and layer state
+        for i, target in enumerate(self.target_layer.targets):
+            action = target.get_next_action()
+            self.target_layer.move_targets(i, action)
+
+        # Update agent positions and layer state based on the provided actions
+        for agent_id, action in actions_dict.items():
+            self.agent_layer.move_agent(agent_id, action)
+
+        # Update the global state with the new agent and target layer states
+        self.global_state[1] = self.agent_layer.get_state_matrix()
         self.global_state[2] = self.target_layer.get_state_matrix()
-        self.global_state[2] = self.agent_layer.get_state_matrix()
 
+        # Update jammed areas based on the current state of jammers
+        self.update_jammed_areas()
 
-            #print(target.current_position())
-    #def step(self, action, agent_id, is_last):
+        # Collect observations for each agent
+        observations = {}
+        for agent_id in range(self.num_agents):
+            observations[agent_id] = self.safely_observe(agent_id)
 
-    #    for target in self.target_layer.targets:
-    #        target.move()
-    #    self.render()
+        # Share and update observations among agents within communication range
+        self.share_and_update_observations()
 
-    #     agent_layer = self.agent_layer
-    #     opponent_layer = self.target_layer
+        # Calc rewards for each agent
+        rewards = {}
+        for agent_id in range(self.num_agents):
+            agent = self.agents[agent_id]
+            reward = self.calculate_reward(agent)  # Implement the reward calculation logic in a separate function
+            rewards[agent_id] = reward
 
-    #     # actual action application, change the pursuer layer
-    #     agent_layer.move_agent(agent_id, action)
-
-    #     # Update only the agent layer
-    #     self.global_state[1] = self.agent_layer.get_state_matrix()
-
-    #     self.latest_reward_state = self.reward() / self.num_agents # Reward not implemented
-
-    #     if is_last:
-    #         # Possibly change the evader layer
-    #         ev_remove, pr_remove, pursuers_who_remove = self.remove_agents()
-
-    #         for i in range(opponent_layer.n_agents()):
-    #             # controller input should be an observation, but doesn't matter right now
-    #             a = 
-    #             opponent_layer.move_agent(i, a)
-
-    #         self.latest_reward_state += self.catch_reward * pursuers_who_remove
-    #         self.latest_reward_state += self.urgency_reward
-    #         self.frames = self.frames + 1
-
-    #     # Update the remaining layers
-    #     self.global_state[2] = self.target_layer.get_state_matrix()
-
-    #     global_val = self.latest_reward_state.mean()
-    #     local_val = self.latest_reward_state
-    #     self.latest_reward_state = (
-    #         self.local_ratio * local_val + (1 - self.local_ratio) * global_val
-    #     )
+        # Determine if the episode is done (implement termination conditions here)
+        done = self.is_episode_done()
+        # Create the info dictionary (idk if needed?)
+        info = {}
+        return observations, rewards, done, info
 
     def draw_model_state(self):
         """
