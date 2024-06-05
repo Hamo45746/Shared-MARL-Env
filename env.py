@@ -28,18 +28,10 @@ class Environment:
         self.comm_range = self.config['comm_range']
         self._seed(self.seed)
         
-        # Constants for rewards and penalties
-        self.JAMMER_DISCOVERY_REWARD = self.config['jammer_discovery_reward']
-        self.TARGET_DISCOVERY_REWARD = self.config['target_discovery_reward']
-        self.TRACKING_REWARD = self.config['tracking_reward']
-        self.DESTRUCTION_REWARD = self.config['destruction_reward']
-        self.MOVEMENT_PENALTY = self.config['movement_penalty']
-        self.EXPLORATION_REWARD = self.config['exploration_reward']
-        
         # Load the map
         original_map = np.load(self.config['map_path'])[:, :, 0]
         original_map = original_map.transpose() 
-        np.set_printoptions(threshold=np.inf)
+ 
         original_x, original_y = original_map.shape
         # Scale map according to config
         self.X = int(original_x * self.map_scale)
@@ -72,6 +64,9 @@ class Environment:
         self.agent_type = self.config.get('agent_type', 'discrete')
         self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
+        
+        # get agent id for class instance
+        self.agent_name_mapping = dict(zip(self.agents, list(range(self.num_agents))))
 
         self.num_targets = self.config['n_targets']
         self.targets = target_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, target_goals, randinit=True)
@@ -119,8 +114,6 @@ class Environment:
 
         self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
-        # get agent id for class instance
-        self.agent_name_mapping = dict(zip(self.agents, list(range(self.num_agents))))
         
         # Reinitialise target positions
         if 'target_positions' in self.config:
@@ -183,7 +176,9 @@ class Environment:
         # Collect observations for each agent
         observations = {}
         for agent_id in range(self.num_agents):
-            observations[agent_id] = self.safely_observe(agent_id)
+            obs = self.safely_observe(agent_id)
+            self.agents[agent_id].set_observation_state(obs)
+            observations[agent_id] = obs
 
         # Share and update observations among agents within communication range
         self.share_and_update_observations() # TODO: Does this func work?
