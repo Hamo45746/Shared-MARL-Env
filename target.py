@@ -1,7 +1,6 @@
 import numpy as np
-from agent import DiscreteAgent
+from DiscreteAgent import DiscreteAgent
 import heapq
-import random
 
 class Target(DiscreteAgent):
     def __init__(
@@ -63,11 +62,19 @@ class Target(DiscreteAgent):
         if delta == (-1, 0): # Move left
             return self.eactions[0]
         elif delta == (1, 0): # Move right
-            return self.eactions[1]  
+            return self.eactions[1]
         elif delta == (0, 1): # Move up
-            return self.eactions[2]  
+            return self.eactions[2]
         elif delta == (0, -1): # Move down
-            return self.eactions[3]  
+            return self.eactions[3]
+        elif delta == (1, 1): # Cross up right
+            return self.eactions[5]
+        elif delta == (-1, 1): # Cross up left
+            return self.eactions[6]
+        elif delta == (-1, -1): # Cross down left
+            return self.eactions[7]
+        elif delta == (1, -1): # Cross down right
+            return self.eactions[8]
         return self.eactions[4]  # Stay (in case current_pos == next_pos)
     
     def get_next_action(self):

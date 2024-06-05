@@ -8,15 +8,14 @@ class BaseAgent(ABC):
         return agent
 
     @property
+    @abstractmethod
     def observation_space(self):
         raise NotImplementedError()
 
     @property
+    @abstractmethod
     def action_space(self):
         raise NotImplementedError()
-
-    def __str__(self):
-        return f"<{type(self).__name__} instance>"
     
     @abstractmethod
     def get_next_action(self):
@@ -33,3 +32,16 @@ class BaseAgent(ABC):
     @abstractmethod
     def current_position(self):
         pass
+
+    @abstractmethod
+    def update_local_state(self, observed_state, observer_position):
+        """Update the agent's local state based on observed data."""
+        pass
+
+    @abstractmethod
+    def set_observation_state(self, observation):
+        """Set the agent's observation state."""
+        pass
+
+    def __str__(self):
+        return f"<{type(self).__name__} instance>"

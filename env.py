@@ -5,6 +5,7 @@ import numpy as np
 import yaml
 import agent_utils
 import jammer_utils
+import target_utils
 import heapq
 import pygame
 from skimage.transform import resize
@@ -68,11 +69,12 @@ class Environment:
             target_goals = None
         
         self.num_agents = self.config['n_agents']
-        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, randinit=True)
+        self.agent_type = self.config.get('agent_type', 'discrete')
+        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
 
         self.num_targets = self.config['n_targets']
-        self.targets = agent_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, target_goals, randinit=True)
+        self.targets = target_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, target_goals, randinit=True)
         self.target_layer = TargetLayer(self.X, self.Y, self.targets, self.map_matrix)
 
         self.num_jammers = self.config['n_jammers']
@@ -111,7 +113,7 @@ class Environment:
         else:
             agent_positions = None
 
-        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, randinit=True)
+        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
 
         # Reinitialize target positions
@@ -120,7 +122,7 @@ class Environment:
         else:
             target_positions = None
 
-        self.targets = agent_utils.create_agents(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, randinit=True)
+        self.targets = target_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, randinit=True)
         self.target_layer = TargetLayer(self.X, self.Y, self.targets, self.map_matrix)
 
         # Reinitialize jammers
@@ -210,46 +212,6 @@ class Environment:
         self.global_state[2] = self.target_layer.get_state_matrix()
         self.global_state[2] = self.agent_layer.get_state_matrix()
 
-
-            #print(target.current_position())
-    #def step(self, action, agent_id, is_last):
-
-    #    for target in self.target_layer.targets:
-    #        target.move()
-    #    self.render()
-
-    #     agent_layer = self.agent_layer
-    #     opponent_layer = self.target_layer
-
-    #     # actual action application, change the pursuer layer
-    #     agent_layer.move_agent(agent_id, action)
-
-    #     # Update only the agent layer
-    #     self.global_state[1] = self.agent_layer.get_state_matrix()
-
-    #     self.latest_reward_state = self.reward() / self.num_agents # Reward not implemented
-
-    #     if is_last:
-    #         # Possibly change the evader layer
-    #         ev_remove, pr_remove, pursuers_who_remove = self.remove_agents()
-
-    #         for i in range(opponent_layer.n_agents()):
-    #             # controller input should be an observation, but doesn't matter right now
-    #             a = 
-    #             opponent_layer.move_agent(i, a)
-
-    #         self.latest_reward_state += self.catch_reward * pursuers_who_remove
-    #         self.latest_reward_state += self.urgency_reward
-    #         self.frames = self.frames + 1
-
-    #     # Update the remaining layers
-    #     self.global_state[2] = self.target_layer.get_state_matrix()
-
-    #     global_val = self.latest_reward_state.mean()
-    #     local_val = self.latest_reward_state
-    #     self.latest_reward_state = (
-    #         self.local_ratio * local_val + (1 - self.local_ratio) * global_val
-    #     )
 
     def draw_model_state(self):
         """
@@ -557,11 +519,7 @@ class Environment:
         pygame.quit()
 
 config_path = 'config.yaml' 
-
 env = Environment(config_path)
-#check_env(env)
 Environment.run_simulation(env)
 
-#map_processor.render()
-#pygame.image.save(map_processor.screen, "environment_snapshot2.png")
-#pygame.time.delay(10000)
+

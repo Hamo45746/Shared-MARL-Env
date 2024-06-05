@@ -16,14 +16,10 @@ class DiscreteAgent(BaseAgent):
         seed=10,
         flatten=False,
     ):
-        # map_matrix is the map of the environment (!0 are buildings)
-        # n channels is the number of observation channels
 
         self.random_state = randomizer
-
         self.xs = xs
         self.ys = ys
-
         self.eactions = [
             0,  # move left
             1,  # move right
@@ -35,28 +31,20 @@ class DiscreteAgent(BaseAgent):
             7, #cross down left
             8, #cross down right 
         ] 
-
         self.motion_range = [[-1, 0], [1, 0], [0, 1], [0, -1], [0, 0], [1, 1], [-1, 1], [-1, -1], [1, -1]]
-
         self.current_pos = np.zeros(2, dtype=np.int32)  # x and y position
         self.last_pos = np.zeros(2, dtype=np.int32)
         self.temp_pos = np.zeros(2, dtype=np.int32)
-
         self.map_matrix = map_matrix
-
         self.terminal = False
-        
-        # Initialize the local observation state
-        self._obs_range = obs_range
+        self._obs_range = obs_range # Initialize the local observation state
         self.X, self.Y = self.map_matrix.shape
         self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-np.inf)
         self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-np.inf)
-        
         if flatten:
             self._obs_shape = (n_layers * obs_range**2 + 1,)
         else:
             self._obs_shape = (obs_range, obs_range, 4)
-            # self._obs_shape = (4, obs_range, obs_range)
 
     @property
     def observation_space(self):
@@ -64,7 +52,7 @@ class DiscreteAgent(BaseAgent):
 
     @property
     def action_space(self):
-        return spaces.Discrete(5)
+        return spaces.Discrete(len(self.eactions))
 
     # Dynamics Functions
     def step(self, a):
@@ -76,24 +64,19 @@ class DiscreteAgent(BaseAgent):
         #     return cpos
         # # if in building, dead, and stay there
         if self.inbuilding(cpos[0], cpos[1]):
-            print("here2")
             return cpos
         tpos = self.temp_pos
         tpos[0] = cpos[0]
         tpos[1] = cpos[1]
-
         # transition is deterministic
         tpos += self.motion_range[a]
         x = tpos[0]
         y = tpos[1]
-
         # check bounds
         if not self.inbounds(x, y):
-            print("here3")
             return cpos
         # if bumped into building, then stay
         if self.inbuilding(x, y):
-            print("here")
             return cpos
         #deleted else statement
         lpos[0] = cpos[0]
@@ -163,13 +146,4 @@ class DiscreteAgent(BaseAgent):
             self.current_pos = self.last_pos
             self.current_position()
             return 4
-        # while self.inbuilding(x,y) or not self.inbounds(x,y):
-        #     temp.remove(a)
-        #     b = a
-        #     a = random.choice(temp)
-        #     self.current_pos = self.last_pos
-        #     x, y = self.step(a)
-        #     temp.append(b)
-        if self.inbuilding(x,y):
-            print("grrrrrr")
         return a
