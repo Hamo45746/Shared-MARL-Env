@@ -139,44 +139,6 @@ class Environment:
         self.global_state[1] = self.agent_layer.get_state_matrix()
         self.global_state[2] = self.target_layer.get_state_matrix()
         self.global_state[3] = self.jammer_layer.get_state_matrix()
-
-
-    def compute_path_reward(self, agent_id, chosen_location, path_steps):
-        """
-        Compute the reward based on the agent's path and the encounters along it, including exploration of outdated areas.
-
-        Args:
-        - agent_id (int): ID of the agent.
-        - chosen_location (tuple): The final destination chosen by the agent.
-        - path_steps (list): A list of tuples representing the path coordinates.
-
-        Returns:
-        - float: The computed reward for the path taken.
-        """
-        reward = 0
-
-        target_identified = False
-        #TODO: Fix this up - move to reward file
-        for step in path_steps:
-            # Check for jammer destruction
-            if step == chosen_location and self.is_jammer_location(step):
-                reward += self.DESTRUCTION_REWARD
-                self.destroy_jammer(step) #
-
-            # Check for target identification and tracking
-            if self.is_target_in_observation(agent_id, step):
-                if not target_identified:
-                    reward += self.TARGET_DISCOVERY_REWARD
-                    target_identified = True
-                else:
-                    reward += self.TRACKING_REWARD
-
-            # Reward for exploring outdated regions
-            if self.is_information_outdated(step, self.OUTDATED_INFO_THRESHOLD):
-                reward += self.EXPLORATION_REWARD
-                self.update_global_state(agent_id, step)
-
-        return reward
     
     
     def is_comm_blocked(self, agent_id):
@@ -194,28 +156,6 @@ class Environment:
             if jammer.active and np.linalg.norm(np.array(agent_pos) - np.array(jammer.position)) <= self.config['jamming_radius']:
                 return True
         return False
-    
-    #def step(self):
-        #for target in self.targets:
-        #    action = target.get_next_action()
-        #    target.step(action)  # This moves the target according to the next action
-        #self.render()
-
-        #for target in self.targets:
-            #x, y = target.step(target.get_next_action())
-            #target.set_position(x,y)
-
-        ## This won't work - get action increments the action path index ##
-        # for i in range(self.target_layer.n_targets()):
-        #     a = self.targets[i].get_next_action()
-        #     self.target_layer.move_targets(i,a)
-
-        # for i in range(self.agent_layer.n_agents()):
-        #     b = self.agents[i].get_next_action()
-        #     self.agent_layer.move_agent(i,b)
-
-        # self.global_state[2] = self.target_layer.get_state_matrix()
-        # self.global_state[2] = self.agent_layer.get_state_matrix()
             
     def step(self, actions_dict):
         # Need to update target position in target_layer, and target class itself
@@ -250,7 +190,7 @@ class Environment:
         rewards = {}
         for agent_id in range(self.num_agents):
             agent = self.agents[agent_id]
-            reward = self.calculate_reward(agent)  # Implement the reward calculation logic in a separate function
+            reward = self.calculate_reward(agent)  # Implement the reward calculation logic in a separate function, depends on agent type
             rewards[agent_id] = reward
 
         # Determine if the episode is done (implement termination conditions here)
