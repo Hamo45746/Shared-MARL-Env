@@ -1,5 +1,5 @@
 #import os
-#os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+##os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 import numpy as np
 import yaml
@@ -55,6 +55,7 @@ class Environment:
             target_positions = [tuple(pos) for pos in self.config['target_positions']]
         else:
             target_positions = None
+
         if 'target_goals' in self.config:
             target_goals = [tuple(pos) for pos in self.config['target_goals']]
         else:
@@ -158,9 +159,14 @@ class Environment:
         # Update current_position in each target instance, should be same target instance stored in self.targets and self.target_layer.targets.
         # Then do target_layer.update() to update its representation of the current state. - same for agent
         # Update target positions and layer state
+       
         for i, target in enumerate(self.target_layer.targets):
             action = target.get_next_action()
             self.target_layer.move_targets(i, action)
+
+        #for target_id, target in enumerate(env.targets):
+            #action = target.get_next_action()
+            #self.target_layer.move_targets(target_id, action)
 
         # Update agent positions and layer state based on the provided actions
         for agent_id, action in actions_dict.items():
@@ -216,6 +222,13 @@ class Environment:
                     col = (255, 255, 255)
                 pygame.draw.rect(self.screen, col, pos)
 
+    # need to delete this, just doing it for testing 
+    def calculate_reward(self, agent):
+        reward = 1
+        return reward 
+    
+    def is_episode_done(self):
+        return False 
 
     def draw_agents(self):
         """
@@ -411,7 +424,7 @@ class Environment:
     
     def within_comm_range(self, agent1, agent2):
         """Checks two agents are within communication range. Assumes constant comm range for all agents."""
-        distance = np.linalg.norm(np.array(agent1.current_position()) - np.array(agent2.current_position()))
+        distance = np.linalg.norm(np.array(agent1) - np.array(agent2))
         return distance <= self.comm_range
     
     
@@ -442,12 +455,13 @@ class Environment:
         Stores the jammed grid positions in a cache. This function should be called any time a 
         jammers position, activation, and destruction status changes.
         """
-        self.jammed_positions.clear()
-        for jammer in self.jammer_layer.agents:
+        if self.jammed_positions is not None:
+            self.jammed_positions.clear()
+        #for jammer in self.jammer_layer.agents:
+        for jammer in self.jammer_layer.jammers:
             if jammer.is_active() and not jammer.get_destroyed():
                 jammed_area = self.calculate_jammed_area(jammer.current_position(), jammer.radius)
                 self.jammed_positions.update(jammed_area)
-
 
     def calculate_jammed_area(self, position, radius):
         """
@@ -491,7 +505,13 @@ class Environment:
                 if event.type == pygame.QUIT:
                     running = False
 
-            env.step()  # Update environment states
+            # Create the action_dict for all agents
+            action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(env.agents)}
+
+            # Update environment states with the action_dict
+            observations, rewards, done, info = env.step(action_dict)
+
+            #env.step()  # Update environment states
             env.render()  # Render the current state to the screen
 
             pygame.display.flip()  # Update the full display Surface to the screen

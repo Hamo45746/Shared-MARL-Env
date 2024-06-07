@@ -30,7 +30,7 @@ def create_targets(ntargets, map_matrix, obs_range, randomizer, pos_list=None, g
         
         target = Target(xs, ys, map_matrix, randomizer, start_pos=[xinit, yinit], goal_pos=[xgoal, ygoal], obs_range=obs_range, flatten=flatten)
         target.set_position(xinit, yinit)
-        targets.append(targets)
+        targets.append(target)
     return targets
 
 def get_feasible_positions(map_matrix):#, expanded_mat):

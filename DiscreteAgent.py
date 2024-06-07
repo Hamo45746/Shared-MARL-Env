@@ -95,7 +95,8 @@ class DiscreteAgent(BaseAgent):
         return False
     
     def inbuilding(self, x, y):
-        if self.observation_state[0, x, y] == 0: # Maybe incorrect?
+        #if self.observation_state[0, x, y] == 0: # Maybe incorrect?
+        if self.map_matrix[x, y] == 0:
             return True
         return False
 
