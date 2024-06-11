@@ -41,6 +41,7 @@ class DiscreteAgent(BaseAgent):
         self.X, self.Y = self.map_matrix.shape
         self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-20, dtype=np.int32)
         self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20, dtype=np.int32)
+        
         if flatten:
             self._obs_shape = (n_layers * obs_range**2 + 1,)
         else:

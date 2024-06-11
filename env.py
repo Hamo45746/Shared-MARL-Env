@@ -14,6 +14,7 @@ from gymnasium.utils import seeding
 from gymnasium import spaces
 #from stable_baselines3.common.env_checker import check_env
 
+
 class Environment:
     def __init__(self, config_path, render_mode="human"):
         # Load configuration from YAML
@@ -81,9 +82,14 @@ class Environment:
         #self.update_jammed_areas()
         
         # Define action and observation spaces
-        self.action_spaces = [spaces.Discrete(len(self.agents[0].eactions)) for _ in range(self.num_agents)]
-        self.observation_spaces = [spaces.Box(low=0, high=np.inf, shape=(self.obs_range, self.obs_range, self.D), dtype=np.float32) for _ in range(self.num_agents)]
-                
+        # TODO: Add something for continuous agents spaces.
+        if self.agent_type == 'discrete':
+            self.action_spaces = [spaces.Discrete(len(self.agents[0].eactions)) for _ in range(self.num_agents)]
+        else:
+            # self.action_spaces = [spaces.]
+        
+        self.observation_spaces = [spaces.Box(low=-20, high=1, shape=(self.obs_range, self.obs_range, self.D), dtype=np.float32) for _ in range(self.num_agents)]
+        
         # Set global state layers
         self.global_state[0] = self.map_matrix
         self.global_state[1] = self.agent_layer.get_state_matrix()
@@ -98,7 +104,6 @@ class Environment:
 
     def reset(self):
         """ Reset the environment for a new episode"""
-        
         # Reinitialise the map and entities
         # original_map = np.load(self.config['map_path'])[:, :, 0]
         # resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
@@ -139,22 +144,7 @@ class Environment:
 
         # Return all agent observations
         return {agent: self.safely_observe(i) for i, agent in enumerate(self.agents)}
-    
-    def is_comm_blocked(self, agent_id):
-        """
-        Determine if an agent's communication is currently blocked by any active jammers.
-
-        Args:
-        - agent_id (int): ID of the agent to check.
-
-        Returns:
-        - bool: True if communication is blocked, False otherwise.
-        """
-        agent_pos = self.agents[agent_id].position
-        for jammer in self.jammers:
-            if jammer.active and np.linalg.norm(np.array(agent_pos) - np.array(jammer.position)) <= self.config['jamming_radius']:
-                return True
-        return False
+            
             
     def step(self, actions_dict):
         # Need to update target position in target_layer, and target class itself
@@ -204,7 +194,7 @@ class Environment:
             # print("---")
 
         # Share and update observations among agents within communication range
-        self.share_and_update_observations() # TODO: Does this func work?
+        self.share_and_update_observations() # TODO: Test this function works correctly
 
         # Calc rewards for each agent
         rewards = {}
@@ -219,12 +209,15 @@ class Environment:
         info = {}
         return observations, rewards, done, info
     
+    
     # Getter functions for action and observation space
     def action_space(self, agent):
             return self.action_spaces[self.agent_name_mapping[agent]]
 
+
     def observation_space(self, agent):
         return self.observation_spaces[self.agent_name_mapping[agent]]
+
 
     def draw_model_state(self):
         """
@@ -246,13 +239,16 @@ class Environment:
                     col = (255, 255, 255)
                 pygame.draw.rect(self.screen, col, pos)
 
-    # need to delete this, just doing it for testing 
+
+    # TODO: need to delete this, just here for testing 
     def calculate_reward(self, agent):
         reward = 1
         return reward 
     
+    
     def is_episode_done(self):
         return False 
+
 
     def draw_agents(self):
         """
@@ -369,6 +365,7 @@ class Environment:
             else None
         )
 
+
     def state(self) -> np.ndarray:
         return self.global_state
     
@@ -406,11 +403,17 @@ class Environment:
         xp, yp = agent_layer.get_position(agent_idx)
         # Calculate bounds for the observation
         xlo, xhi, ylo, yhi, xolo, xohi, yolo, yohi = self.obs_clip(xp, yp)
+        
+        xlo = int(xlo)
+        xhi = int(xhi)
+        ylo = int(ylo)
+        yhi = int(yhi)
         # Populate the observation array with data from all layers
         for layer in range(self.global_state.shape[0]):
             obs[layer, xolo:xohi, yolo:yohi] = self.global_state[layer, xlo:xhi, ylo:yhi]
 
         return obs
+
 
     def obs_clip(self, x, y):
         xld = x - self.obs_range // 2
@@ -453,8 +456,24 @@ class Environment:
         return distance <= self.comm_range
     
     
-    # JAMMING HELPER FUNCTIONS #
+    def is_comm_blocked(self, agent_id):
+        """
+        Determine if an agent's communication is currently blocked by any active jammers.
+
+        Args:
+        - agent_id (int): ID of the agent to check.
+
+        Returns:
+        - bool: True if communication is blocked, False otherwise.
+        """
+        agent_pos = self.agents[agent_id].position
+        for jammer in self.jammers:
+            if jammer.active and np.linalg.norm(np.array(agent_pos) - np.array(jammer.position)) <= self.config['jamming_radius']:
+                return True
+        return False
     
+    
+    # JAMMING FUNCTIONS #
     def activate_jammer(self, jammer_index):
         jammer = self.jammer_layer.agents[jammer_index]
         if not jammer.is_active():
@@ -487,6 +506,7 @@ class Environment:
             if jammer.is_active() and not jammer.get_destroyed():
                 jammed_area = self.calculate_jammed_area(jammer.current_position(), jammer.radius)
                 self.jammed_positions.update(jammed_area)
+
 
     def calculate_jammed_area(self, position, radius):
         """
@@ -521,6 +541,7 @@ class Environment:
 
     def _seed(self, seed=None):
         self.np_random, seed_ = seeding.np_random(seed)
+        
 
     def run_simulation(env, max_steps=100):
         running = True
@@ -546,6 +567,8 @@ class Environment:
 
         pygame.quit()
 
+
+# RUN SIMULATION:
 config_path = 'config.yaml' 
 env = Environment(config_path)
 Environment.run_simulation(env)
