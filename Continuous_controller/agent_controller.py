@@ -1,6 +1,6 @@
 import numpy as np
-from DiscreteAgent import DiscreteAgent
-from ContinuousAgent import ContinuousAgent
+from discrete_agent import DiscreteAgent
+from continuous_agent import ContinuousAgent
 from agent_utils import create_agents, create_targets
 
 class AgentController:

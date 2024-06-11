@@ -1,5 +1,5 @@
 import numpy as np
-from DiscreteAgent import DiscreteAgent
+from discrete_agent import DiscreteAgent
 import heapq
 import random
 

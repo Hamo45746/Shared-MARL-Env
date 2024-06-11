@@ -11,6 +11,7 @@ import pygame
 from skimage.transform import resize
 from layer import AgentLayer, JammerLayer, TargetLayer
 from gymnasium.utils import seeding
+from gymnasium import spaces
 #from stable_baselines3.common.env_checker import check_env
 
 class Environment:
@@ -79,10 +80,10 @@ class Environment:
         self.jammed_positions = None
         #self.update_jammed_areas()
         
-        # TODO: Need these set up
-        # self.action_space = 
-        # self.observation_space = 
-        
+        # Define action and observation spaces
+        self.action_spaces = [spaces.Discrete(len(self.agents[0].eactions)) for _ in range(self.num_agents)]
+        self.observation_spaces = [spaces.Box(low=0, high=np.inf, shape=(self.obs_range, self.obs_range, self.D), dtype=np.float32) for _ in range(self.num_agents)]
+                
         # Set global state layers
         self.global_state[0] = self.map_matrix
         self.global_state[1] = self.agent_layer.get_state_matrix()
@@ -135,7 +136,9 @@ class Environment:
         self.global_state[1] = self.agent_layer.get_state_matrix()
         self.global_state[2] = self.target_layer.get_state_matrix()
         self.global_state[3] = self.jammer_layer.get_state_matrix()
-    
+
+        # Return all agent observations
+        return {agent: self.safely_observe(i) for i, agent in enumerate(self.agents)}
     
     def is_comm_blocked(self, agent_id):
         """
@@ -185,6 +188,20 @@ class Environment:
             obs = self.safely_observe(agent_id)
             self.agents[agent_id].set_observation_state(obs)
             observations[agent_id] = obs
+            
+            # DEBUGGING: Print the agent's observation and corresponding section of map matrix
+            # agent_pos = self.agents[agent_id].current_position()
+            # obs_range = self.obs_range
+            # obs_half_range = obs_range // 2
+            # x_start, x_end = agent_pos[0] - obs_half_range, agent_pos[0] + obs_half_range + 1
+            # y_start, y_end = agent_pos[1] - obs_half_range, agent_pos[1] + obs_half_range + 1
+
+            # print(f"Agent {agent_id} Observation:")
+            # print(self.agents[agent_id].get_observation_state()[0])
+            # print(f"Agent {agent_id} Position: {agent_pos}")
+            # print("Corresponding Map Matrix Section:")
+            # print(self.map_matrix[x_start:x_end, y_start:y_end])
+            # print("---")
 
         # Share and update observations among agents within communication range
         self.share_and_update_observations() # TODO: Does this func work?
@@ -201,6 +218,13 @@ class Environment:
         # Create the info dictionary (idk if needed?)
         info = {}
         return observations, rewards, done, info
+    
+    # Getter functions for action and observation space
+    def action_space(self, agent):
+            return self.action_spaces[self.agent_name_mapping[agent]]
+
+    def observation_space(self, agent):
+        return self.observation_spaces[self.agent_name_mapping[agent]]
 
     def draw_model_state(self):
         """
@@ -361,11 +385,15 @@ class Environment:
             self.screen = None
             
             
-    ## OBSERVATION FUNCTIONS ## 
+    ## OBSERVATION FUNCTIONS ##
+    def observe(self, agent):
+        return self.safely_observe(self.agent_name_mapping[agent])
+     
+     
     def safely_observe(self, agent_id):
         obs = self.collect_obs(self.agent_layer, agent_id)
         return obs
-
+    
 
     def collect_obs(self, agent_layer, agent_id):
         return self.collect_obs_by_idx(agent_layer, agent_id)
@@ -374,13 +402,10 @@ class Environment:
     def collect_obs_by_idx(self, agent_layer, agent_idx):
         # Initialise the observation array for all layers, ensuring no information loss
         obs = np.full((self.global_state.shape[0], self.obs_range, self.obs_range), fill_value=-np.inf, dtype=np.float32)
-
         # Get the current position of the agent
         xp, yp = agent_layer.get_position(agent_idx)
-
-        # Calculate bounds for the observation based on the agent's position and the observation range
+        # Calculate bounds for the observation
         xlo, xhi, ylo, yhi, xolo, xohi, yolo, yohi = self.obs_clip(xp, yp)
-
         # Populate the observation array with data from all layers
         for layer in range(self.global_state.shape[0]):
             obs[layer, xolo:xohi, yolo:yohi] = self.global_state[layer, xlo:xhi, ylo:yhi]
@@ -524,5 +549,3 @@ class Environment:
 config_path = 'config.yaml' 
 env = Environment(config_path)
 Environment.run_simulation(env)
-
-
