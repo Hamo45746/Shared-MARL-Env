@@ -1,7 +1,7 @@
 #import os
 ##os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-
 import numpy as np
+import random
 import yaml
 import agent_utils
 import jammer_utils
@@ -11,6 +11,8 @@ import pygame
 from skimage.transform import resize
 from layer import AgentLayer, JammerLayer, TargetLayer
 from gymnasium.utils import seeding
+from Continuous_controller.agent_controller import AgentController
+from Discrete_controller.agent_controller import DiscreteAgentController
 #from stable_baselines3.common.env_checker import check_env
 
 class Environment:
@@ -98,11 +100,6 @@ class Environment:
     def reset(self):
         """ Reset the environment for a new episode"""
         
-        # Reinitialize the map and entities
-        # original_map = np.load(self.config['map_path'])[:, :, 0]
-        # resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
-        # self.map_matrix = (resized_map != 0).astype(int)
-        
         # Reset global state
         self.global_state.fill(0)
         self.global_state[0] = self.map_matrix # Uncomment above code if map_matrix is changed by sim
@@ -150,6 +147,7 @@ class Environment:
         agent_pos = self.agents[agent_id].position
         for jammer in self.jammers:
             if jammer.active and np.linalg.norm(np.array(agent_pos) - np.array(jammer.position)) <= self.config['jamming_radius']:
+                print("here", agent_id)
                 return True
         return False
             
@@ -163,10 +161,6 @@ class Environment:
         for i, target in enumerate(self.target_layer.targets):
             action = target.get_next_action()
             self.target_layer.move_targets(i, action)
-
-        #for target_id, target in enumerate(env.targets):
-            #action = target.get_next_action()
-            #self.target_layer.move_targets(target_id, action)
 
         # Update agent positions and layer state based on the provided actions
         for agent_id, action in actions_dict.items():
@@ -193,7 +187,10 @@ class Environment:
         rewards = {}
         for agent_id in range(self.num_agents):
             agent = self.agents[agent_id]
-            reward = self.calculate_reward(agent)  # Implement the reward calculation logic in a separate function, depends on agent type
+            if self.agent_type == "discrete":
+                reward = DiscreteAgentController.calculate_reward(agent)
+            else: 
+                reward = AgentController.calculate_reward(agent)  # Implement the reward calculation logic in a separate function, depends on agent type
             rewards[agent_id] = reward
 
         # Determine if the episode is done (implement termination conditions here)
@@ -221,12 +218,8 @@ class Environment:
                 if self.global_state[0][x][y] != 0:
                     col = (255, 255, 255)
                 pygame.draw.rect(self.screen, col, pos)
-
-    # need to delete this, just doing it for testing 
-    def calculate_reward(self, agent):
-        reward = 1
-        return reward 
     
+    #need to update this, doing it for testing
     def is_episode_done(self):
         return False 
 
@@ -242,7 +235,7 @@ class Environment:
                 int(self.pixel_scale * y + self.pixel_scale / 2),
             )
             col = (0, 0, 255)
-            pygame.draw.circle(self.screen, col, center, int(self.pixel_scale / 3))
+            pygame.draw.circle(self.screen, col, center, int(self.pixel_scale / 1.5))
             
             
     def draw_targets(self):
@@ -257,7 +250,7 @@ class Environment:
                 int(self.pixel_scale * y + self.pixel_scale / 2),
             )
             col = (255, 0, 0)
-            pygame.draw.circle(self.screen, col, center, int(self.pixel_scale / 3))
+            pygame.draw.circle(self.screen, col, center, int(self.pixel_scale / 1.5))
 
 
     def draw_jammers(self):
@@ -275,7 +268,7 @@ class Environment:
             )
             # Green for jammers
             col = (0, 255, 0)
-            pygame.draw.circle(self.screen, col, center, int(self.pixel_scale / 3))
+            pygame.draw.circle(self.screen, col, center, int(self.pixel_scale / 1.5))
             # Draw jamming radius
             jamming_radius_pixels = jammer.radius * self.pixel_scale  # Converting jamming radius to pixels
             # Semi-transparent green ellipse for jamming radius
@@ -381,9 +374,18 @@ class Environment:
         # Calculate bounds for the observation based on the agent's position and the observation range
         xlo, xhi, ylo, yhi, xolo, xohi, yolo, yohi = self.obs_clip(xp, yp)
 
+        xlo1 = int(xlo)
+        xhi1 = int(xhi)
+        ylo1 = int(ylo)
+        yhi1 = int(yhi)
+        xolo1 = int(xolo)
+        xohi1 = int(xohi)
+        yolo1 = int(yolo)
+        yohi1 = int(yohi)
+
         # Populate the observation array with data from all layers
         for layer in range(self.global_state.shape[0]):
-            obs[layer, xolo:xohi, yolo:yohi] = self.global_state[layer, xlo:xhi, ylo:yhi]
+            obs[layer, xolo1:xohi1, yolo1:yohi1] = self.global_state[layer, xlo1:xhi1, ylo1:yhi1]
 
         return obs
 
@@ -401,7 +403,6 @@ class Environment:
         xolo, yolo = abs(np.clip(xld, -self.obs_range // 2, 0)), abs(np.clip(yld, -self.obs_range // 2, 0))
         xohi, yohi = xolo + (xhi - xlo), yolo + (yhi - ylo)
         return xlo, xhi + 1, ylo, yhi + 1, xolo, xohi + 1, yolo, yohi + 1
-
 
     def share_and_update_observations(self):
         """
@@ -497,7 +498,7 @@ class Environment:
     def _seed(self, seed=None):
         self.np_random, seed_ = seeding.np_random(seed)
 
-    def run_simulation(env, max_steps=100):
+    def run_simulation(env, max_steps=10):
         running = True
         step_count = 0
         while running and step_count < max_steps:
@@ -515,14 +516,14 @@ class Environment:
             env.render()  # Render the current state to the screen
 
             pygame.display.flip()  # Update the full display Surface to the screen
-            pygame.time.wait(100)  # Wait some time so it's visually comprehensible
+            #pygame.time.wait(1)  # Wait some time so it's visually comprehensible
 
             step_count += 1
 
         pygame.quit()
 
-config_path = 'config.yaml' 
-env = Environment(config_path)
-Environment.run_simulation(env)
+#config_path = 'config.yaml' 
+#env = Environment(config_path)
+#Environment.run_simulation(env)
 
 

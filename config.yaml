@@ -4,31 +4,32 @@ grid_size:
   #Y: 177        # Height of the grid - UNNEEDED - get from map
   D: 4           # Number of layers in the grid (e.g., environment, targets, jammers, agent positions)
 
-pixel_scale: 20
-map_scale: 0.05
+pixel_scale: 4
+map_scale: 0.18
 
-obs_range: 5
+obs_range: 13
 comm_range: 10
-agent_type: 'discrete'
+#agent_type: 'discrete'
+agent_type: 'continuous'
 
 map_path: 'city_image_1.npy'
 
 n_agents: 5
 n_targets: 10
 n_jammers: 3
-jamming_radius: 15
+jamming_radius: 30
 
 seed: 1
 
 # Example locations
-agent_positions:
-  - [17, 39]
-  - [71, 17]
-  - [23, 37]
-  - [31, 13]
-  - [61, 19]
-target_positions:
-  - [18, 39]
+#agent_positions:
+#  - [17, 39]
+#  - [71, 17]
+#  - [23, 37]
+#  - [31, 13]
+#  - [61, 19]
+#target_positions:
+# - [18, 39]
 #jammer_positions:
 #  - [0, 0]
 

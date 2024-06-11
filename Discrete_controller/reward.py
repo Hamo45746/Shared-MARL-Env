@@ -6,6 +6,9 @@
         # self.MOVEMENT_PENALTY = self.config['movement_penalty']
         # self.EXPLORATION_REWARD = self.config['exploration_reward']
 
+def calculate_reward(agent):
+        reward = 1
+        return reward 
 
 def compute_path_reward(self, agent_id, chosen_location, path_steps):
         """

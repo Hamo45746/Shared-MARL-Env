@@ -1,7 +1,7 @@
 import numpy as np
 from DiscreteAgent import DiscreteAgent
 from ContinuousAgent import ContinuousAgent
-from agent_utils import create_agents, create_targets
+from agent_utils import create_agents
 
 class AgentController:
     def __init__(self, config, agent_type='discrete'):
@@ -45,3 +45,6 @@ class AgentController:
         for agent, action in zip(self.agents, actions):
             agent.step(action)
 
+    def calculate_reward(agent):
+        reward = 1
+        return reward 
