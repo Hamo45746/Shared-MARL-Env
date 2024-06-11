@@ -10,14 +10,14 @@ class DiscreteAgent(BaseAgent):
         xs,
         ys,
         map_matrix,
-        randomizer,
+        randomiser,
         obs_range=3,
         n_layers=4,
         seed=10,
         flatten=False,
     ):
 
-        self.random_state = randomizer
+        self.random_state = randomiser
         self.xs = xs
         self.ys = ys
         self.eactions = [

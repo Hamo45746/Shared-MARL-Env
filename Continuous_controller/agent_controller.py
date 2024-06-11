@@ -6,7 +6,7 @@ from agent_utils import create_agents, create_targets
 class AgentController:
     def __init__(self, config, agent_type='discrete'):
         self.config = config
-        self.randomizer = np.random.RandomState(self.config['seed'])
+        self.randomiser = np.random.RandomState(self.config['seed'])
         self.agent_type = agent_type
         self.agents = []
         self.init_agents()
@@ -18,7 +18,7 @@ class AgentController:
                 self.config['n_agents'],
                 self.config['map_matrix'],
                 self.config['obs_range'],
-                self.randomizer,
+                self.randomiser,
                 agent_positions,
                 randinit=True,
                 agent_class=DiscreteAgent
@@ -28,7 +28,7 @@ class AgentController:
                 self.config['n_agents'],
                 self.config['map_matrix'],
                 self.config['obs_range'],
-                self.randomizer,
+                self.randomiser,
                 agent_positions,
                 randinit=True,
                 agent_class=ContinuousAgent

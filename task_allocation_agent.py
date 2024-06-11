@@ -9,14 +9,14 @@ class TaskAllocationAgent(DiscreteAgent):
         xs,
         ys,
         map_matrix,
-        randomizer,
+        randomiser,
         obs_range=3,
         n_layers=4,
         seed=10,
         flatten=False,
         max_steps_per_action=5,
     ):
-        super().__init__(xs, ys, map_matrix, randomizer, obs_range, n_layers, seed, flatten)
+        super().__init__(xs, ys, map_matrix, randomiser, obs_range, n_layers, seed, flatten)
         self.max_steps_per_action = max_steps_per_action
         self.action_space = spaces.Discrete(xs * ys)  # Update the action space to the entire map matrix
         self.path = []

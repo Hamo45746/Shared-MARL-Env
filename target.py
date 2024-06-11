@@ -9,7 +9,7 @@ class Target(DiscreteAgent):
         xs, 
         ys, 
         map_matrix, 
-        randomizer, 
+        randomiser, 
         start_pos, 
         goal_pos,
         obs_range=0, 
@@ -17,7 +17,7 @@ class Target(DiscreteAgent):
         seed=1, 
         flatten=False
         ):
-        super().__init__(xs, ys, map_matrix, randomizer, obs_range, n_channels, seed, flatten)
+        super().__init__(xs, ys, map_matrix, randomiser, obs_range, n_channels, seed, flatten)
         self.goal_pos = np.array(goal_pos, dtype=np.int32)
         self.path = self.compute_path(start_pos, goal_pos)
         self.path_index = 0
