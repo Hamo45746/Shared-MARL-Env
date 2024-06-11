@@ -86,6 +86,7 @@ class Environment:
         if self.agent_type == 'discrete':
             self.action_spaces = [spaces.Discrete(len(self.agents[0].eactions)) for _ in range(self.num_agents)]
         else:
+            pass
             # self.action_spaces = [spaces.]
         
         self.observation_spaces = [spaces.Box(low=-20, high=1, shape=(self.obs_range, self.obs_range, self.D), dtype=np.float32) for _ in range(self.num_agents)]

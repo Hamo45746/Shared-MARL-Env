@@ -136,7 +136,7 @@ class DiscreteAgent(BaseAgent):
                             obs_y = obs_half_range + dy
                             self.local_state[layer, global_x, global_y] = observed_state[layer, obs_x, obs_y]
             else:
-                # Update the remaining layers with decrementing logic
+                # Update the remaining layers with decrement 
                 for dx in range(-obs_half_range, obs_half_range + 1):
                     for dy in range(-obs_half_range, obs_half_range + 1):
                         global_x = observer_x + dx
