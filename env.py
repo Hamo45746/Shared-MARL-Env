@@ -19,7 +19,7 @@ class Environment:
         with open(config_path, 'r') as file:
             self.config = yaml.safe_load(file)
         
-        # Initialize from config
+        # Initialise from config
         self.D = self.config['grid_size']['D']
         self.obs_range = self.config['obs_range']
         self.pixel_scale = self.config['pixel_scale'] # Size in pixels of each map cell
@@ -97,7 +97,7 @@ class Environment:
     def reset(self):
         """ Reset the environment for a new episode"""
         
-        # Reinitialize the map and entities
+        # Reinitialise the map and entities
         # original_map = np.load(self.config['map_path'])[:, :, 0]
         # resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
         # self.map_matrix = (resized_map != 0).astype(int)
@@ -359,7 +359,7 @@ class Environment:
 
 
     def collect_obs_by_idx(self, agent_layer, agent_idx):
-        # Initialize the observation array for all layers, ensuring no information loss
+        # Initialise the observation array for all layers, ensuring no information loss
         obs = np.full((self.global_state.shape[0], self.obs_range, self.obs_range), fill_value=-np.inf, dtype=np.float32)
 
         # Get the current position of the agent
