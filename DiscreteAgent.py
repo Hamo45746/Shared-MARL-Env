@@ -93,8 +93,9 @@ class DiscreteAgent(BaseAgent):
         if 0 <= x < self.xs and 0 <= y < self.ys:
             return True
         return False
-
+    
     def inbuilding(self, x, y):
+        #if self.observation_state[0, x, y] == 0: # Maybe incorrect?
         if self.map_matrix[x, y] == 0:
             return True
         return False

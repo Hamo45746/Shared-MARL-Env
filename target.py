@@ -1,6 +1,7 @@
 import numpy as np
 from DiscreteAgent import DiscreteAgent
 import heapq
+import random
 
 class Target(DiscreteAgent):
     def __init__(
@@ -76,7 +77,7 @@ class Target(DiscreteAgent):
         elif delta == (1, -1): # Cross down right
             return self.eactions[8]
         return self.eactions[4]  # Stay (in case current_pos == next_pos)
-    
+
     def get_next_action(self):
         # Calculate the next action from the path
         if self.path_index < len(self.path):
@@ -87,3 +88,8 @@ class Target(DiscreteAgent):
                 #self.path_index = 0  # Optionally loop the path
             return self.determine_action(current_pos, next_pos)
         return self.eactions[4]  # Default to 'stay' if path ended or not valid
+    
+    def inbuilding(self, x, y):
+        if self.map_matrix[x, y] == 0:
+            return True
+        return False
