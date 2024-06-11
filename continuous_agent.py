@@ -1,6 +1,6 @@
 import numpy as np
 from gymnasium import spaces
-from BaseAgent import BaseAgent
+from base_agent import BaseAgent
 
 class ContinuousAgent(BaseAgent):
     def __init__(self, xs, ys, map_matrix, randomizer, obs_range=3, n_layers=4, seed=10, flatten=False):

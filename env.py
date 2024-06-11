@@ -13,7 +13,9 @@ from layer import AgentLayer, JammerLayer, TargetLayer
 from gymnasium.utils import seeding
 from Continuous_controller.agent_controller import AgentController
 from Discrete_controller.agent_controller import DiscreteAgentController
+from gymnasium import spaces
 #from stable_baselines3.common.env_checker import check_env
+
 
 class Environment:
     def __init__(self, config_path, render_mode="human"):
@@ -21,7 +23,7 @@ class Environment:
         with open(config_path, 'r') as file:
             self.config = yaml.safe_load(file)
         
-        # Initialize from config
+        # Initialise from config
         self.D = self.config['grid_size']['D']
         self.obs_range = self.config['obs_range']
         self.pixel_scale = self.config['pixel_scale'] # Size in pixels of each map cell
@@ -81,9 +83,15 @@ class Environment:
         self.jammed_positions = None
         #self.update_jammed_areas()
         
-        # TODO: Need these set up
-        # self.action_space = 
-        # self.observation_space = 
+        # Define action and observation spaces
+        # TODO: Add something for continuous agents spaces.
+        if self.agent_type == 'discrete':
+            self.action_spaces = [spaces.Discrete(len(self.agents[0].eactions)) for _ in range(self.num_agents)]
+        else:
+            pass
+            # self.action_spaces = [spaces.]
+        
+        self.observation_spaces = [spaces.Box(low=-20, high=1, shape=(self.obs_range, self.obs_range, self.D), dtype=np.float32) for _ in range(self.num_agents)]
         
         # Set global state layers
         self.global_state[0] = self.map_matrix
@@ -99,6 +107,10 @@ class Environment:
 
     def reset(self):
         """ Reset the environment for a new episode"""
+        # Reinitialise the map and entities
+        # original_map = np.load(self.config['map_path'])[:, :, 0]
+        # resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
+        # self.map_matrix = (resized_map != 0).astype(int)
         
         # Reset global state
         self.global_state.fill(0)
@@ -132,24 +144,10 @@ class Environment:
         self.global_state[1] = self.agent_layer.get_state_matrix()
         self.global_state[2] = self.target_layer.get_state_matrix()
         self.global_state[3] = self.jammer_layer.get_state_matrix()
-    
-    
-    def is_comm_blocked(self, agent_id):
-        """
-        Determine if an agent's communication is currently blocked by any active jammers.
 
-        Args:
-        - agent_id (int): ID of the agent to check.
-
-        Returns:
-        - bool: True if communication is blocked, False otherwise.
-        """
-        agent_pos = self.agents[agent_id].position
-        for jammer in self.jammers:
-            if jammer.active and np.linalg.norm(np.array(agent_pos) - np.array(jammer.position)) <= self.config['jamming_radius']:
-                print("here", agent_id)
-                return True
-        return False
+        # Return all agent observations
+        return {agent: self.safely_observe(i) for i, agent in enumerate(self.agents)}
+            
             
     def step(self, actions_dict):
         # Need to update target position in target_layer, and target class itself
@@ -179,9 +177,23 @@ class Environment:
             obs = self.safely_observe(agent_id)
             self.agents[agent_id].set_observation_state(obs)
             observations[agent_id] = obs
+            
+            # DEBUGGING: Print the agent's observation and corresponding section of map matrix
+            # agent_pos = self.agents[agent_id].current_position()
+            # obs_range = self.obs_range
+            # obs_half_range = obs_range // 2
+            # x_start, x_end = agent_pos[0] - obs_half_range, agent_pos[0] + obs_half_range + 1
+            # y_start, y_end = agent_pos[1] - obs_half_range, agent_pos[1] + obs_half_range + 1
+
+            # print(f"Agent {agent_id} Observation:")
+            # print(self.agents[agent_id].get_observation_state()[0])
+            # print(f"Agent {agent_id} Position: {agent_pos}")
+            # print("Corresponding Map Matrix Section:")
+            # print(self.map_matrix[x_start:x_end, y_start:y_end])
+            # print("---")
 
         # Share and update observations among agents within communication range
-        self.share_and_update_observations() # TODO: Does this func work?
+        self.share_and_update_observations() # TODO: Test this function works correctly
 
         # Calc rewards for each agent
         rewards = {}
@@ -198,6 +210,16 @@ class Environment:
         # Create the info dictionary (idk if needed?)
         info = {}
         return observations, rewards, done, info
+    
+    
+    # Getter functions for action and observation space
+    def action_space(self, agent):
+            return self.action_spaces[self.agent_name_mapping[agent]]
+
+
+    def observation_space(self, agent):
+        return self.observation_spaces[self.agent_name_mapping[agent]]
+
 
     def draw_model_state(self):
         """
@@ -222,6 +244,7 @@ class Environment:
     #need to update this, doing it for testing
     def is_episode_done(self):
         return False 
+
 
     def draw_agents(self):
         """
@@ -338,6 +361,7 @@ class Environment:
             else None
         )
 
+
     def state(self) -> np.ndarray:
         return self.global_state
     
@@ -354,24 +378,26 @@ class Environment:
             self.screen = None
             
             
-    ## OBSERVATION FUNCTIONS ## 
+    ## OBSERVATION FUNCTIONS ##
+    def observe(self, agent):
+        return self.safely_observe(self.agent_name_mapping[agent])
+     
+     
     def safely_observe(self, agent_id):
         obs = self.collect_obs(self.agent_layer, agent_id)
         return obs
-
+    
 
     def collect_obs(self, agent_layer, agent_id):
         return self.collect_obs_by_idx(agent_layer, agent_id)
 
 
     def collect_obs_by_idx(self, agent_layer, agent_idx):
-        # Initialize the observation array for all layers, ensuring no information loss
+        # Initialise the observation array for all layers, ensuring no information loss
         obs = np.full((self.global_state.shape[0], self.obs_range, self.obs_range), fill_value=-np.inf, dtype=np.float32)
-
         # Get the current position of the agent
         xp, yp = agent_layer.get_position(agent_idx)
-
-        # Calculate bounds for the observation based on the agent's position and the observation range
+        # Calculate bounds for the observation
         xlo, xhi, ylo, yhi, xolo, xohi, yolo, yohi = self.obs_clip(xp, yp)
 
         xlo1 = int(xlo)
@@ -388,6 +414,7 @@ class Environment:
             obs[layer, xolo1:xohi1, yolo1:yohi1] = self.global_state[layer, xlo1:xhi1, ylo1:yhi1]
 
         return obs
+
 
     def obs_clip(self, x, y):
         xld = x - self.obs_range // 2
@@ -429,8 +456,24 @@ class Environment:
         return distance <= self.comm_range
     
     
-    # JAMMING HELPER FUNCTIONS #
+    def is_comm_blocked(self, agent_id):
+        """
+        Determine if an agent's communication is currently blocked by any active jammers.
+
+        Args:
+        - agent_id (int): ID of the agent to check.
+
+        Returns:
+        - bool: True if communication is blocked, False otherwise.
+        """
+        agent_pos = self.agents[agent_id].position
+        for jammer in self.jammers:
+            if jammer.active and np.linalg.norm(np.array(agent_pos) - np.array(jammer.position)) <= self.config['jamming_radius']:
+                return True
+        return False
     
+    
+    # JAMMING FUNCTIONS #
     def activate_jammer(self, jammer_index):
         jammer = self.jammer_layer.agents[jammer_index]
         if not jammer.is_active():
@@ -463,6 +506,7 @@ class Environment:
             if jammer.is_active() and not jammer.get_destroyed():
                 jammed_area = self.calculate_jammed_area(jammer.current_position(), jammer.radius)
                 self.jammed_positions.update(jammed_area)
+
 
     def calculate_jammed_area(self, position, radius):
         """
@@ -498,7 +542,7 @@ class Environment:
     def _seed(self, seed=None):
         self.np_random, seed_ = seeding.np_random(seed)
 
-    def run_simulation(env, max_steps=10):
+    def run_simulation(env, max_steps=100):
         running = True
         step_count = 0
         while running and step_count < max_steps:

@@ -1,6 +1,6 @@
 import numpy as np
 import random
-from BaseAgent import BaseAgent
+from base_agent import BaseAgent
 from gymnasium import spaces
 
 class DiscreteAgent(BaseAgent):
@@ -39,8 +39,9 @@ class DiscreteAgent(BaseAgent):
         self.terminal = False
         self._obs_range = obs_range # Initialise the local observation state
         self.X, self.Y = self.map_matrix.shape
-        self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-np.inf)
-        self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-np.inf)
+        self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-20, dtype=np.int32)
+        self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20, dtype=np.int32)
+        
         if flatten:
             self._obs_shape = (n_layers * obs_range**2 + 1,)
         else:
@@ -86,7 +87,10 @@ class DiscreteAgent(BaseAgent):
         return cpos
 
     def get_state(self):
-        return self.current_pos
+        return self.local_state
+
+    def get_observation_state(self):
+        return self.observation_state
 
     # Helper Functions
     def inbounds(self, x, y):
@@ -95,7 +99,7 @@ class DiscreteAgent(BaseAgent):
         return False
     
     def inbuilding(self, x, y):
-        #if self.observation_state[0, x, y] == 0: # Maybe incorrect?
+        # if self.observation_state[0, x - self.current_pos[0], y - self.current_pos[1]] == 0: # Maybe incorrect?
         if self.map_matrix[x, y] == 0:
             return True
         return False
@@ -121,21 +125,43 @@ class DiscreteAgent(BaseAgent):
 
         # Iterate through each layer in the observed_state
         for layer in range(observed_state.shape[0]):
-            # Iterate through each cell in the observed state grid
-            for dx in range(-obs_half_range, obs_half_range + 1):
-                for dy in range(-obs_half_range, obs_half_range + 1):
-                    global_x = observer_x + dx
-                    global_y = observer_y + dy
-
-                    # Check bounds and update the local state within bounds
-                    if self.inbounds(global_x, global_y):
-                        obs_x = obs_half_range + dx
-                        obs_y = obs_half_range + dy
-                        # Update the specific layer at the global position with the observed data
-                        self.local_state[layer, global_x, global_y] = observed_state[layer, obs_x, obs_y]
+            if layer == 0:  # Layer 0 (map matrix)
+                # Directly assign the observed map matrix to the local state
+                for dx in range(-obs_half_range, obs_half_range + 1):
+                    for dy in range(-obs_half_range, obs_half_range + 1):
+                        global_x = observer_x + dx
+                        global_y = observer_y + dy
+                        if self.inbounds(global_x, global_y):
+                            obs_x = obs_half_range + dx
+                            obs_y = obs_half_range + dy
+                            self.local_state[layer, global_x, global_y] = observed_state[layer, obs_x, obs_y]
+            else:
+                # Update the remaining layers with decrement 
+                for dx in range(-obs_half_range, obs_half_range + 1):
+                    for dy in range(-obs_half_range, obs_half_range + 1):
+                        global_x = observer_x + dx
+                        global_y = observer_y + dy
+                        if self.inbounds(global_x, global_y):
+                            obs_x = obs_half_range + dx
+                            obs_y = obs_half_range + dy
+                            if observed_state[layer, obs_x, obs_y] == 0:
+                                self.local_state[layer, global_x, global_y] = 0
+                            elif self.local_state[layer, global_x, global_y] > -20:
+                                self.local_state[layer, global_x, global_y] -= 1
                             
     def set_observation_state(self, observation):
-        self.observation_state = observation
+        """Update the observation_state based on the input observation"""
+        for layer in range(observation.shape[0]):
+            if layer == 0:  # Layer 0 (map matrix) 
+                # In map layer 0 is obstacle, 1 is empty space
+                self.observation_state[layer] = observation[layer]
+            else:
+                for i in range(observation.shape[1]):
+                    for j in range(observation.shape[2]):
+                        if observation[layer, i, j] == 0:
+                            self.observation_state[layer, i, j] = 0
+                        elif self.observation_state[layer, i, j] > -20:
+                            self.observation_state[layer, i, j] -= 1
 
     def get_next_action(self):
         random_actions = self.eactions
@@ -146,6 +172,6 @@ class DiscreteAgent(BaseAgent):
         x, y = self.step(a)
         while self.inbuilding(x,y) or not self.inbounds(x,y):
             self.current_pos = self.last_pos
-            self.current_position()
-            return 4
+            # self.current_position() # Unneeded
+            return 4 # stay action
         return a

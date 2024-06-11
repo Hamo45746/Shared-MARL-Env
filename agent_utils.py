@@ -1,9 +1,9 @@
-from DiscreteAgent import DiscreteAgent
-from ContinuousAgent import ContinuousAgent
+from discrete_agent import DiscreteAgent
+from continuous_agent import ContinuousAgent
 from target import Target
 import numpy as np
 
-def create_agents(nagents, map_matrix, obs_range, randomizer, pos_list=None, agent_type='discrete', flatten=False, randinit=False, constraints=None):
+def create_agents(nagents, map_matrix, obs_range, randomiser, pos_list=None, agent_type='discrete', flatten=False, randinit=False, constraints=None):
     """Initializes the agents on a map (map_matrix).
 
      -nagents: the number of agents to put on the map
@@ -26,11 +26,11 @@ def create_agents(nagents, map_matrix, obs_range, randomizer, pos_list=None, age
         if pos_list and i < len(pos_list):
             xinit, yinit = pos_list[i]
         elif randinit and feasible_positions:
-            idx = randomizer.integers(0, len(feasible_positions))
+            idx = randomiser.integers(0, len(feasible_positions))
             xinit, yinit = feasible_positions.pop(idx)  # Remove to avoid reuse
         else:
             xinit, yinit = 0, 0
-        agent = agent_class(xs, ys, map_matrix, randomizer, obs_range=obs_range, flatten=flatten)
+        agent = agent_class(xs, ys, map_matrix, randomiser, obs_range=obs_range, flatten=flatten)
         agent.set_position(xinit, yinit)
         agents.append(agent)
     return agents
