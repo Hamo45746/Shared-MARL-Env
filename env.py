@@ -549,7 +549,7 @@ class Environment(gym.Env):
     def _seed(self, seed=None):
         self.np_random, seed_ = seeding.np_random(seed)
 
-    def run_simulation(env, max_steps=10):
+    def run_simulation(env, max_steps=100):
         running = True
         step_count = 0
         while running and step_count < max_steps:
@@ -567,7 +567,7 @@ class Environment(gym.Env):
             env.render()  # Render the current state to the screen
 
             pygame.display.flip()  # Update the full display Surface to the screen
-            pygame.time.wait(100)  # Wait some time so it's visually comprehensible
+            pygame.time.wait(10)  # Wait some time so it's visually comprehensible
 
             step_count += 1
 
