@@ -1,5 +1,3 @@
-#import os
-##os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import gymnasium as gym 
 import numpy as np
 import random
@@ -15,7 +13,6 @@ from gymnasium.utils import seeding
 from Continuous_controller.agent_controller import AgentController
 from Discrete_controller.agent_controller import DiscreteAgentController
 from gymnasium import spaces
-#from stable_baselines3.common.env_checker import check_env
 
 
 class Environment(gym.Env):
@@ -414,14 +411,17 @@ class Environment(gym.Env):
 
         # Populate the observation array with data from all layers
         for layer in range(self.global_state.shape[0]):
-            # print(obs[layer, xolo1:xohi1, yolo1:yohi1].shape)
-            # print(self.global_state[layer, xlo1:xhi1, ylo1:yhi1].shape)
-            # print(agent_idx)
-            # print(xp, yp)
-            obs[layer, xolo1:xohi1, yolo1:yohi1] = self.global_state[layer, xlo1:xhi1, ylo1:yhi1]
-
+            obs_slice = self.global_state[layer, xlo1:xhi1, ylo1:yhi1]
+            obs_shape = obs_slice.shape
+            pad_width = [(0,0), (0, self.obs_range-obs_shape[0]),(0, self.obs_range-obs_shape[1])]
+            pad_width = [
+                (0, 0),  # No padding on the first dimension (layers)
+                (0, self.obs_range - obs_shape[0]),  # Padding for height
+                (0, self.obs_range - obs_shape[1])   # Padding for width
+            ]
+            obs_padded = np.pad(obs_slice, pad_width[1:], mode='constant', constant_values=-np.inf)
+            obs[layer, :obs_padded.shape[0], :obs_padded.shape[1]] = obs_padded
         return obs
-
 
     def obs_clip(self, x, y):
         xld = x - self.obs_range // 2

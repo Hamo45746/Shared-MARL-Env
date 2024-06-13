@@ -30,5 +30,5 @@ from env import Environment
 
 config_path = 'config.yaml' 
 env = Environment(config_path)
-#check_env(env, warn=True)
+check_env(env, warn=True)
 Environment.run_simulation(env)
