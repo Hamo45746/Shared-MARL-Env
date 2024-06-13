@@ -1,38 +1,18 @@
 import numpy as np
 from discrete_agent import DiscreteAgent
 from continuous_agent import ContinuousAgent
-from agent_utils import create_agents, create_targets
+from agent_utils import create_agents
 
 class AgentController:
-    def __init__(self, config, agent_type='discrete'):
+    def __init__(self, config):
         self.config = config
-        self.randomizer = np.random.RandomState(self.config['seed'])
-        self.agent_type = agent_type
+        self.randomiser = np.random.RandomState(self.config['seed'])
         self.agents = []
         self.init_agents()
 
     def init_agents(self):
         agent_positions = self.config.get('agent_positions', None)
-        if self.agent_type == 'discrete':
-            self.agents = create_agents(
-                self.config['n_agents'],
-                self.config['map_matrix'],
-                self.config['obs_range'],
-                self.randomizer,
-                agent_positions,
-                randinit=True,
-                agent_class=DiscreteAgent
-            )
-        elif self.agent_type == 'continuous':
-            self.agents = create_agents(
-                self.config['n_agents'],
-                self.config['map_matrix'],
-                self.config['obs_range'],
-                self.randomizer,
-                agent_positions,
-                randinit=True,
-                agent_class=ContinuousAgent
-            )
+        self.agents = create_agents(self.config['n_agents'], self.config['map_matrix'], self.config['obs_range'], self.randomiser, agent_positions, randinit=True)
 
     def get_agent_actions(self):
         actions = []

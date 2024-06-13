@@ -1,5 +1,6 @@
 # BaseAgent.py
 from abc import ABC, abstractmethod
+from gymnasium import spaces
 
 class BaseAgent(ABC):
 

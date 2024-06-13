@@ -3,8 +3,8 @@ from gymnasium import spaces
 from base_agent import BaseAgent
 
 class ContinuousAgent(BaseAgent):
-    def __init__(self, xs, ys, map_matrix, randomizer, obs_range=3, n_layers=4, seed=10, flatten=False):
-        self.random_state = randomizer
+    def __init__(self, xs, ys, map_matrix, randomiser, obs_range=3, n_layers=4, seed=10, flatten=False):
+        self.random_state = randomiser
         self.xs = xs
         self.ys = ys
         self.current_pos = np.zeros(2, dtype=np.float32)
@@ -36,7 +36,10 @@ class ContinuousAgent(BaseAgent):
         tpos[1] = cpos[1]
         tpos += action
         x, y = tpos
-        if not self.inbounds(x, y) or self.inbuilding(x, y):
+        if not self.inbounds(x, y):
+            return cpos
+        if self.inbuilding(x,y):
+            lpos[:] = cpos
             return cpos
         lpos[:] = cpos
         cpos[:] = tpos

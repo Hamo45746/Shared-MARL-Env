@@ -1,5 +1,6 @@
 #import os
 ##os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+import gymnasium as gym 
 import numpy as np
 import random
 import yaml
@@ -17,8 +18,9 @@ from gymnasium import spaces
 #from stable_baselines3.common.env_checker import check_env
 
 
-class Environment:
+class Environment(gym.Env):
     def __init__(self, config_path, render_mode="human"):
+        super(Environment, self).__init__()
         # Load configuration from YAML
         with open(config_path, 'r') as file:
             self.config = yaml.safe_load(file)
@@ -82,17 +84,18 @@ class Environment:
         self.jammer_layer = JammerLayer(self.X, self.Y, self.jammers)
         self.jammed_positions = None
         #self.update_jammed_areas()
-        
+
         # Define action and observation spaces
-        # TODO: Add something for continuous agents spaces.
         if self.agent_type == 'discrete':
-            self.action_spaces = [spaces.Discrete(len(self.agents[0].eactions)) for _ in range(self.num_agents)]
+            self.action_space = [spaces.Discrete(len(self.agents[0].eactions)) for _ in range(self.num_agents)]
         else:
-            pass
-            # self.action_spaces = [spaces.]
-        
-        self.observation_spaces = [spaces.Box(low=-20, high=1, shape=(self.obs_range, self.obs_range, self.D), dtype=np.float32) for _ in range(self.num_agents)]
-        
+            self.action_space = spaces.Dict({agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)})
+            #self.action_space = {agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)}
+
+        #self.observation_space = spaces.Dict({agent_id: agent.observation_space for agent_id, agent in enumerate(self.agents)})
+        self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-np.inf, high=np.inf, shape=(13,13,4), dtype=np.float32) for agent_id in range(self.num_agents)})
+        #self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(self.num_agents, self.obs_range, self.obs_range, self.global_state.shape[0]), dtype=np.float32)
+       
         # Set global state layers
         self.global_state[0] = self.map_matrix
         self.global_state[1] = self.agent_layer.get_state_matrix()
@@ -100,18 +103,21 @@ class Environment:
         self.global_state[3] = self.jammer_layer.get_state_matrix()
         
         # Pygame for rendering
-        self.render_mode = render_mode
+        #self.render_mode = render_mode
+        self.render_modes = render_mode
         self.screen = None
         pygame.init()
 
 
-    def reset(self):
+    def reset(self, seed: int = None, options: dict = None):
         """ Reset the environment for a new episode"""
         # Reinitialise the map and entities
         # original_map = np.load(self.config['map_path'])[:, :, 0]
         # resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
         # self.map_matrix = (resized_map != 0).astype(int)
-        
+
+        info = {}
+        super().reset(seed=seed)
         # Reset global state
         self.global_state.fill(0)
         self.global_state[0] = self.map_matrix # Uncomment above code if map_matrix is changed by sim
@@ -145,9 +151,22 @@ class Environment:
         self.global_state[2] = self.target_layer.get_state_matrix()
         self.global_state[3] = self.jammer_layer.get_state_matrix()
 
-        # Return all agent observations
-        return {agent: self.safely_observe(i) for i, agent in enumerate(self.agents)}
-            
+        observations = {}
+        #observations = np.zeros(self.observation_space.shape, dtype=np.float32)
+        for agent_id in range(self.num_agents):
+            obs = self.safely_observe(agent_id)
+            self.agents[agent_id].set_observation_state(obs)
+            observations[agent_id] = obs
+
+        # print(f"observations after reset: {observations}")
+        # for agent_id, obs in observations.items():
+        #     assert self.observation_space[agent_id.contains(obs), f"observation for agent {agent_id} is out of bounds: {obs}"]
+        #self.observation_space = spaces.Dict({agent_id: agent.observation_space for agent_id, agent in enumerate(self.agents)})
+
+        #obs_values = [obs for obs in observations.values()]
+        #obs_values = np.stack(observations, axis=0)
+
+        return observations, info
             
     def step(self, actions_dict):
         # Need to update target position in target_layer, and target class itself
@@ -212,14 +231,12 @@ class Environment:
         return observations, rewards, done, info
     
     
-    # Getter functions for action and observation space
-    def action_space(self, agent):
-            return self.action_spaces[self.agent_name_mapping[agent]]
+    #Getter functions for action and observation space
+    #def action_space(self, agent):
+            #return self.action_space[self.agent_name_mapping[agent]]
 
-
-    def observation_space(self, agent):
-        return self.observation_spaces[self.agent_name_mapping[agent]]
-
+    #def observation_space(self, agent):
+        #return self.observation_spaces[self.agent_name_mapping[agent]]
 
     def draw_model_state(self):
         """
@@ -331,7 +348,7 @@ class Environment:
         REF: PettingZoo's pursuit example: PettingZoo/sisl/pursuit/pursuit_base.py
         """
         if self.screen is None:
-            if self.render_mode == "human":
+            if self.render_modes == "human":
                 pygame.display.init()
                 self.screen = pygame.display.set_mode(
                     (self.pixel_scale * self.X, self.pixel_scale * self.Y)
@@ -352,12 +369,12 @@ class Environment:
         observation = pygame.surfarray.pixels3d(self.screen)
         new_observation = np.copy(observation)
         del observation
-        if self.render_mode == "human":
+        if self.render_modes == "human":
             pygame.event.pump()
             pygame.display.update()
         return (new_observation,
             np.transpose(new_observation, axes=(1, 0, 2))
-            if self.render_mode == "rgb_array"
+            if self.render_modes == "rgb_array"
             else None
         )
 
@@ -385,6 +402,9 @@ class Environment:
      
     def safely_observe(self, agent_id):
         obs = self.collect_obs(self.agent_layer, agent_id)
+        obs = np.where(obs == -np.inf, -1e10, obs)
+        obs = obs.transpose((1,2,0))
+        obs = np.clip(obs, self.observation_space[agent_id].low, self.observation_space[agent_id].high)
         return obs
     
 
@@ -411,6 +431,10 @@ class Environment:
 
         # Populate the observation array with data from all layers
         for layer in range(self.global_state.shape[0]):
+            print(obs[layer, xolo1:xohi1, yolo1:yohi1].shape)
+            print(self.global_state[layer, xlo1:xhi1, ylo1:yhi1].shape)
+            print(agent_idx)
+            print(xp, yp)
             obs[layer, xolo1:xohi1, yolo1:yohi1] = self.global_state[layer, xlo1:xhi1, ylo1:yhi1]
 
         return obs
@@ -546,6 +570,7 @@ class Environment:
         running = True
         step_count = 0
         while running and step_count < max_steps:
+            print("here", step_count)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
@@ -554,20 +579,15 @@ class Environment:
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(env.agents)}
 
             # Update environment states with the action_dict
-            observations, rewards, done, info = env.step(action_dict)
+            observations, rewards, done, env.info = env.step(action_dict)
 
-            #env.step()  # Update environment states
             env.render()  # Render the current state to the screen
 
             pygame.display.flip()  # Update the full display Surface to the screen
-            #pygame.time.wait(1)  # Wait some time so it's visually comprehensible
+            pygame.time.wait(100)  # Wait some time so it's visually comprehensible
 
             step_count += 1
 
         pygame.quit()
-
-#config_path = 'config.yaml' 
-#env = Environment(config_path)
-#Environment.run_simulation(env)
 
 

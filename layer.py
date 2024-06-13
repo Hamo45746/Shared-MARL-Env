@@ -30,8 +30,6 @@ class AgentLayer:
            This is where the policies should come in, providing the action for each agent."""
         o_pos = self.agents[agent_idx].current_position()
         n_pos = self.agents[agent_idx].step(action)
-        #x, y = n_pos
-        #self.agents[agent_idx].set_position(x, y)
         # Update the layer state for old and new positions
         self.update_positions(o_pos, n_pos)
         return n_pos
