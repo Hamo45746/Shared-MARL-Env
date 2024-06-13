@@ -3,7 +3,6 @@ import gymnasium as gym
 import sys
 import os
 from gymnasium.utils.env_checker import check_env
-from gymnasium.wrappers import FlattenObservation
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "/Users/alexandramartinwallace/Documents/Uni/METR4911/Working/Shared-MARL-Env")))
 from env import Environment
 #from stable_baselines3 import PPO

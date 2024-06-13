@@ -1,10 +1,10 @@
 import numpy as np
 from discrete_agent import DiscreteAgent
 from continuous_agent import ContinuousAgent
-from agent_utils import create_agents, create_targets
+from agent_utils import create_agents
 
 
-class AgentController:
+class DiscreteAgentController:
    def __init__(self, config, agent_type='discrete'):
         self.config = config
         self.randomiser = np.random.RandomState(self.config['seed'])
