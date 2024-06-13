@@ -567,7 +567,7 @@ class Environment(gym.Env):
             env.render()  # Render the current state to the screen
 
             pygame.display.flip()  # Update the full display Surface to the screen
-            pygame.time.wait(10)  # Wait some time so it's visually comprehensible
+            #pygame.time.wait(10)  # Wait some time so it's visually comprehensible
 
             step_count += 1
 
