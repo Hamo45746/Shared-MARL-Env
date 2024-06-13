@@ -87,14 +87,12 @@ class Environment(gym.Env):
 
         # Define action and observation spaces
         if self.agent_type == 'discrete':
-            self.action_space = [spaces.Discrete(len(self.agents[0].eactions)) for _ in range(self.num_agents)]
+            #self.action_space = [spaces.Discrete(len(self.agents[0].eactions)) for _ in range(self.num_agents)]
+            self.action_space = spaces.Discrete(len(self.agents[0].eactions))
         else:
             self.action_space = spaces.Dict({agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)})
-            #self.action_space = {agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)}
 
-        #self.observation_space = spaces.Dict({agent_id: agent.observation_space for agent_id, agent in enumerate(self.agents)})
         self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-np.inf, high=np.inf, shape=(13,13,4), dtype=np.float32) for agent_id in range(self.num_agents)})
-        #self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(self.num_agents, self.obs_range, self.obs_range, self.global_state.shape[0]), dtype=np.float32)
        
         # Set global state layers
         self.global_state[0] = self.map_matrix
@@ -157,14 +155,6 @@ class Environment(gym.Env):
             obs = self.safely_observe(agent_id)
             self.agents[agent_id].set_observation_state(obs)
             observations[agent_id] = obs
-
-        # print(f"observations after reset: {observations}")
-        # for agent_id, obs in observations.items():
-        #     assert self.observation_space[agent_id.contains(obs), f"observation for agent {agent_id} is out of bounds: {obs}"]
-        #self.observation_space = spaces.Dict({agent_id: agent.observation_space for agent_id, agent in enumerate(self.agents)})
-
-        #obs_values = [obs for obs in observations.values()]
-        #obs_values = np.stack(observations, axis=0)
 
         return observations, info
             
@@ -230,13 +220,6 @@ class Environment(gym.Env):
         info = {}
         return observations, rewards, done, info
     
-    
-    #Getter functions for action and observation space
-    #def action_space(self, agent):
-            #return self.action_space[self.agent_name_mapping[agent]]
-
-    #def observation_space(self, agent):
-        #return self.observation_spaces[self.agent_name_mapping[agent]]
 
     def draw_model_state(self):
         """
@@ -431,10 +414,10 @@ class Environment(gym.Env):
 
         # Populate the observation array with data from all layers
         for layer in range(self.global_state.shape[0]):
-            print(obs[layer, xolo1:xohi1, yolo1:yohi1].shape)
-            print(self.global_state[layer, xlo1:xhi1, ylo1:yhi1].shape)
-            print(agent_idx)
-            print(xp, yp)
+            # print(obs[layer, xolo1:xohi1, yolo1:yohi1].shape)
+            # print(self.global_state[layer, xlo1:xhi1, ylo1:yhi1].shape)
+            # print(agent_idx)
+            # print(xp, yp)
             obs[layer, xolo1:xohi1, yolo1:yohi1] = self.global_state[layer, xlo1:xhi1, ylo1:yhi1]
 
         return obs
@@ -566,7 +549,7 @@ class Environment(gym.Env):
     def _seed(self, seed=None):
         self.np_random, seed_ = seeding.np_random(seed)
 
-    def run_simulation(env, max_steps=100):
+    def run_simulation(env, max_steps=10):
         running = True
         step_count = 0
         while running and step_count < max_steps:

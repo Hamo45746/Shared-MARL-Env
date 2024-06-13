@@ -9,8 +9,8 @@ map_scale: 0.18
 
 obs_range: 13
 comm_range: 10
-#agent_type: 'discrete'
-agent_type: 'continuous'
+agent_type: 'discrete'
+#agent_type: 'continuous'
 
 map_path: 'city_image_1.npy'
 
