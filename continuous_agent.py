@@ -61,17 +61,36 @@ class ContinuousAgent(BaseAgent):
         return self.current_pos
 
     def update_local_state(self, observed_state, observer_position):
+        observed_state = observed_state.transpose((2,1,0))
         observer_x, observer_y = observer_position
         obs_half_range = self._obs_range // 2
         for layer in range(observed_state.shape[0]):
-            for dx in range(-obs_half_range, obs_half_range + 1):
-                for dy in range(-obs_half_range, obs_half_range + 1):
-                    global_x = observer_x + dx
-                    global_y = observer_y + dy
-                    if self.inbounds(global_x, global_y):
-                        obs_x = obs_half_range + dx
-                        obs_y = obs_half_range + dy
-                        self.local_state[layer, global_x, global_y] = observed_state[layer, obs_x, obs_y]
+            if layer == 0: 
+                for dx in range(-obs_half_range, obs_half_range + 1):
+                    for dy in range(-obs_half_range, obs_half_range + 1):
+                        global_x = observer_x + dx
+                        global_y = observer_y + dy
+                        global_x1 = int(global_x)
+                        global_y1 = int(global_y)
+                        if self.inbounds(global_x, global_y):
+                            obs_x = obs_half_range + dx
+                            obs_y = obs_half_range + dy
+                            self.local_state[layer, global_x1, global_y1] = observed_state[layer, obs_x, obs_y]
+            else:
+                for dx in range(-obs_half_range, obs_half_range + 1):
+                    for dy in range(-obs_half_range, obs_half_range + 1):
+                        global_x = observer_x + dx
+                        global_y = observer_y + dy
+                        global_x1 = int(global_x)
+                        global_y1 = int(global_y)
+                        if self.inbounds(global_x, global_y):
+                            obs_x = obs_half_range + dx
+                            obs_y = obs_half_range + dy
+                            if observed_state[layer, obs_x, obs_y] == 0:
+                                self.local_state[layer, global_x1, global_y1] = 0
+                            elif self.local_state[layer, global_x1, global_y1] > -20:
+                                self.local_state[layer, global_x1, global_y1] -= 1
+
 
     def set_observation_state(self, observation):
         self.observation_state = observation

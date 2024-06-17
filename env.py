@@ -89,7 +89,7 @@ class Environment(gym.Env):
         else:
             self.action_space = spaces.Dict({agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)})
 
-        self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-np.inf, high=np.inf, shape=(13,13,4), dtype=np.float32) for agent_id in range(self.num_agents)})
+        self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-np.inf, high=np.inf, shape=(self.obs_range, self.obs_range, 4), dtype=np.float32) for agent_id in range(self.num_agents)})
        
         # Set global state layers
         self.global_state[0] = self.map_matrix
@@ -255,7 +255,7 @@ class Environment(gym.Env):
                 int(self.pixel_scale * y + self.pixel_scale / 2),
             )
             col = (0, 0, 255)
-            pygame.draw.circle(self.screen, col, center, int(self.pixel_scale / 1.5))
+            pygame.draw.circle(self.screen, col, center, int(self.pixel_scale / 1.5)) 
             
             
     def draw_targets(self):
@@ -449,7 +449,6 @@ class Environment(gym.Env):
             current_obs = self.safely_observe(i)
             current_pos = agent.current_position()
             agent.set_observation_state(current_obs)
-            
             for j, other_agent in enumerate(self.agents):
                 if i != j:
                     other_pos = other_agent.current_position()
@@ -460,6 +459,8 @@ class Environment(gym.Env):
     def within_comm_range(self, agent1, agent2):
         """Checks two agents are within communication range. Assumes constant comm range for all agents."""
         distance = np.linalg.norm(np.array(agent1) - np.array(agent2))
+        print("hereererer")
+        print(distance)
         return distance <= self.comm_range
     
     
@@ -553,7 +554,7 @@ class Environment(gym.Env):
         running = True
         step_count = 0
         while running and step_count < max_steps:
-            print("here", step_count)
+            print(env.agent_type)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
