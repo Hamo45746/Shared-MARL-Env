@@ -79,7 +79,7 @@ class Environment(gym.Env):
         self.num_jammers = self.config['n_jammers']
         self.jammers = jammer_utils.create_jammers(self.num_jammers, self.map_matrix, self.np_random, self.config['jamming_radius'])
         self.jammer_layer = JammerLayer(self.X, self.Y, self.jammers)
-        self.jammed_positions = None
+        self.jammed_positions = set()
         #self.update_jammed_areas()
 
         # Define action and observation spaces
@@ -454,24 +454,53 @@ class Environment(gym.Env):
         xohi, yohi = xolo + (xhi - xlo), yolo + (yhi - ylo)
         return xlo, xhi + 1, ylo, yhi + 1, xolo, xohi + 1, yolo, yohi + 1
 
+    # def share_and_update_observations(self):
+    #     """
+    #     Updates each agent classes internal observation state and internal local (entire env) state.
+    #     Will merge current observations of agents within communication range into each agents local state.
+    #     This function should be run in the step function.
+    #     """
+    #     for i, agent in enumerate(self.agent_layer.agents):
+    #         # safely_observe returns the current observation of agent i - but that should be called before this function
+    #         current_obs = agent.get_observation_state()
+    #         current_pos = agent.current_position()
+    #         # agent.set_observation_state(current_obs)
+    #         for j, other_agent in enumerate(self.agent_layer.agents):
+    #             if i != j:
+    #                 other_pos = other_agent.current_position()
+    #                 agent_id = self.agent_name_mapping[agent]
+    #                 other_agent_id = self.agent_name_mapping[other_agent]
+    #                 if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(other_agent_id):
+    #                     other_agent.update_local_state(current_obs, current_pos)
+    
     def share_and_update_observations(self):
         """
-        Updates each agent classes internal observation state and internal local (entire env) state.
-        Will merge current observations of agents within communication range into each agents local state.
+        Updates each agent's internal observation state and internal local (entire env) state.
+        Will merge current observations of agents within communication range into each agent's local state.
         This function should be run in the step function.
         """
-        for i, agent in enumerate(self.agent_layer.agents):
-            # safely_observe returns the current observation of agent i - but that should be called before this function
+        for i, agent in enumerate(self.agents):
             current_obs = agent.get_observation_state()
             current_pos = agent.current_position()
-            # agent.set_observation_state(current_obs)
-            for j, other_agent in enumerate(self.agent_layer.agents):
+
+            print(f"Agent {i} local state before communication:")
+            print(agent.local_state)
+
+            for j, other_agent in enumerate(self.agents):
                 if i != j:
                     other_pos = other_agent.current_position()
-                    agent_id = self.agent_name_mapping[agent]
-                    other_agent_id = self.agent_name_mapping[other_agent]
-                    if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(other_agent_id):
-                        other_agent.update_local_state(current_obs, current_pos)
+                    if self.within_comm_range(current_pos, other_pos):
+                        if not self.is_comm_blocked(i):
+                            print(f"Agent {i} is communicating with Agent {j}")
+                            other_agent.update_local_state(current_obs, current_pos)
+                        else:
+                            print(f"Agent {i} is within a jammed area and cannot communicate with Agent {j}")
+                    else:
+                        print(f"Agent {i} is out of communication range with Agent {j}")
+
+            print(f"Agent {i} local state after communication:")
+            print(agent.local_state)
+            print("---")
     
     
     def within_comm_range(self, agent1, agent2):
@@ -590,3 +619,6 @@ class Environment(gym.Env):
         pygame.quit()
 
 
+config_path = 'config.yaml' 
+env = Environment(config_path)
+Environment.run_simulation(env)

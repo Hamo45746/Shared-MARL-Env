@@ -1,7 +1,7 @@
 import numpy as np
 from continuous_agent import ContinuousAgent
 from agent_utils import create_agents
-from reward import reward_calulation
+from Continuous_controller import reward
 
 class AgentController:
     def __init__(self, config):
@@ -26,5 +26,5 @@ class AgentController:
             agent.step(action)
 
     def calculate_reward(agent):
-        reward = reward_calulation(agent)
+        reward = reward.reward_calulation(agent)
         return reward 
