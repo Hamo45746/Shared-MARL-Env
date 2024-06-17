@@ -3,8 +3,8 @@ from gymnasium import spaces
 from base_agent import BaseAgent
 
 class ContinuousAgent(BaseAgent):
-    def __init__(self, xs, ys, map_matrix, randomizer, obs_range=3, n_layers=4, seed=10, flatten=False):
-        self.random_state = randomizer
+    def __init__(self, xs, ys, map_matrix, randomiser, obs_range=3, n_layers=4, seed=10, flatten=False):
+        self.random_state = randomiser
         self.xs = xs
         self.ys = ys
         self.current_pos = np.zeros(2, dtype=np.float32)
@@ -36,7 +36,10 @@ class ContinuousAgent(BaseAgent):
         tpos[1] = cpos[1]
         tpos += action
         x, y = tpos
-        if not self.inbounds(x, y) or self.inbuilding(x, y):
+        if not self.inbounds(x, y):
+            return cpos
+        if self.inbuilding(x,y):
+            lpos[:] = cpos
             return cpos
         lpos[:] = cpos
         cpos[:] = tpos
@@ -58,17 +61,36 @@ class ContinuousAgent(BaseAgent):
         return self.current_pos
 
     def update_local_state(self, observed_state, observer_position):
+        observed_state = observed_state.transpose((2,1,0))
         observer_x, observer_y = observer_position
         obs_half_range = self._obs_range // 2
         for layer in range(observed_state.shape[0]):
-            for dx in range(-obs_half_range, obs_half_range + 1):
-                for dy in range(-obs_half_range, obs_half_range + 1):
-                    global_x = observer_x + dx
-                    global_y = observer_y + dy
-                    if self.inbounds(global_x, global_y):
-                        obs_x = obs_half_range + dx
-                        obs_y = obs_half_range + dy
-                        self.local_state[layer, global_x, global_y] = observed_state[layer, obs_x, obs_y]
+            if layer == 0: 
+                for dx in range(-obs_half_range, obs_half_range + 1):
+                    for dy in range(-obs_half_range, obs_half_range + 1):
+                        global_x = observer_x + dx
+                        global_y = observer_y + dy
+                        global_x1 = int(global_x)
+                        global_y1 = int(global_y)
+                        if self.inbounds(global_x, global_y):
+                            obs_x = obs_half_range + dx
+                            obs_y = obs_half_range + dy
+                            self.local_state[layer, global_x1, global_y1] = observed_state[layer, obs_x, obs_y]
+            else:
+                for dx in range(-obs_half_range, obs_half_range + 1):
+                    for dy in range(-obs_half_range, obs_half_range + 1):
+                        global_x = observer_x + dx
+                        global_y = observer_y + dy
+                        global_x1 = int(global_x)
+                        global_y1 = int(global_y)
+                        if self.inbounds(global_x, global_y):
+                            obs_x = obs_half_range + dx
+                            obs_y = obs_half_range + dy
+                            if observed_state[layer, obs_x, obs_y] == 0:
+                                self.local_state[layer, global_x1, global_y1] = 0
+                            elif self.local_state[layer, global_x1, global_y1] > -20:
+                                self.local_state[layer, global_x1, global_y1] -= 1
+
 
     def set_observation_state(self, observation):
         self.observation_state = observation

@@ -39,17 +39,17 @@ class DiscreteAgent(BaseAgent):
         self.terminal = False
         self._obs_range = obs_range # Initialise the local observation state
         self.X, self.Y = self.map_matrix.shape
-        self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-20, dtype=np.int32)
+        self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-20)
         self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20, dtype=np.int32)
         
         if flatten:
             self._obs_shape = (n_layers * obs_range**2 + 1,)
         else:
-            self._obs_shape = (obs_range, obs_range, 4)
+            self._obs_shape = (obs_range, obs_range, n_layers)
 
     @property
     def observation_space(self):
-        return spaces.Box(low=-np.inf, high=np.inf, shape=self._obs_shape)
+        return spaces.Box(low=-np.inf, high=np.inf, shape=self._obs_shape, dtype=np.float32)
 
     @property
     def action_space(self):
@@ -120,6 +120,7 @@ class DiscreteAgent(BaseAgent):
     #TODO: Maybe move this - its unnecessary for target subclass to have
     def update_local_state(self, observed_state, observer_position):
         """Update the agent's global representation of the environment state based on another agent's observations."""
+        observed_state = observed_state.transpose((2,1,0))
         observer_x, observer_y = observer_position
         obs_half_range = self._obs_range // 2
 
@@ -151,17 +152,18 @@ class DiscreteAgent(BaseAgent):
                             
     def set_observation_state(self, observation):
         """Update the observation_state based on the input observation"""
-        for layer in range(observation.shape[0]):
-            if layer == 0:  # Layer 0 (map matrix) 
-                # In map layer 0 is obstacle, 1 is empty space
-                self.observation_state[layer] = observation[layer]
-            else:
-                for i in range(observation.shape[1]):
-                    for j in range(observation.shape[2]):
-                        if observation[layer, i, j] == 0:
-                            self.observation_state[layer, i, j] = 0
-                        elif self.observation_state[layer, i, j] > -20:
-                            self.observation_state[layer, i, j] -= 1
+        self.observation_state = observation
+        # for layer in range(observation.shape[0]):
+        #     if layer == 0:  # Layer 0 (map matrix) 
+        #         # In map layer 0 is obstacle, 1 is empty space
+        #         self.observation_state[layer] = observation[layer]
+        #     else:
+        #         for i in range(observation.shape[1]):
+        #             for j in range(observation.shape[2]):
+        #                 if observation[layer, i, j] == 0:
+        #                     self.observation_state[layer, i, j] = 0
+        #                 elif self.observation_state[layer, i, j] > -20:
+        #                     self.observation_state[layer, i, j] -= 1
 
     def get_next_action(self):
         random_actions = self.eactions

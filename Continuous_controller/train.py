@@ -2,10 +2,11 @@ import numpy as np
 import gymnasium as gym
 import sys
 import os
+from gymnasium.utils.env_checker import check_env
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "/Users/alexandramartinwallace/Documents/Uni/METR4911/Working/Shared-MARL-Env")))
+from env import Environment
 #from stable_baselines3 import PPO
 #from stable_baselines3.common.env_checker import check_env
-from env import Environment
 
 # def main(config_path, timesteps=10000, save_path="ppo_agent"):
 #     # Initialize the environment
@@ -22,7 +23,6 @@ from env import Environment
 
 #     # Save the model
 #     model.save(save_path)
-
 # if __name__ == "__main__":
 #     print("in here")
 #     #config_path = 'config.yaml'  # Path to the configuration file
@@ -30,4 +30,5 @@ from env import Environment
 
 config_path = 'config.yaml' 
 env = Environment(config_path)
+check_env(env, warn=True)
 Environment.run_simulation(env)
