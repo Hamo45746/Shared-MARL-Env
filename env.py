@@ -12,6 +12,7 @@ from layer import AgentLayer, JammerLayer, TargetLayer
 from gymnasium.utils import seeding
 from Continuous_controller.agent_controller import AgentController
 from Discrete_controller.agent_controller import DiscreteAgentController
+from Continuous_controller.reward import calculate_continuous_reward
 from gymnasium import spaces
 
 
@@ -30,7 +31,7 @@ class Environment(gym.Env):
         self.seed_value = self.config['seed']
         self.comm_range = self.config['comm_range']
         self._seed(self.seed_value)
-        
+
         # Load the map
         original_map = np.load(self.config['map_path'])[:, :, 0]
         original_map = original_map.transpose() 
@@ -106,17 +107,16 @@ class Environment(gym.Env):
         pygame.init()
 
 
-    def reset(self, seed: int = None, options: dict = None):
+    def reset(self, seed= None, options: dict = None):
         """ Reset the environment for a new episode"""
         # Reinitialise the map and entities
         # original_map = np.load(self.config['map_path'])[:, :, 0]
         # resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
         # self.map_matrix = (resized_map != 0).astype(int)
-
+        super().reset(seed=self.seed_value)
         info = {}
         if seed is not None:
             self.seed_value = seed
-        super().reset(seed=self.seed_value)
         self._seed(self.seed_value)
         # Reset global state
         self.global_state.fill(0)
@@ -201,7 +201,7 @@ class Environment(gym.Env):
             self.agent_layer.agents[agent_id].set_observation_state(obs)
             observations[agent_id] = obs
             
-            # DEBUGGING: Print the agent's observation and corresponding section of map matrix
+            #DEBUGGING: Print the agent's observation and corresponding section of map matrix
             # agent_pos = self.agents[agent_id].current_position()
             # obs_range = self.obs_range
             # obs_half_range = obs_range // 2
@@ -225,16 +225,18 @@ class Environment(gym.Env):
             if self.agent_type == "discrete":
                 reward = DiscreteAgentController.calculate_reward(agent)
             else: 
-                reward = AgentController.calculate_reward(agent)  # Implement the reward calculation logic in a separate function, depends on agent type
+                agent_pos = agent.current_position()
+                reward = calculate_continuous_reward(agent, self)  # Implement the reward calculation logic in a separate function, depends on agent type
             rewards[agent_id] = reward
             
         self.current_step += 1
         
         # Determine if the episode is done (implement termination conditions here)
-        done = self.is_episode_done()
+        terminated = self.is_episode_done()
+        truncated = self.is_episode_done()
         # Create the info dictionary (idk if needed?)
         info = {}
-        return observations, rewards, done, info
+        return observations, rewards, terminated, truncated, info
     
 
     def draw_model_state(self):
@@ -457,24 +459,6 @@ class Environment(gym.Env):
         xohi, yohi = xolo + (xhi - xlo), yolo + (yhi - ylo)
         return xlo, xhi + 1, ylo, yhi + 1, xolo, xohi + 1, yolo, yohi + 1
 
-    # def share_and_update_observations(self):
-    #     """
-    #     Updates each agent classes internal observation state and internal local (entire env) state.
-    #     Will merge current observations of agents within communication range into each agents local state.
-    #     This function should be run in the step function.
-    #     """
-    #     for i, agent in enumerate(self.agent_layer.agents):
-    #         # safely_observe returns the current observation of agent i - but that should be called before this function
-    #         current_obs = agent.get_observation_state()
-    #         current_pos = agent.current_position()
-    #         # agent.set_observation_state(current_obs)
-    #         for j, other_agent in enumerate(self.agent_layer.agents):
-    #             if i != j:
-    #                 other_pos = other_agent.current_position()
-    #                 agent_id = self.agent_name_mapping[agent]
-    #                 other_agent_id = self.agent_name_mapping[other_agent]
-    #                 if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(other_agent_id):
-    #                     other_agent.update_local_state(current_obs, current_pos)
     
     def share_and_update_observations(self):
         """
@@ -486,31 +470,29 @@ class Environment(gym.Env):
             current_obs = agent.get_observation_state()
             current_pos = agent.current_position()
 
-            print(f"Agent {i} local state before communication:")
-            print(agent.local_state)
+            #print(f"Agent {i} local state before communication:")
+            #print(agent.local_state)
 
             for j, other_agent in enumerate(self.agents):
                 if i != j:
                     other_pos = other_agent.current_position()
                     if self.within_comm_range(current_pos, other_pos):
                         if not self.is_comm_blocked(i):
-                            print(f"Agent {i} is communicating with Agent {j}")
+                            #print(f"Agent {i} is communicating with Agent {j}")
                             other_agent.update_local_state(current_obs, current_pos)
-                        else:
-                            print(f"Agent {i} is within a jammed area and cannot communicate with Agent {j}")
-                    else:
-                        print(f"Agent {i} is out of communication range with Agent {j}")
+                        #else:
+                           #print(f"Agent {i} is within a jammed area and cannot communicate with Agent {j}")
+                    #else:
+                        #print(f"Agent {i} is out of communication range with Agent {j}")
 
-            print(f"Agent {i} local state after communication:")
-            print(agent.local_state)
-            print("---")
+            #print(f"Agent {i} local state after communication:")
+            #print(agent.local_state)
+            #print("---")
     
     
     def within_comm_range(self, agent1, agent2):
         """Checks two agents are within communication range. Assumes constant comm range for all agents."""
         distance = np.linalg.norm(np.array(agent1) - np.array(agent2))
-        print("hereererer")
-        print(distance)
         return distance <= self.comm_range
     
     
@@ -599,20 +581,22 @@ class Environment(gym.Env):
         np.random.seed(seed)
         random.seed(seed)
 
-    def run_simulation(env, max_steps=10):
+    def run_simulation(env, max_steps=120):
         running = True
         step_count = 0
+        print(env.agent_type)
         while running and step_count < max_steps:
-            print(env.agent_type)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
 
             # Create the action_dict for all agents
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(env.agents)}
+            print("agent_type", env.agent_type)
+            print("action_dict", action_dict)
 
             # Update environment states with the action_dict
-            observations, rewards, done, env.info = env.step(action_dict)
+            observations, rewards, terminated, truncated, env.info = env.step(action_dict)
 
             env.render()  # Render the current state to the screen
 
@@ -625,6 +609,6 @@ class Environment(gym.Env):
         pygame.quit()
 
 
-config_path = 'config.yaml' 
-env = Environment(config_path)
-Environment.run_simulation(env)
+# config_path = 'config.yaml' 
+# env = Environment(config_path)
+# Environment.run_simulation(env)

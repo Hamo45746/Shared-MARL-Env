@@ -25,6 +25,6 @@ class AgentController:
         for agent, action in zip(self.agents, actions):
             agent.step(action)
 
-    def calculate_reward(agent):
-        reward = reward.reward_calulation(agent)
-        return reward 
+    # def calculate_reward(agent, agent_pos):
+    #     agent_reward = reward.reward_calulation(agent, agent_pos)
+    #     return agent_reward
