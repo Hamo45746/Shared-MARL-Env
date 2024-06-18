@@ -27,9 +27,9 @@ class Environment(gym.Env):
         self.obs_range = self.config['obs_range']
         self.pixel_scale = self.config['pixel_scale'] # Size in pixels of each map cell
         self.map_scale = self.config['map_scale'] # Scaling factor of map resolution
-        self.seed = self.config['seed']
+        self.seed_value = self.config['seed']
         self.comm_range = self.config['comm_range']
-        self._seed(self.seed)
+        self._seed(self.seed_value)
         
         # Load the map
         original_map = np.load(self.config['map_path'])[:, :, 0]
@@ -112,7 +112,10 @@ class Environment(gym.Env):
         # self.map_matrix = (resized_map != 0).astype(int)
 
         info = {}
-        super().reset(seed=seed)
+        if seed is not None:
+            self.seed_value = seed
+        super().reset(seed=self.seed_value)
+        self._seed(self.seed_value)
         # Reset global state
         self.global_state.fill(0)
         self.global_state[0] = self.map_matrix # Uncomment above code if map_matrix is changed by sim
@@ -549,8 +552,10 @@ class Environment(gym.Env):
 
     def _seed(self, seed=None):
         self.np_random, seed_ = seeding.np_random(seed)
+        np.random.seed(seed)
+        random.seed(seed)
 
-    def run_simulation(env, max_steps=100):
+    def run_simulation(env, max_steps=10):
         running = True
         step_count = 0
         while running and step_count < max_steps:
@@ -571,6 +576,7 @@ class Environment(gym.Env):
             #pygame.time.wait(10)  # Wait some time so it's visually comprehensible
 
             step_count += 1
+        env.reset()
 
         pygame.quit()
 

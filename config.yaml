@@ -21,7 +21,7 @@ n_targets: 10
 n_jammers: 3
 jamming_radius: 30
 
-seed: 5
+seed: 40000000
 
 # Example locations
 #agent_positions:
