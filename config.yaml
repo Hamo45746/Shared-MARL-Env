@@ -8,7 +8,7 @@ pixel_scale: 4 #Going down reduces the pixel_size, which reduces the map
 map_scale: 0.18 #Going up makes to map larger
 
 obs_range: 17 #13
-comm_range: 30 #10
+comm_range: 50 #10
 agent_type: 'discrete'
 #agent_type: 'continuous'
 
