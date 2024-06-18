@@ -139,7 +139,7 @@ class JammerLayer(AgentLayer):
     def update_layer_state(self):
         """
         Updates the layer state matrix with current positions of all jammers. 
-        0 in the matrix is a current jammer position.
+        0 in the matrix is a current position of an active jammer.
         """
         self.layer_state.fill(-np.inf)
         for jammer in self.jammers:

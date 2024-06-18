@@ -26,7 +26,7 @@ class DiscreteAgent(Agent):
         xs,
         ys,
         map_matrix,
-        randomizer,
+        randomiser,
         obs_range=3,
         n_layers=4,
         seed=10,
@@ -35,7 +35,7 @@ class DiscreteAgent(Agent):
         # map_matrix is the map of the environment (!0 are buildings)
         # n channels is the number of observation channels
 
-        self.random_state = randomizer
+        self.random_state = randomiser
 
         self.xs = xs
         self.ys = ys
@@ -165,6 +165,9 @@ class DiscreteAgent(Agent):
                             
     def set_observation_state(self, observation):
         self.observation_state = observation
+        
+    def get_observation_state(self):
+        return self.observation_state
 
     def get_next_action(self):
         random_actions = self.eactions

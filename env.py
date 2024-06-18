@@ -79,7 +79,7 @@ class Environment(gym.Env):
         self.num_jammers = self.config['n_jammers']
         self.jammers = jammer_utils.create_jammers(self.num_jammers, self.map_matrix, self.np_random, self.config['jamming_radius'])
         self.jammer_layer = JammerLayer(self.X, self.Y, self.jammers)
-        self.jammed_positions = None
+        self.jammed_positions = set()
         #self.update_jammed_areas()
 
         # Define action and observation spaces
@@ -96,6 +96,8 @@ class Environment(gym.Env):
         self.global_state[1] = self.agent_layer.get_state_matrix()
         self.global_state[2] = self.target_layer.get_state_matrix()
         self.global_state[3] = self.jammer_layer.get_state_matrix()
+        
+        self.current_step = 0
         
         # Pygame for rendering
         #self.render_mode = render_mode
@@ -148,6 +150,8 @@ class Environment(gym.Env):
         self.global_state[1] = self.agent_layer.get_state_matrix()
         self.global_state[2] = self.target_layer.get_state_matrix()
         self.global_state[3] = self.jammer_layer.get_state_matrix()
+        
+        self.current_step = 0
 
         observations = {}
         #observations = np.zeros(self.observation_space.shape, dtype=np.float32)
@@ -172,10 +176,20 @@ class Environment(gym.Env):
         # Update agent positions and layer state based on the provided actions
         for agent_id, action in actions_dict.items():
             self.agent_layer.move_agent(agent_id, action)
+            
+            # Check if the agent touches any jammer and destroy it
+            agent_pos = self.agent_layer.agents[agent_id].current_position()
+            for jammer in self.jammers:
+                if not jammer.get_destroyed() and jammer.current_position() == tuple(agent_pos):
+                    jammer.set_destroyed()
+                    self.update_jammed_areas()  # Update jammed areas after destroying the jammer
+        
+        self.jammer_layer.activate_jammers(self.current_step)
 
-        # Update the global state with the new agent and target layer states
+        # Update the global state with the new layer states
         self.global_state[1] = self.agent_layer.get_state_matrix()
         self.global_state[2] = self.target_layer.get_state_matrix()
+        self.global_state[3] = self.jammer_layer.get_state_matrix()
 
         # Update jammed areas based on the current state of jammers
         self.update_jammed_areas()
@@ -184,7 +198,7 @@ class Environment(gym.Env):
         observations = {}
         for agent_id in range(self.num_agents):
             obs = self.safely_observe(agent_id)
-            self.agents[agent_id].set_observation_state(obs)
+            self.agent_layer.agents[agent_id].set_observation_state(obs)
             observations[agent_id] = obs
             
             # DEBUGGING: Print the agent's observation and corresponding section of map matrix
@@ -207,13 +221,15 @@ class Environment(gym.Env):
         # Calc rewards for each agent
         rewards = {}
         for agent_id in range(self.num_agents):
-            agent = self.agents[agent_id]
+            agent = self.agent_layer.agents[agent_id]
             if self.agent_type == "discrete":
                 reward = DiscreteAgentController.calculate_reward(agent)
             else: 
                 reward = AgentController.calculate_reward(agent)  # Implement the reward calculation logic in a separate function, depends on agent type
             rewards[agent_id] = reward
-
+            
+        self.current_step += 1
+        
         # Determine if the episode is done (implement termination conditions here)
         done = self.is_episode_done()
         # Create the info dictionary (idk if needed?)
@@ -282,7 +298,7 @@ class Environment(gym.Env):
         REF: PettingZoo's pursuit example: PettingZoo/sisl/pursuit/pursuit_base.py
         """
         # Where self.jammers is a list of jammer class objects
-        for jammer in self.jammers:
+        for jammer in self.jammer_layer.jammers:
             x = jammer.position[0]
             y = jammer.position[1]
             center = (
@@ -441,22 +457,53 @@ class Environment(gym.Env):
         xohi, yohi = xolo + (xhi - xlo), yolo + (yhi - ylo)
         return xlo, xhi + 1, ylo, yhi + 1, xolo, xohi + 1, yolo, yohi + 1
 
+    # def share_and_update_observations(self):
+    #     """
+    #     Updates each agent classes internal observation state and internal local (entire env) state.
+    #     Will merge current observations of agents within communication range into each agents local state.
+    #     This function should be run in the step function.
+    #     """
+    #     for i, agent in enumerate(self.agent_layer.agents):
+    #         # safely_observe returns the current observation of agent i - but that should be called before this function
+    #         current_obs = agent.get_observation_state()
+    #         current_pos = agent.current_position()
+    #         # agent.set_observation_state(current_obs)
+    #         for j, other_agent in enumerate(self.agent_layer.agents):
+    #             if i != j:
+    #                 other_pos = other_agent.current_position()
+    #                 agent_id = self.agent_name_mapping[agent]
+    #                 other_agent_id = self.agent_name_mapping[other_agent]
+    #                 if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(other_agent_id):
+    #                     other_agent.update_local_state(current_obs, current_pos)
+    
     def share_and_update_observations(self):
         """
-        Updates each agent classes internal observation state and internal local (entire env) state.
-        Will merge current observations of agents within communication range into each agents local state.
+        Updates each agent's internal observation state and internal local (entire env) state.
+        Will merge current observations of agents within communication range into each agent's local state.
         This function should be run in the step function.
         """
         for i, agent in enumerate(self.agents):
-            # safely_observe returns the current observation of agent i
-            current_obs = self.safely_observe(i)
+            current_obs = agent.get_observation_state()
             current_pos = agent.current_position()
-            agent.set_observation_state(current_obs)
+
+            print(f"Agent {i} local state before communication:")
+            print(agent.local_state)
+
             for j, other_agent in enumerate(self.agents):
                 if i != j:
                     other_pos = other_agent.current_position()
                     if self.within_comm_range(current_pos, other_pos):
-                        other_agent.update_local_state(current_obs, current_pos)
+                        if not self.is_comm_blocked(i):
+                            print(f"Agent {i} is communicating with Agent {j}")
+                            other_agent.update_local_state(current_obs, current_pos)
+                        else:
+                            print(f"Agent {i} is within a jammed area and cannot communicate with Agent {j}")
+                    else:
+                        print(f"Agent {i} is out of communication range with Agent {j}")
+
+            print(f"Agent {i} local state after communication:")
+            print(agent.local_state)
+            print("---")
     
     
     def within_comm_range(self, agent1, agent2):
@@ -477,23 +524,20 @@ class Environment(gym.Env):
         Returns:
         - bool: True if communication is blocked, False otherwise.
         """
-        agent_pos = self.agents[agent_id].position
-        for jammer in self.jammers:
-            if jammer.active and np.linalg.norm(np.array(agent_pos) - np.array(jammer.position)) <= self.config['jamming_radius']:
-                return True
-        return False
+        agent_pos = self.agent_layer.agents[agent_id].current_position()
+        return tuple(agent_pos) in self.jammed_positions
     
     
     # JAMMING FUNCTIONS #
     def activate_jammer(self, jammer_index):
-        jammer = self.jammer_layer.agents[jammer_index]
+        jammer = self.jammer_layer.jammers[jammer_index]
         if not jammer.is_active():
             self.jammer_layer.activate_jammer(jammer)
             self.update_jammed_areas()
 
 
     def deactivate_jammer(self, jammer_index):
-        jammer = self.jammer_layer.agents[jammer_index]
+        jammer = self.jammer_layer.jammers[jammer_index]
         if jammer.is_active():
             jammer.deactivate()
             self.update_jammed_areas()
@@ -581,3 +625,6 @@ class Environment(gym.Env):
         pygame.quit()
 
 
+config_path = 'config.yaml' 
+env = Environment(config_path)
+Environment.run_simulation(env)
