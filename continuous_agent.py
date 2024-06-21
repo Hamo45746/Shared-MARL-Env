@@ -65,7 +65,7 @@ class ContinuousAgent(BaseAgent):
         return self.current_pos
 
     def update_local_state(self, observed_state, observer_position):
-        observed_state = observed_state.transpose((2,1,0))
+        #observed_state = observed_state.transpose((2,1,0))
         observer_x, observer_y = observer_position
         obs_half_range = self._obs_range // 2
         self.communicated = True

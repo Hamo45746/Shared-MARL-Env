@@ -120,7 +120,7 @@ class DiscreteAgent(BaseAgent):
     #TODO: Maybe move this - its unnecessary for target subclass to have
     def update_local_state(self, observed_state, observer_position):
         """Update the agent's global representation of the environment state based on another agent's observations."""
-        observed_state = observed_state.transpose((2,1,0))
+
         observer_x, observer_y = observer_position
         obs_half_range = self._obs_range // 2
 
