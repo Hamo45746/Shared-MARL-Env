@@ -585,7 +585,7 @@ class Environment(gym.Env):
         np.random.seed(seed)
         random.seed(seed)
 
-    def run_simulation(env, max_steps=2):
+    def run_simulation(env, max_steps=10):
         running = True
         step_count = 0
         print(env.agent_type)
@@ -596,8 +596,6 @@ class Environment(gym.Env):
 
             # Create the action_dict for all agents
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(env.agents)}
-            print("agent_type", env.agent_type)
-            print("action_dict", action_dict)
 
             # Update environment states with the action_dict
             observations, rewards, terminated, truncated, env.info = env.step(action_dict)
