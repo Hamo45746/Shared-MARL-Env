@@ -120,7 +120,7 @@ class DiscreteAgent(BaseAgent):
     #TODO: Maybe move this - its unnecessary for target subclass to have
     def update_local_state(self, observed_state, observer_position):
         """Update the agent's global representation of the environment state based on another agent's observations."""
-        observed_state = observed_state.transpose((2,1,0))
+        # observed_state = observed_state.transpose((2,1,0))
         observer_x, observer_y = observer_position
         obs_half_range = self._obs_range // 2
 
@@ -132,9 +132,13 @@ class DiscreteAgent(BaseAgent):
                     for dy in range(-obs_half_range, obs_half_range + 1):
                         global_x = observer_x + dx
                         global_y = observer_y + dy
-                        if self.inbounds(global_x, global_y):
-                            obs_x = obs_half_range + dx
-                            obs_y = obs_half_range + dy
+                        obs_x = obs_half_range + dx
+                        obs_y = obs_half_range + dy
+                        
+                        # Check if both global and observation coordinates are within bounds
+                        if (self.inbounds(global_x, global_y) and 
+                            0 <= obs_x < self._obs_range and 
+                            0 <= obs_y < self._obs_range):
                             self.local_state[layer, global_x, global_y] = observed_state[layer, obs_x, obs_y]
             else:
                 # Update the remaining layers with decrement 
@@ -142,9 +146,13 @@ class DiscreteAgent(BaseAgent):
                     for dy in range(-obs_half_range, obs_half_range + 1):
                         global_x = observer_x + dx
                         global_y = observer_y + dy
-                        if self.inbounds(global_x, global_y):
-                            obs_x = obs_half_range + dx
-                            obs_y = obs_half_range + dy
+                        obs_x = obs_half_range + dx
+                        obs_y = obs_half_range + dy
+                        
+                        # Check if both global and observation coordinates are within bounds
+                        if (self.inbounds(global_x, global_y) and 
+                            0 <= obs_x < self._obs_range and 
+                            0 <= obs_y < self._obs_range):
                             if observed_state[layer, obs_x, obs_y] == 0:
                                 self.local_state[layer, global_x, global_y] = 0
                             elif self.local_state[layer, global_x, global_y] > -20:
