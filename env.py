@@ -91,7 +91,7 @@ class Environment(gym.Env):
             self.action_space = spaces.Dict({agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)})
 
         #self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-20, high=20, shape=(self.obs_range, self.obs_range, 4), dtype=np.float32) for agent_id in range(self.num_agents)})
-        self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-20, high=20, shape=(4, self.obs_range, self.obs_range), dtype=np.float32) for agent_id in range(self.num_agents)})
+        self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32) for agent_id in range(self.num_agents)})
         print('initialiation', self.observation_space)
         # Set global state layers
         self.global_state[0] = self.map_matrix
@@ -209,6 +209,7 @@ class Environment(gym.Env):
             x_start, x_end = agent_pos[0] - obs_half_range, agent_pos[0] + obs_half_range + 1
             y_start, y_end = agent_pos[1] - obs_half_range, agent_pos[1] + obs_half_range + 1
 
+            np.set_printoptions(linewidth=200)
             print(f"Agent {agent_id} Observation:")
             print(self.agents[agent_id].get_observation_state()[0])
             print(self.agents[agent_id].get_observation_state()[1])
@@ -424,7 +425,7 @@ class Environment(gym.Env):
 
     def collect_obs_by_idx(self, agent_layer, agent_idx):
         # Initialise the observation array for all layers, ensuring no information loss
-        obs = np.full((self.global_state.shape[0], self.obs_range, self.obs_range), fill_value=-np.inf, dtype=np.float32)
+        obs = np.full((self.global_state.shape[0], self.obs_range, self.obs_range), fill_value=-20, dtype=np.float32)
         # Get the current position of the agent
         xp, yp = agent_layer.get_position(agent_idx)
         # Calculate bounds for the observation
@@ -444,7 +445,7 @@ class Environment(gym.Env):
             obs_slice = self.global_state[layer, xlo1:xhi1, ylo1:yhi1]
             obs_shape = obs_slice.shape
             pad_width = [(0,0), (0, self.obs_range-obs_shape[0]),(0, self.obs_range-obs_shape[1])]
-            obs_padded = np.pad(obs_slice, pad_width[1:], mode='constant', constant_values=-np.inf)
+            obs_padded = np.pad(obs_slice, pad_width[1:], mode='constant', constant_values=-21)
             obs[layer, :obs_padded.shape[0], :obs_padded.shape[1]] = obs_padded
         return obs
 

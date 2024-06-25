@@ -49,7 +49,7 @@ class DiscreteAgent(BaseAgent):
 
     @property
     def observation_space(self):
-        return spaces.Box(low=-np.inf, high=np.inf, shape=self._obs_shape, dtype=np.float32)
+        return spaces.Box(low=-20, high=1, shape=self._obs_shape, dtype=np.float32)
 
     @property
     def action_space(self):
@@ -59,11 +59,6 @@ class DiscreteAgent(BaseAgent):
     def step(self, a):
         cpos = self.current_pos
         lpos = self.last_pos
-        # if dead or reached goal dont move
-        # if self.terminal:
-        #     print('here1')
-        #     return cpos
-        # # if in building, dead, and stay there
         if self.inbuilding(cpos[0], cpos[1]):
             return cpos
         tpos = self.temp_pos
@@ -84,6 +79,8 @@ class DiscreteAgent(BaseAgent):
         lpos[1] = cpos[1]
         cpos[0] = x
         cpos[1] = y
+        self.current_pos = cpos
+        self.last_post = lpos
         return cpos
 
     def get_state(self):

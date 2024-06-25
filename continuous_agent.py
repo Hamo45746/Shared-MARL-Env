@@ -14,14 +14,14 @@ class ContinuousAgent(BaseAgent):
         self.terminal = False
         self._obs_range = obs_range
         self.X, self.Y = self.map_matrix.shape
-        self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-np.inf)
-        self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-np.inf)
+        self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-20)
+        self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20)
         self._obs_shape = (n_layers * obs_range**2 + 1,) if flatten else (obs_range, obs_range, n_layers)
         self.observed_areas = set()
 
     @property
     def observation_space(self):
-        return spaces.Box(low=-np.inf, high=np.inf, shape=self._obs_shape, dtype=np.float32)
+        return spaces.Box(low=-20, high=1, shape=self._obs_shape, dtype=np.float32)
 
     @property
     def action_space(self):
