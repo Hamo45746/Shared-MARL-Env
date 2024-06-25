@@ -28,21 +28,23 @@ class AgentLayer:
     def move_agent(self, agent_idx, action):
         """Moves the agent according to the defined action and updates the layer state.
            This is where the policies should come in, providing the action for each agent."""
-        o_pos = self.agents[agent_idx].current_position()
-        n_pos = self.agents[agent_idx].step(action)
+        agent = self.agents[agent_idx]
+        o_pos = agent.current_position()
+        n_pos = agent.step(action)
         # Update the layer state for old and new positions
         # self.update_position(o_pos, n_pos)
         # self.set_position(agent_idx, n_pos[0], n_pos[1])
-        self.update()
+        self.update_position(o_pos, n_pos)
+        # print(f"Agent: {agent_idx}, Old pos: {o_pos}, New pos: {n_pos}")
+        agent.set_position(n_pos[0], n_pos[1])
         return n_pos
 
-    # TODO: Check this
     def update_position(self, old_position, new_position):
         """Clear the old position and set the new position in the layer state."""
         ox, oy = tuple(map(int, old_position))
         nx, ny = tuple(map(int, new_position))
-        # if self.layer_state[ox, oy] == 0:  # Only reset if it was the current position of the agent
-        #     self.layer_state[ox, oy] = -1  # Start decay from -1
+        if self.layer_state[ox, oy] == 0:  # Only reset if it was the current position of the agent
+            self.layer_state[ox, oy] = -1  # Start decay from -1
         self.layer_state[nx, ny] = 0  # Refresh the new position to 0
 
     def set_position(self, agent_idx, x, y):
@@ -65,7 +67,7 @@ class AgentLayer:
 
     def get_state_matrix(self):
         """Returns a matrix representing the positions of all allies."""
-        return self.layer_state[:]
+        return self.layer_state.copy()
 
     # def get_state(self):
     #     pos = np.zeros(2 * len(self.agents))
@@ -82,9 +84,9 @@ class AgentLayer:
         self.layer_state[self.layer_state < -20] = -20
         # Update positions based on current agent locations
         for agent in self.agents:
-            x, y = agent.current_position()
-            # x, y = tuple(map(int, agent.current_position()))
-            self.layer_state[x, y] = 0  # Set current agent positions to 0
+            # x, y = agent.current_position()
+            x, y = tuple(map(int, agent.current_position()))
+            self.layer_state[int(x), int(y)] = 0  # Set current agent positions to 0
     
 class TargetLayer(AgentLayer):
     def __init__(self, xs, ys, targets, map_matrix, seed=None):
@@ -104,11 +106,10 @@ class TargetLayer(AgentLayer):
            This is where the policies should come in, providing the action for each agent."""
         o_pos = self.targets[target_idx].current_position()
         n_pos = self.targets[target_idx].step(action)
-        x, y = n_pos
-        
-        self.targets[target_idx].set_position(x, y)
+        # x, y = n_pos
+        # self.targets[target_idx].set_position(x, y)
         # Update the layer state for old and new positions
-        self.update_position(o_pos, n_pos)
+        # self.update_position(o_pos, n_pos)
         return n_pos
 
     def n_targets(self):
@@ -116,19 +117,17 @@ class TargetLayer(AgentLayer):
     
     def update(self):
         # Decay previous positions
-        mask = self.layer_state > -20
-        self.layer_state[mask] -= 1  # Decrement the state of previously occupied positions
+        self.layer_state[:] -= 1  # Decrement the state of entire array
         # Reset positions that were more than 20 time steps ago
         self.layer_state[self.layer_state < -20] = -20
         # Update positions based on current agent locations
         for target in self.targets:
-            #x, y = agent.current_position()
+            # x, y = agent.current_position()
             x, y = tuple(map(int, target.current_position()))
-            self.layer_state[x, y] = 0  # Set current agent positions to 0
+            self.layer_state[int(x), int(y)] = 0  # Set current agent positions to 0
     
     def get_state_matrix(self):
         """Returns a matrix representing the positions of all allies."""
-        self.update()
         return self.layer_state[:]
 
 class JammerLayer(AgentLayer):
