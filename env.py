@@ -68,7 +68,9 @@ class Environment(gym.Env):
         self.agent_type = self.config.get('agent_type', 'discrete')
         self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
-        
+        print("Initial agent positions:")
+        for i, agent in enumerate(self.agents):
+            print(f"Agent {i}: {agent.current_position()}")
         # get agent id for class instance
         self.agent_name_mapping = dict(zip(self.agents, list(range(self.num_agents))))
 
@@ -172,7 +174,10 @@ class Environment(gym.Env):
 
         # Update agent positions and layer state based on the provided actions
         for agent_id, action in actions_dict.items():
+            print("----------------------------------")
+            print(f"Before move: Agent {agent_id} at {self.agents[agent_id].current_position()}")
             self.agent_layer.move_agent(agent_id, action)
+            print(f"After move: Agent {agent_id} at {self.agents[agent_id].current_position()}")
             
             # Check if the agent touches any jammer and destroy it
             agent_pos = self.agent_layer.agents[agent_id].current_position()
@@ -205,18 +210,18 @@ class Environment(gym.Env):
             x_start, x_end = agent_pos[0] - obs_half_range, agent_pos[0] + obs_half_range + 1
             y_start, y_end = agent_pos[1] - obs_half_range, agent_pos[1] + obs_half_range + 1
 
-            print(f"Agent {agent_id} Map Layer Observation:")
-            print(self.agents[agent_id].get_observation_state()[0])
-            print(f"Agent {agent_id} Position: {agent_pos}")
-            print("Corresponding Map Matrix Section:")
-            print(self.map_matrix[x_start:x_end, y_start:y_end])
+            # print(f"Agent {agent_id} Map Layer Observation:")
+            # print(self.agents[agent_id].get_observation_state()[0])
+            # print(f"Agent {agent_id} Position: {agent_pos}")
+            # print("Corresponding Map Matrix Section:")
+            # print(self.map_matrix[x_start:x_end, y_start:y_end])
             print("---")
             print(f"Agent {agent_id} Agent Layer Observation:")
             print(self.agents[agent_id].get_observation_state()[1])
             print(f"Agent {agent_id} Position: {agent_pos}")
-            print("Corresponding env agent layer Section:")
-            print(self.global_state[1][x_start:x_end, y_start:y_end])
-            print("---")
+            # print("Corresponding env agent layer Section:")
+            # print(self.global_state[1][x_start:x_end, y_start:y_end])
+            # print("---")
 
         # Share and update observations among agents within communication range
         self.share_and_update_observations() # TODO: Test this function works correctly
@@ -533,8 +538,6 @@ class Environment(gym.Env):
     def within_comm_range(self, agent1, agent2):
         """Checks two agents are within communication range. Assumes constant comm range for all agents."""
         distance = np.linalg.norm(np.array(agent1) - np.array(agent2))
-        print("hereererer")
-        print(distance)
         return distance <= self.comm_range
     
     
@@ -648,4 +651,4 @@ class Environment(gym.Env):
 
 config_path = 'config.yaml' 
 env = Environment(config_path)
-Environment.run_simulation(env, 10)
+Environment.run_simulation(env, 3)

@@ -49,7 +49,7 @@ class DiscreteAgent(BaseAgent):
 
     @property
     def observation_space(self):
-        return spaces.Box(low=-np.inf, high=np.inf, shape=self._obs_shape, dtype=np.float32)
+        return spaces.Box(low=-20, high=1, shape=self._obs_shape, dtype=np.float32)
 
     @property
     def action_space(self):
@@ -57,6 +57,7 @@ class DiscreteAgent(BaseAgent):
 
     # Dynamics Functions
     def step(self, a):
+        print(f"Agent step: Action {a}, Current pos: {self.current_pos}")
         cpos = self.current_pos
         lpos = self.last_pos
         # if dead or reached goal dont move
@@ -84,6 +85,8 @@ class DiscreteAgent(BaseAgent):
         lpos[1] = cpos[1]
         cpos[0] = x
         cpos[1] = y
+        self.current_pos = cpos
+        self.last_pos = lpos
         return cpos
 
     def get_state(self):
@@ -118,49 +121,73 @@ class DiscreteAgent(BaseAgent):
         return self.last_pos
     
     #TODO: Maybe move this - its unnecessary for target subclass to have
+    # def update_local_state(self, observed_state, observer_position):
+    #     """Update the agent's global representation of the environment state based on another agent's observations."""
+    #     # observed_state = observed_state.transpose((2,1,0))
+    #     observer_x, observer_y = observer_position
+    #     obs_half_range = self._obs_range // 2
+
+    #     # Iterate through each layer in the observed_state
+    #     for layer in range(observed_state.shape[0]):
+    #         if layer == 0:  # Layer 0 (map matrix)
+    #             # Directly assign the observed map matrix to the local state
+    #             for dx in range(-obs_half_range, obs_half_range + 1):
+    #                 for dy in range(-obs_half_range, obs_half_range + 1):
+    #                     global_x = observer_x + dx
+    #                     global_y = observer_y + dy
+    #                     obs_x = obs_half_range + dx
+    #                     obs_y = obs_half_range + dy
+                        
+    #                     # Check if both global and observation coordinates are within bounds
+    #                     if (self.inbounds(global_x, global_y) and 
+    #                         0 <= obs_x < self._obs_range and 
+    #                         0 <= obs_y < self._obs_range):
+    #                         self.local_state[layer, global_x, global_y] = observed_state[layer, obs_x, obs_y]
+    #         else:
+    #             # Update the remaining layers with decrement 
+    #             for dx in range(-obs_half_range, obs_half_range + 1):
+    #                 for dy in range(-obs_half_range, obs_half_range + 1):
+    #                     global_x = observer_x + dx
+    #                     global_y = observer_y + dy
+    #                     obs_x = obs_half_range + dx
+    #                     obs_y = obs_half_range + dy
+                        
+    #                     # Check if both global and observation coordinates are within bounds
+    #                     if (self.inbounds(global_x, global_y) and 
+    #                         0 <= obs_x < self._obs_range and 
+    #                         0 <= obs_y < self._obs_range):
+    #                         if observed_state[layer, obs_x, obs_y] == 0:
+    #                             self.local_state[layer, global_x, global_y] = 0
+    #                         elif self.local_state[layer, global_x, global_y] > -20:
+    #                             self.local_state[layer, global_x, global_y] -= 1
+    
     def update_local_state(self, observed_state, observer_position):
-        """Update the agent's global representation of the environment state based on another agent's observations."""
-        # observed_state = observed_state.transpose((2,1,0))
         observer_x, observer_y = observer_position
         obs_half_range = self._obs_range // 2
 
-        # Iterate through each layer in the observed_state
         for layer in range(observed_state.shape[0]):
-            if layer == 0:  # Layer 0 (map matrix)
-                # Directly assign the observed map matrix to the local state
-                for dx in range(-obs_half_range, obs_half_range + 1):
-                    for dy in range(-obs_half_range, obs_half_range + 1):
-                        global_x = observer_x + dx
-                        global_y = observer_y + dy
-                        obs_x = obs_half_range + dx
-                        obs_y = obs_half_range + dy
-                        
-                        # Check if both global and observation coordinates are within bounds
-                        if (self.inbounds(global_x, global_y) and 
-                            0 <= obs_x < self._obs_range and 
-                            0 <= obs_y < self._obs_range):
+            for dx in range(-obs_half_range, obs_half_range + 1):
+                for dy in range(-obs_half_range, obs_half_range + 1):
+                    global_x = observer_x + dx
+                    global_y = observer_y + dy
+                    obs_x = obs_half_range + dx
+                    obs_y = obs_half_range + dy
+                    
+                    if (self.inbounds(global_x, global_y) and 
+                        0 <= obs_x < self._obs_range and 
+                        0 <= obs_y < self._obs_range):
+                        if layer == 0:  # Map layer
                             self.local_state[layer, global_x, global_y] = observed_state[layer, obs_x, obs_y]
-            else:
-                # Update the remaining layers with decrement 
-                for dx in range(-obs_half_range, obs_half_range + 1):
-                    for dy in range(-obs_half_range, obs_half_range + 1):
-                        global_x = observer_x + dx
-                        global_y = observer_y + dy
-                        obs_x = obs_half_range + dx
-                        obs_y = obs_half_range + dy
-                        
-                        # Check if both global and observation coordinates are within bounds
-                        if (self.inbounds(global_x, global_y) and 
-                            0 <= obs_x < self._obs_range and 
-                            0 <= obs_y < self._obs_range):
+                        else:
                             if observed_state[layer, obs_x, obs_y] == 0:
                                 self.local_state[layer, global_x, global_y] = 0
                             elif self.local_state[layer, global_x, global_y] > -20:
-                                self.local_state[layer, global_x, global_y] -= 1
+                                self.local_state[layer, global_x, global_y] = max(self.local_state[layer, global_x, global_y] - 1, -20)
+
                             
     def set_observation_state(self, observation):
         """Update the observation_state based on the input observation"""
-        self.observation_state = observation
+        self.observation_state = observation.copy()
         # for layer in range(observation.shape[0]):
         #     if layer == 0:  # Layer 0 (map matrix) 
         #         # In map layer 0 is obstacle, 1 is empty space
@@ -181,7 +208,7 @@ class DiscreteAgent(BaseAgent):
         a = random.choice(random_actions)
         x, y = self.step(a)
         while self.inbuilding(x,y) or not self.inbounds(x,y):
-            self.current_pos = self.last_pos
+            # self.current_pos = self.last_pos
             # self.current_position() # Unneeded
             return 4 # stay action
         return a
