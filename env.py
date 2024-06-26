@@ -209,20 +209,20 @@ class Environment(gym.Env):
             x_start, x_end = agent_pos[0] - obs_half_range, agent_pos[0] + obs_half_range + 1
             y_start, y_end = agent_pos[1] - obs_half_range, agent_pos[1] + obs_half_range + 1
 
-            np.set_printoptions(linewidth=200)
-            print(f"Agent {agent_id} Observation:")
-            print(self.agents[agent_id].get_observation_state()[0])
-            print(self.agents[agent_id].get_observation_state()[1])
-            print(self.agents[agent_id].get_observation_state()[2])
-            print(self.agents[agent_id].get_observation_state()[3])
-            print(f"Agent {agent_id} Position: {agent_pos}")
-            print("Corresponding Map Matrix Section:")
-            x1_start = int(x_start)
-            x2_end =int(x_end)
-            y1_start = int(y_start)
-            y2_end = int(y_end)
-            print(self.map_matrix[x1_start:x2_end, y1_start:y2_end])
-            print("---")
+            # np.set_printoptions(linewidth=200)
+            # print(f"Agent {agent_id} Observation:")
+            # print(self.agents[agent_id].get_observation_state()[0])
+            # print(self.agents[agent_id].get_observation_state()[1])
+            # print(self.agents[agent_id].get_observation_state()[2])
+            # print(self.agents[agent_id].get_observation_state()[3])
+            # print(f"Agent {agent_id} Position: {agent_pos}")
+            # print("Corresponding Map Matrix Section:")
+            # x1_start = int(x_start)
+            # x2_end =int(x_end)
+            # y1_start = int(y_start)
+            # y2_end = int(y_end)
+            # print(self.map_matrix[x1_start:x2_end, y1_start:y2_end])
+            # print("---")
             
 
         # Share and update observations among agents within communication range
@@ -274,20 +274,46 @@ class Environment(gym.Env):
         return False 
 
 
+    # def draw_agents(self):
+    #     """
+    #     Use pygame to draw agents.
+    #     REF: PettingZoo's pursuit example: PettingZoo/sisl/pursuit/pursuit_base.py
+    #     """
+    #     for i in range(self.agent_layer.n_agents()):
+    #         x, y = self.agent_layer.get_position(i)
+    #         center = (
+    #             int(self.pixel_scale * x + self.pixel_scale / 2),
+    #             int(self.pixel_scale * y + self.pixel_scale / 2),
+    #         )
+    #         col = (0, 0, 255)
+    #         pygame.draw.circle(self.screen, col, center, int(self.pixel_scale / 1.5)) 
+
     def draw_agents(self):
         """
-        Use pygame to draw agents.
-        REF: PettingZoo's pursuit example: PettingZoo/sisl/pursuit/pursuit_base.py
+        Use pygame to draw agents and their paths.
         """
-        for i in range(self.agent_layer.n_agents()):
-            x, y = self.agent_layer.get_position(i)
+        for i, agent in enumerate(self.agent_layer.agents):
+            x, y = agent.current_position()
             center = (
                 int(self.pixel_scale * x + self.pixel_scale / 2),
                 int(self.pixel_scale * y + self.pixel_scale / 2),
             )
             col = (0, 0, 255)
-            pygame.draw.circle(self.screen, col, center, int(self.pixel_scale / 1.5)) 
-            
+            pygame.draw.circle(self.screen, col, center, int(self.pixel_scale / 1.5))
+
+            # Draw the agent's path
+            if len(agent.path) > 1:
+                for j in range(len(agent.path) - 1):
+                    start_pos = (
+                        int(self.pixel_scale * agent.path[j][0] + self.pixel_scale / 2),
+                        int(self.pixel_scale * agent.path[j][1] + self.pixel_scale / 2)
+                    )
+                    end_pos = (
+                        int(self.pixel_scale * agent.path[j + 1][0] + self.pixel_scale / 2),
+                        int(self.pixel_scale * agent.path[j + 1][1] + self.pixel_scale / 2)
+                    )
+                    pygame.draw.line(self.screen, (255, 0, 0), start_pos, end_pos, 2)  # Draw red line
+     
             
     def draw_targets(self):
         """
@@ -604,9 +630,10 @@ class Environment(gym.Env):
             env.render()  # Render the current state to the screen
 
             pygame.display.flip()  # Update the full display Surface to the screen
-            #pygame.time.wait(10)  # Wait some time so it's visually comprehensible
+            pygame.time.wait(1000)  # Wait some time so it's visually comprehensible
 
             step_count += 1
+        pygame.image.save(env.screen, "environment_snapshot.png")
         env.reset()
 
         pygame.quit()

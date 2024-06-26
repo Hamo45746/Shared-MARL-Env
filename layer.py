@@ -94,7 +94,6 @@ class AgentLayer:
     def update(self):
         # Decay previous positions
         mask = (self.layer_state<=0) & (self.layer_state > -20)
-        print("mask", mask)
         self.layer_state[mask] -= 1  # Decrement the state of previously occupied positions
         # Reset positions that were more than 20 time steps ago
         self.layer_state[self.layer_state < -20] = -20

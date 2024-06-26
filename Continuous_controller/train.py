@@ -33,3 +33,4 @@ env = Environment(config_path)
 #check_env(env, warn=True) #this ruins the seed and therefor the sim won't be randomised differently evey time 
 Environment.run_simulation(env)
 
+

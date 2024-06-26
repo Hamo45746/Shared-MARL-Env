@@ -41,6 +41,7 @@ class DiscreteAgent(BaseAgent):
         self.X, self.Y = self.map_matrix.shape
         self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-20)
         self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20, dtype=np.int32)
+        self.path = []
         
         if flatten:
             self._obs_shape = (n_layers * obs_range**2 + 1,)
@@ -79,6 +80,7 @@ class DiscreteAgent(BaseAgent):
         lpos[1] = cpos[1]
         cpos[0] = x
         cpos[1] = y
+        self.path.append((cpos[0], cpos[1]))
         self.current_pos = cpos
         self.last_post = lpos
         return cpos
@@ -162,15 +164,18 @@ class DiscreteAgent(BaseAgent):
         #                 elif self.observation_state[layer, i, j] > -20:
         #                     self.observation_state[layer, i, j] -= 1
 
+    # def get_next_action(self):
+    #     random_actions = self.eactions
+    #     temp = []
+    #     for action in self.eactions:
+    #             temp.append(action)
+    #     a = random.choice(random_actions)
+    #     x, y = self.step(a)
+    #     while self.inbuilding(x,y) or not self.inbounds(x,y):
+    #         self.current_pos = self.last_pos
+    #         # self.current_position() # Unneeded
+    #         return 4 # stay action
+    #     return a
+
     def get_next_action(self):
-        random_actions = self.eactions
-        temp = []
-        for action in self.eactions:
-                temp.append(action)
-        a = random.choice(random_actions)
-        x, y = self.step(a)
-        while self.inbuilding(x,y) or not self.inbounds(x,y):
-            self.current_pos = self.last_pos
-            # self.current_position() # Unneeded
-            return 4 # stay action
-        return a
+        return random.choice(self.eactions)

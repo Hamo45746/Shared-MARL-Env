@@ -18,6 +18,7 @@ class ContinuousAgent(BaseAgent):
         self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20)
         self._obs_shape = (n_layers * obs_range**2 + 1,) if flatten else (obs_range, obs_range, n_layers)
         self.observed_areas = set()
+        self.path = []
 
     @property
     def observation_space(self):
@@ -44,6 +45,7 @@ class ContinuousAgent(BaseAgent):
             return cpos
         lpos[:] = cpos
         cpos[:] = tpos
+        self.path.append((cpos[0], cpos[1]))
         return cpos
 
     def get_state(self):
@@ -102,6 +104,7 @@ class ContinuousAgent(BaseAgent):
 
     def get_next_action(self):
         action = self.random_state.uniform(-1.0, 1.0, size=(2,))
+        print("ehrererere", action)
         return action
     
     def gains_information(self):
