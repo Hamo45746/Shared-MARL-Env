@@ -169,7 +169,6 @@ class Environment(gym.Env):
         # Update current_position in each target instance, should be same target instance stored in self.targets and self.target_layer.targets.
         # Then do target_layer.update() to update its representation of the current state. - same for agent
         # Update target positions and layer state
-        print('start of step', self.observation_space)
         for i, target in enumerate(self.target_layer.targets):
             action = target.get_next_action()
             self.target_layer.move_targets(i, action)
@@ -204,25 +203,25 @@ class Environment(gym.Env):
             
             #DEBUGGING: Print the agent's observation and corresponding section of map matrix
             agent_pos = self.agents[agent_id].current_position()
-            obs_range = self.obs_range
-            obs_half_range = obs_range // 2
-            x_start, x_end = agent_pos[0] - obs_half_range, agent_pos[0] + obs_half_range + 1
-            y_start, y_end = agent_pos[1] - obs_half_range, agent_pos[1] + obs_half_range + 1
+            # obs_range = self.obs_range
+            # obs_half_range = obs_range // 2
+            # x_start, x_end = agent_pos[0] - obs_half_range, agent_pos[0] + obs_half_range + 1
+            # y_start, y_end = agent_pos[1] - obs_half_range, agent_pos[1] + obs_half_range + 1
 
-            # np.set_printoptions(linewidth=200)
-            # print(f"Agent {agent_id} Observation:")
-            # print(self.agents[agent_id].get_observation_state()[0])
-            # print(self.agents[agent_id].get_observation_state()[1])
-            # print(self.agents[agent_id].get_observation_state()[2])
-            # print(self.agents[agent_id].get_observation_state()[3])
-            # print(f"Agent {agent_id} Position: {agent_pos}")
+            np.set_printoptions(linewidth=200)
+            print(f"Agent {agent_id} Observation:")
+            print(self.agents[agent_id].get_observation_state()[0])
+            print(self.agents[agent_id].get_observation_state()[1])
+            print(self.agents[agent_id].get_observation_state()[2])
+            print(self.agents[agent_id].get_observation_state()[3])
+            print(f"Agent {agent_id} Position: {agent_pos}")
             # print("Corresponding Map Matrix Section:")
-            # x1_start = int(x_start)
-            # x2_end =int(x_end)
-            # y1_start = int(y_start)
-            # y2_end = int(y_end)
-            # print(self.map_matrix[x1_start:x2_end, y1_start:y2_end])
-            # print("---")
+            # # x1_start = int(x_start)
+            # # x2_end =int(x_end)
+            # # y1_start = int(y_start)
+            # # y2_end = int(y_end)
+            # # print(self.map_matrix[x1_end:x2_end, y1_start:y2_end])
+            # # print("---")
             
 
         # Share and update observations among agents within communication range
@@ -440,7 +439,7 @@ class Environment(gym.Env):
     def safely_observe(self, agent_id):
         obs = self.collect_obs(self.agent_layer, agent_id)
         obs = np.where(obs == -np.inf, -1e10, obs)
-        #obs = obs.transpose((1,2,0))
+        obs = obs.transpose((0,2,1))
         obs = np.clip(obs, self.observation_space[agent_id].low, self.observation_space[agent_id].high)
         return obs
     
@@ -469,10 +468,24 @@ class Environment(gym.Env):
         # Populate the observation array with data from all layers
         for layer in range(self.global_state.shape[0]):
             obs_slice = self.global_state[layer, xlo1:xhi1, ylo1:yhi1]
+            #print(agent_idx, agent_idx)
+            #print("obsslice", obs_slice)
             obs_shape = obs_slice.shape
-            pad_width = [(0,0), (0, self.obs_range-obs_shape[0]),(0, self.obs_range-obs_shape[1])]
+            #print("obs_shape", obs_slice.shape)
+            if xolo != 0 and yohi == 17: 
+                pad_width = [(0,0), (self.obs_range-obs_shape[0], 0),(self.obs_range-obs_shape[1], 0)]
+            elif yolo !=0 and xolo == 0:
+                pad_width = [(0,0), (0, self.obs_range-obs_shape[0]),(self.obs_range-obs_shape[1], 0)]
+            elif xolo == 0 and yolo == 0:
+                pad_width = [(0,0), (0, self.obs_range-obs_shape[0]),(0, self.obs_range-obs_shape[1])]
+            elif yolo == 0 and xohi == 17:
+                pad_width = [(0,0), (self.obs_range-obs_shape[0], 0),(0, self.obs_range-obs_shape[1])]
+
+            #print("pad_width", pad_width)
             obs_padded = np.pad(obs_slice, pad_width[1:], mode='constant', constant_values=-21)
+            #print("obs_padded", obs_padded)
             obs[layer, :obs_padded.shape[0], :obs_padded.shape[1]] = obs_padded
+            #print("obs", obs[layer, :obs_padded.shape[0], :obs_padded.shape[1]])
         return obs
 
     def obs_clip(self, x, y):
@@ -630,7 +643,7 @@ class Environment(gym.Env):
             env.render()  # Render the current state to the screen
 
             pygame.display.flip()  # Update the full display Surface to the screen
-            pygame.time.wait(1000)  # Wait some time so it's visually comprehensible
+            #pygame.time.wait(1000)  # Wait some time so it's visually comprehensible
 
             step_count += 1
         pygame.image.save(env.screen, "environment_snapshot.png")

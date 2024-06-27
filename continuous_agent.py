@@ -102,9 +102,17 @@ class ContinuousAgent(BaseAgent):
     def set_observation_state(self, observation):
         self.observation_state = observation
 
+    # def get_next_action(self):
+    #     action = self.random_state.uniform(-1.0, 1.0, size=(2,))
+    #     print("ehrererere", action)
+    #     return action
+    
     def get_next_action(self):
-        action = self.random_state.uniform(-1.0, 1.0, size=(2,))
-        print("ehrererere", action)
+        min_radius = 1.0
+        while True:
+            action = self.random_state.uniform(-1.0, 1.0, size=(2,))
+            if np.linalg.norm(action) >= min_radius:
+                break
         return action
     
     def gains_information(self):

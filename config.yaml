@@ -12,8 +12,8 @@ map_scale: 0.13
 
 obs_range: 17 #13
 comm_range: 30 #10
-#agent_type: 'discrete'
-agent_type: 'continuous'
+agent_type: 'discrete'
+#agent_type: 'continuous'
 
 map_path: 'city_image_1.npy'
 #map_path: 'city_image_2.npy'
@@ -24,7 +24,7 @@ n_targets: 10
 n_jammers: 3
 jamming_radius: 30
 
-seed: 10
+seed: 5
 
 # Example locations
 #agent_positions:
