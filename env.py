@@ -201,13 +201,14 @@ class Environment(gym.Env):
             # obs_half_range = obs_range // 2
             # x_start, x_end = agent_pos[0] - obs_half_range, agent_pos[0] + obs_half_range + 1
             # y_start, y_end = agent_pos[1] - obs_half_range, agent_pos[1] + obs_half_range + 1
+            print(f"Agent {agent_id} Position: {agent_pos}")
             np.set_printoptions(linewidth=200)
             print(f"Agent {agent_id} Observation:")
             print(self.agents[agent_id].get_observation_state()[0])
             print(self.agents[agent_id].get_observation_state()[1])
             print(self.agents[agent_id].get_observation_state()[2])
             print(self.agents[agent_id].get_observation_state()[3])
-            print(f"Agent {agent_id} Position: {agent_pos}")
+        
             # print("Corresponding Map Matrix Section:")
             # # x1_start = int(x_start)
             # # x2_end =int(x_end)
@@ -416,7 +417,7 @@ class Environment(gym.Env):
      
     def safely_observe(self, agent_id):
         obs = self.collect_obs(self.agent_layer, agent_id)
-        obs = np.where(obs == -np.inf, -1e10, obs)
+        #obs = np.where(obs == -np.inf, -1e10, obs)
         obs = obs.transpose((0,2,1))
         obs = np.clip(obs, self.observation_space[agent_id].low, self.observation_space[agent_id].high)
         return obs
@@ -596,10 +597,9 @@ class Environment(gym.Env):
         np.random.seed(seed)
         random.seed(seed)
 
-    def run_simulation(env, max_steps=10):
+    def run_simulation(env, max_steps=21):
         running = True
         step_count = 0
-        print(env.agent_type)
         while running and step_count < max_steps:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -613,7 +613,7 @@ class Environment(gym.Env):
 
             env.render()  # Render the current state to the screen
 
-            pygame.display.flip()  # Update the full display Surface to the screen
+            #pygame.display.flip()  # Update the full display Surface to the screen - I don't think this is necessary (Alex)
             #pygame.time.wait(1000)  # Wait some time so it's visually comprehensible
 
             step_count += 1
