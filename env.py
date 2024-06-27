@@ -81,16 +81,13 @@ class Environment(gym.Env):
         self.jammers = jammer_utils.create_jammers(self.num_jammers, self.map_matrix, self.np_random, self.config['jamming_radius'])
         self.jammer_layer = JammerLayer(self.X, self.Y, self.jammers)
         self.jammed_positions = set()
-        #self.update_jammed_areas()
 
         # Define action and observation spaces
         if self.agent_type == 'discrete':
-            #self.action_space = [spaces.Discrete(len(self.agents[0].eactions)) for _ in range(self.num_agents)]
             self.action_space = spaces.Discrete(len(self.agents[0].eactions))
         else:
             self.action_space = spaces.Dict({agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)})
 
-        #self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-20, high=20, shape=(self.obs_range, self.obs_range, 4), dtype=np.float32) for agent_id in range(self.num_agents)})
         self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32) for agent_id in range(self.num_agents)})
         print('initialiation', self.observation_space)
         # Set global state layers
@@ -100,9 +97,6 @@ class Environment(gym.Env):
         self.global_state[3] = self.jammer_layer.get_state_matrix()
         
         self.current_step = 0
-        
-        # Pygame for rendering
-        #self.render_mode = render_mode
         self.render_modes = render_mode
         self.screen = None
         pygame.init()
@@ -207,7 +201,6 @@ class Environment(gym.Env):
             # obs_half_range = obs_range // 2
             # x_start, x_end = agent_pos[0] - obs_half_range, agent_pos[0] + obs_half_range + 1
             # y_start, y_end = agent_pos[1] - obs_half_range, agent_pos[1] + obs_half_range + 1
-
             np.set_printoptions(linewidth=200)
             print(f"Agent {agent_id} Observation:")
             print(self.agents[agent_id].get_observation_state()[0])
@@ -271,21 +264,6 @@ class Environment(gym.Env):
     #need to update this, doing it for testing
     def is_episode_done(self):
         return False 
-
-
-    # def draw_agents(self):
-    #     """
-    #     Use pygame to draw agents.
-    #     REF: PettingZoo's pursuit example: PettingZoo/sisl/pursuit/pursuit_base.py
-    #     """
-    #     for i in range(self.agent_layer.n_agents()):
-    #         x, y = self.agent_layer.get_position(i)
-    #         center = (
-    #             int(self.pixel_scale * x + self.pixel_scale / 2),
-    #             int(self.pixel_scale * y + self.pixel_scale / 2),
-    #         )
-    #         col = (0, 0, 255)
-    #         pygame.draw.circle(self.screen, col, center, int(self.pixel_scale / 1.5)) 
 
     def draw_agents(self):
         """
@@ -468,10 +446,7 @@ class Environment(gym.Env):
         # Populate the observation array with data from all layers
         for layer in range(self.global_state.shape[0]):
             obs_slice = self.global_state[layer, xlo1:xhi1, ylo1:yhi1]
-            #print(agent_idx, agent_idx)
-            #print("obsslice", obs_slice)
             obs_shape = obs_slice.shape
-            #print("obs_shape", obs_slice.shape)
             if xolo != 0 and yohi == 17: 
                 pad_width = [(0,0), (self.obs_range-obs_shape[0], 0),(self.obs_range-obs_shape[1], 0)]
             elif yolo !=0 and xolo == 0:
@@ -480,12 +455,8 @@ class Environment(gym.Env):
                 pad_width = [(0,0), (0, self.obs_range-obs_shape[0]),(0, self.obs_range-obs_shape[1])]
             elif yolo == 0 and xohi == 17:
                 pad_width = [(0,0), (self.obs_range-obs_shape[0], 0),(0, self.obs_range-obs_shape[1])]
-
-            #print("pad_width", pad_width)
             obs_padded = np.pad(obs_slice, pad_width[1:], mode='constant', constant_values=-21)
-            #print("obs_padded", obs_padded)
             obs[layer, :obs_padded.shape[0], :obs_padded.shape[1]] = obs_padded
-            #print("obs", obs[layer, :obs_padded.shape[0], :obs_padded.shape[1]])
         return obs
 
     def obs_clip(self, x, y):
@@ -650,8 +621,3 @@ class Environment(gym.Env):
         env.reset()
 
         pygame.quit()
-
-
-# config_path = 'config.yaml' 
-# env = Environment(config_path)
-# Environment.run_simulation(env)
