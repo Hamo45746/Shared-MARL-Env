@@ -621,3 +621,8 @@ class Environment(gym.Env):
         env.reset()
 
         pygame.quit()
+
+
+# config_path = 'config.yaml' 
+# env = Environment(config_path)
+# Environment.run_simulation(env)

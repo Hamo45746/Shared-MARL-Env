@@ -4,11 +4,8 @@ grid_size:
   #Y: 177        # Height of the grid - UNNEEDED - get from map
   D: 4           # Number of layers in the grid (e.g., environment, targets, jammers, agent positions)
 
-# pixel_scale: 4 #Going down reduces the pixel_size, which reduces the map
-# map_scale: 0.18 #Going up makes to map larger
-
-pixel_scale: 8 #Going down reduces the pixel_size, which reduces the map
-map_scale: 0.13
+pixel_scale: 4 #Going down reduces the pixel_size, which reduces the map
+map_scale: 0.18 #Going up makes to map larger
 
 obs_range: 17 #13
 comm_range: 30 #10
