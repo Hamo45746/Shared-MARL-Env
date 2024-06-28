@@ -6,11 +6,12 @@
         # self.MOVEMENT_PENALTY = self.config['movement_penalty']
         # self.EXPLORATION_REWARD = self.config['exploration_reward']
 
-def calculate_reward(agent):
+def ta_calculate_reward(agent):
+        # Placeholder reward:
         reward = 1
         return reward 
 
-def compute_path_reward(self, agent_id, chosen_location, path_steps):
+def ta_compute_path_reward(self, agent_id, chosen_location, path_steps):
         """
         Compute the reward based on the agent's path and the encounters along it, including exploration of outdated areas.
 

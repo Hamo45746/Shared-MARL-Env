@@ -2,6 +2,7 @@ import heapq
 from discrete_agent import DiscreteAgent
 from gymnasium import spaces
 import numpy as np
+import random
 
 class TaskAllocationAgent(DiscreteAgent):
     def __init__(
@@ -18,10 +19,13 @@ class TaskAllocationAgent(DiscreteAgent):
     ):
         super().__init__(xs, ys, map_matrix, randomiser, obs_range, n_layers, seed, flatten)
         self.max_steps_per_action = max_steps_per_action
-        self.action_space = spaces.Discrete(xs * ys)  # Update the action space to the entire map matrix
         self.path = []
         self.path_index = 0
         self.steps_taken = 0
+        
+    @property
+    def action_space(self):
+        return spaces.Discrete(self.xs * self.ys)
 
     def step(self, waypoint):
         if not self.path:
@@ -47,6 +51,11 @@ class TaskAllocationAgent(DiscreteAgent):
             self.steps_taken = 0
 
         return self.current_pos
+
+    def inbuilding(self, x, y):
+        if self.map_matrix[x, y] == 0:
+            return True
+        return False
 
     def compute_path(self, start, goal):
         start = tuple(start)
@@ -108,3 +117,17 @@ class TaskAllocationAgent(DiscreteAgent):
             return True
         return False
     
+    def get_next_action(self):
+        """
+        Select a random valid waypoint as the next action.
+        Returns an integer representing the flattened index of the waypoint.
+        """
+        while True:
+            # Generate random x and y coordinates
+            x = random.randint(0, self.xs - 1)
+            y = random.randint(0, self.ys - 1)
+            
+            # Check if the selected point is valid (not in a building)
+            if not self.inbuilding(x, y):
+                # Convert the 2D coordinates to a flattened index
+                return y * self.xs + x

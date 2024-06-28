@@ -46,7 +46,7 @@ class Environment(gym.Env):
         obstacle_map = (resized_map != 0).astype(int)
         self.map_matrix = obstacle_map
         # Global state includes layers for map, agents, targets, and jammers
-        self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.float32)
+        self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.int32)
         
         # Initialise agents, targets, jammers
         # Created jammers, targets and agents at random positions if not given a position from config
@@ -67,9 +67,10 @@ class Environment(gym.Env):
         
         self.num_agents = self.config['n_agents']
         self.agent_type = self.config.get('agent_type', 'discrete')
+        # TODO: Create a agent_utils function to do this
         self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
-        
+
         # get agent id for class instance
         self.agent_name_mapping = dict(zip(self.agents, list(range(self.num_agents))))
 
@@ -165,9 +166,16 @@ class Environment(gym.Env):
             action = target.get_next_action()
             self.target_layer.move_targets(i, action)
 
+        self.target_layer.update()
+        
         # Update agent positions and layer state based on the provided actions
         for agent_id, action in actions_dict.items():
-            self.agent_layer.move_agent(agent_id, action)
+            agent = self.agents[agent_id]
+            if self.agent_type == 'task_allocation':
+                waypoint = self.action_to_waypoint(action)
+                new_pos = agent.step(waypoint)
+            else:
+                self.agent_layer.move_agent(agent_id, action)
             
             # Check if the agent touches any jammer and destroy it
             agent_pos = self.agent_layer.agents[agent_id].current_position()
@@ -176,15 +184,17 @@ class Environment(gym.Env):
                     jammer.set_destroyed()
                     self.update_jammed_areas()  # Update jammed areas after destroying the jammer
         
+        self.agent_layer.update()
+        
         self.jammer_layer.activate_jammers(self.current_step)
+        # Update jammed areas based on the current state of jammers
+        self.update_jammed_areas()
 
         # Update the global state with the new layer states
         self.global_state[1] = self.agent_layer.get_state_matrix()
         self.global_state[2] = self.target_layer.get_state_matrix()
         self.global_state[3] = self.jammer_layer.get_state_matrix()
 
-        # Update jammed areas based on the current state of jammers
-        self.update_jammed_areas()
 
         # Collect observations for each agent
         observations = {}
@@ -209,6 +219,21 @@ class Environment(gym.Env):
             # print(self.agents[agent_id].get_observation_state()[3])
         
             # print("Corresponding Map Matrix Section:")
+            # print(self.map_matrix[x_start:x_end, y_start:y_end])
+            # print("---")
+            # print(f"Agent {agent_id} Agent Layer Observation:")
+            # print(self.agents[agent_id].get_observation_state()[1])
+            # print(f"Agent {agent_id} Position: {agent_pos}")
+            # print("Corresponding env agent layer Section:")
+            # print(self.global_state[1][x_start:x_end, y_start:y_end])
+            # print("---")
+            # print("---")
+            # print(f"Agent {agent_id} Target Layer Observation:")
+            # print(self.agents[agent_id].get_observation_state()[2])
+            # print(f"Agent {agent_id} Position: {agent_pos}")
+            # print("Corresponding env target layer Section:")
+            # print(self.global_state[2][x_start:x_end, y_start:y_end])
+            # print("---")
             # # x1_start = int(x_start)
             # # x2_end =int(x_end)
             # # y1_start = int(y_start)
@@ -240,6 +265,11 @@ class Environment(gym.Env):
         info = {}
         return observations, rewards, terminated, truncated, info
     
+    def action_to_waypoint(self, action):
+        # Convert the action (which is now an index) to a waypoint (x, y) coordinate
+        x = action // self.Y
+        y = action % self.Y
+        return np.array([x, y])
 
     def draw_model_state(self):
         """
@@ -458,13 +488,19 @@ class Environment(gym.Env):
         return self.safely_observe(self.agent_name_mapping[agent])
      
      
+    # def safely_observe(self, agent_id):
+    #     obs = self.collect_obs(self.agent_layer, agent_id)
+    #     obs = np.where(obs == -np.inf, -1e10, obs)
+    #     obs = obs.transpose((1,2,0))
+    #     obs = np.clip(obs, self.observation_space[agent_id].low, self.observation_space[agent_id].high)
+    #     return obs
+    
     def safely_observe(self, agent_id):
         obs = self.collect_obs(self.agent_layer, agent_id)
         #obs = np.where(obs == -np.inf, -1e10, obs)
         obs = obs.transpose((0,2,1))
         obs = np.clip(obs, self.observation_space[agent_id].low, self.observation_space[agent_id].high)
         return obs
-    
 
     def collect_obs(self, agent_layer, agent_id):
         return self.collect_obs_by_idx(agent_layer, agent_id)
@@ -477,16 +513,16 @@ class Environment(gym.Env):
         xp, yp = agent_layer.get_position(agent_idx)
         # Calculate bounds for the observation
         xlo, xhi, ylo, yhi, xolo, xohi, yolo, yohi = self.obs_clip(xp, yp)
-
+        
         xlo1 = int(xlo)
         xhi1 = int(xhi)
         ylo1 = int(ylo)
         yhi1 = int(yhi)
-        xolo1 = int(xolo)
-        xohi1 = int(xohi)
-        yolo1 = int(yolo)
-        yohi1 = int(yohi)
-
+        xolo = int(xolo)
+        xohi = int(xohi)
+        yolo = int(yolo)
+        yohi = int(yohi)
+        
         # Populate the observation array with data from all layers
         for layer in range(self.global_state.shape[0]):
             obs_slice = self.global_state[layer, xlo1:xhi1, ylo1:yhi1]
@@ -518,48 +554,73 @@ class Environment(gym.Env):
         xohi, yohi = xolo + (xhi - xlo), yolo + (yhi - ylo)
         return xlo, xhi + 1, ylo, yhi + 1, xolo, xohi + 1, yolo, yohi + 1
 
-    
     def share_and_update_observations(self):
         """
-        Updates each agent's internal observation state and internal local (entire env) state.
-        Will merge current observations of agents within communication range into each agent's local state.
+        Updates each agent classes internal observation state and internal local (entire env) state.
+        Will merge current observations of agents within communication range into each agents local state.
         This function should be run in the step function.
         """
-
-        np.set_printoptions(threshold=np.inf, linewidth=np.inf) #THIS is for testing 
-
-        for i, agent in enumerate(self.agents):
+        for i, agent in enumerate(self.agent_layer.agents):
+            # safely_observe returns the current observation of agent i - but that should be called before this function
             current_obs = agent.get_observation_state()
             current_pos = agent.current_position()
-            print(f"Agent {i} local state before communication:")
-
-            for j, other_agent in enumerate(self.agents):
+            # agent.set_observation_state(current_obs)
+            for j, other_agent in enumerate(self.agent_layer.agents):
                 if i != j:
                     other_pos = other_agent.current_position()
-                    if self.within_comm_range(current_pos, other_pos):
-                        if not self.is_comm_blocked(i):
-                            print(f"Agent {i} is communicating with Agent {j}")
+                    agent_id = self.agent_name_mapping[agent]
+                    other_agent_id = self.agent_name_mapping[other_agent]
+                    if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(other_agent_id):
+                        other_agent.update_local_state(current_obs, current_pos)
+    
+    # IDK which of the two of these works best
+    # def share_and_update_observations(self):
+    #     """
+    #     Updates each agent's internal observation state and internal local (entire env) state.
+    #     Will merge current observations of agents within communication range into each agent's local state.
+    #     This function should be run in the step function.
+    #     """
+    #     # Set NumPy print options to display the entire array
+    #     np.set_printoptions(threshold=np.inf, linewidth=np.inf)
+        
+    #     for i, agent in enumerate(self.agents):
+    #         current_obs = agent.get_observation_state()
+    #         current_pos = agent.current_position()
 
-                            # Print the other agent's observation
-                            print(f"Agent {j}'s observation:")
-                            print(other_agent.get_observation_state())
-
-                            # Print the section of the agent's local state before communication
-                            print(f"Agent {i} local state at Agent {j}'s observation location before communication:")
-                            self.print_local_state_section(agent, other_pos)
-
-                            other_agent.update_local_state(current_obs, current_pos)
-
-                            # Print the section of the agent's local state after communication
-                            print(f"Agent {i} local state at Agent {j}'s observation location after communication:")
-                            self.print_local_state_section(agent, other_pos)
-                            print("---")
-                        else:
-                           print(f"Agent {i} is within a jammed area and cannot communicate with Agent {j}")
-                    else:
-                        print(f"Agent {i} is out of communication range with Agent {j}")
-                    if self.is_comm_blocked(i):
-                        print("comm is blocked")
+    #         for j, other_agent in enumerate(self.agents):
+    #             if i != j:
+    #                 other_pos = other_agent.current_position()
+    #                 if self.within_comm_range(current_pos, other_pos):
+    #                     if not self.is_comm_blocked(i):
+    #                         print(f"Agent {i} is communicating with Agent {j}")
+                            
+    #                         # Print the other agent's observation
+    #                         print(f"Agent {j}'s observation:")
+    #                         print(other_agent.get_observation_state())
+                            
+    #                         # Print the section of the agent's local state before communication
+    #                         print(f"Agent {i} local state at Agent {j}'s observation location before communication:")
+    #                         self.print_local_state_section(agent, other_pos)
+                            
+    #                         other_agent.update_local_state(current_obs, current_pos)
+                            
+    #                         # Print the section of the agent's local state after communication
+    #                         print(f"Agent {i} local state at Agent {j}'s observation location after communication:")
+    #                         self.print_local_state_section(agent, other_pos)
+    #                         print("---")
+    #                     else:
+    #                         print(f"Agent {i} is within a jammed area and cannot communicate with Agent {j}")
+                            
+    #                         # Print the other agent's observation
+    #                         print(f"Agent {j}'s observation:")
+    #                         print(other_agent.get_observation_state())
+                            
+    #                         # Print the section of the agent's local state
+    #                         print(f"Agent {i} local state at Agent {j}'s observation location:")
+    #                         self.print_local_state_section(agent, other_pos)
+    #                         print("---")
+    #                 else:
+    #                     print(f"Agent {i} is out of communication range with Agent {j}")
 
     def print_local_state_section(self, agent, other_pos):
         """
@@ -567,8 +628,8 @@ class Environment(gym.Env):
         """
         obs_range = self.obs_range
         obs_half_range = obs_range // 2
-        x_start, x_end = other_pos[0] - obs_half_range*2, other_pos[0] + obs_half_range*2 + 1
-        y_start, y_end = other_pos[1] - obs_half_range*2, other_pos[1] + obs_half_range*2 + 1
+        x_start, x_end = other_pos[0] - obs_half_range, other_pos[0] + obs_half_range + 1
+        y_start, y_end = other_pos[1] - obs_half_range, other_pos[1] + obs_half_range + 1
 
         x_start = int(x_start)
         x_end = int(x_end)

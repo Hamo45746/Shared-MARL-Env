@@ -65,8 +65,8 @@ class DiscreteAgent(Agent):
         # Initialise the local observation state
         self._obs_range = obs_range
         self.X, self.Y = self.map_matrix.shape
-        self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-np.inf)
-        self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-np.inf)
+        self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-20)
+        self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20)
         
         if flatten:
             self._obs_shape = (n_layers * obs_range**2 + 1,)
@@ -76,11 +76,11 @@ class DiscreteAgent(Agent):
 
     @property
     def observation_space(self):
-        return spaces.Box(low=-np.inf, high=np.inf, shape=self._obs_shape)
+        return spaces.Box(low=-20, high=1, shape=self._obs_shape)
 
     @property
     def action_space(self):
-        return spaces.Discrete(5)
+        return spaces.Discrete(9)
 
     # Dynamics Functions
     def step(self, a):
@@ -150,18 +150,29 @@ class DiscreteAgent(Agent):
 
         # Iterate through each layer in the observed_state
         for layer in range(observed_state.shape[0]):
-            # Iterate through each cell in the observed state grid
-            for dx in range(-obs_half_range, obs_half_range + 1):
-                for dy in range(-obs_half_range, obs_half_range + 1):
-                    global_x = observer_x + dx
-                    global_y = observer_y + dy
-
-                    # Check bounds and update the local state within bounds
-                    if self.inbounds(global_x, global_y):
-                        obs_x = obs_half_range + dx
-                        obs_y = obs_half_range + dy
-                        # Update the specific layer at the global position with the observed data
-                        self.local_state[layer, global_x, global_y] = observed_state[layer, obs_x, obs_y]
+            if layer == 0:  # Layer 0 (map matrix)
+                # Directly assign the observed map matrix to the local state
+                for dx in range(-obs_half_range, obs_half_range + 1):
+                    for dy in range(-obs_half_range, obs_half_range + 1):
+                        global_x = observer_x + dx
+                        global_y = observer_y + dy
+                        if self.inbounds(global_x, global_y):
+                            obs_x = obs_half_range + dx
+                            obs_y = obs_half_range + dy
+                            self.local_state[layer, global_x, global_y] = observed_state[layer, obs_x, obs_y]
+            else:
+                # Update the remaining layers with decrement
+                for dx in range(-obs_half_range, obs_half_range + 1):
+                    for dy in range(-obs_half_range, obs_half_range + 1):
+                        global_x = observer_x + dx
+                        global_y = observer_y + dy
+                        if self.inbounds(global_x, global_y):
+                            obs_x = obs_half_range + dx
+                            obs_y = obs_half_range + dy
+                            if observed_state[layer, obs_x, obs_y] == 0:
+                                self.local_state[layer, global_x, global_y] = 0
+                            elif self.local_state[layer, global_x, global_y] > -20:
+                                self.local_state[layer, global_x, global_y] = max(self.local_state[layer, global_x, global_y] - 1, -20)
                             
     def set_observation_state(self, observation):
         self.observation_state = observation
@@ -190,4 +201,3 @@ class DiscreteAgent(Agent):
         if self.inbuilding(x,y):
             print("grrrrrr")
         return a
-
