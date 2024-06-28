@@ -145,7 +145,6 @@ class Environment(gym.Env):
         self.global_state[1] = self.agent_layer.get_state_matrix()
         self.global_state[2] = self.target_layer.get_state_matrix()
         self.global_state[3] = self.jammer_layer.get_state_matrix()
-        
         self.current_step = 0
 
         observations = {}
@@ -201,6 +200,7 @@ class Environment(gym.Env):
             # obs_half_range = obs_range // 2
             # x_start, x_end = agent_pos[0] - obs_half_range, agent_pos[0] + obs_half_range + 1
             # y_start, y_end = agent_pos[1] - obs_half_range, agent_pos[1] + obs_half_range + 1
+
             print(f"Agent {agent_id} Position: {agent_pos}")
             np.set_printoptions(linewidth=200)
             print(f"Agent {agent_id} Observation:")
@@ -325,7 +325,7 @@ class Environment(gym.Env):
             col = (0, 255, 0)
             pygame.draw.circle(self.screen, col, center, int(self.pixel_scale / 1.5))
             # Draw jamming radius
-            jamming_radius_pixels = jammer.radius * self.pixel_scale  # Converting jamming radius to pixels
+            jamming_radius_pixels = jammer.radius*2 * self.pixel_scale  # Converting jamming radius to pixels
             # Semi-transparent green ellipse for jamming radius
             jamming_area = pygame.Rect(center[0] - jamming_radius_pixels / 2,
                                        center[1] - jamming_radius_pixels / 2,
@@ -355,6 +355,49 @@ class Environment(gym.Env):
                     self.pixel_scale * (y - ofst + 1 / 2),
                 ),
             )
+
+    #Still working on this function - Trying to make it work to show all observed area 
+    def draw_all_agents_observations(self):
+
+        observed_positions = set()
+        for agent in self.agent_layer.agents:
+            #observed_positions = (agent.local_state<=0) & (agent.local_state > -20)
+            observed_positions = (agent.local_state[0]==0) | (agent.local_state[0] == -1)
+
+        observed_positions_2 = agent.local_state[observed_positions]
+        print(observed_positions_2)
+
+        for x, y in observed_positions_2:
+            pos = pygame.Rect(
+                self.pixel_scale * x, 
+                self.pixel_scale * y,
+                self.pixel_scale, 
+                self.pixel_scale
+            )
+            col = (0 ,0, 225)
+            pygame.draw.rect(self.screen, col, pos)
+            
+    def draw_agent_communication_range(self):
+        """
+        Use pygame to draw jammers and jamming regions.
+        REF: PettingZoo's pursuit example: PettingZoo/sisl/pursuit/pursuit_base.py
+        """
+        # Where self.jammers is a list of jammer class objects
+        for i in range(self.agent_layer.n_agents()):
+            x, y = self.agent_layer.get_position(i)
+            center = (
+                int(self.pixel_scale * x + self.pixel_scale / 2),
+                int(self.pixel_scale * y + self.pixel_scale / 2),
+            )
+            # Draw jamming radius
+            comms_radius_pixels = self.comm_range * self.pixel_scale  # Converting jamming radius to pixels
+            # Semi-transparent green ellipse for jamming radius
+            comms_area = pygame.Rect(center[0] - comms_radius_pixels / 2,
+                                       center[1] - comms_radius_pixels / 2,
+                                       comms_radius_pixels,
+                                       comms_radius_pixels
+                                    )
+            pygame.draw.ellipse(self.screen, (72, 152, 255, 128), comms_area, width=1)
     
     
     def render(self, mode="human") -> None | np.ndarray | str | list:
@@ -379,6 +422,7 @@ class Environment(gym.Env):
         self.draw_targets()
         self.draw_agents()
         self.draw_agents_observations()
+        self.draw_agent_communication_range()
         self.draw_jammers()
 
         observation = pygame.surfarray.pixels3d(self.screen)
@@ -486,7 +530,7 @@ class Environment(gym.Env):
             current_obs = agent.get_observation_state()
             current_pos = agent.current_position()
 
-            #print(f"Agent {i} local state before communication:")
+            print(f"Agent {i} local state before communication:")
             #print(agent.local_state)
 
             for j, other_agent in enumerate(self.agents):
@@ -494,22 +538,24 @@ class Environment(gym.Env):
                     other_pos = other_agent.current_position()
                     if self.within_comm_range(current_pos, other_pos):
                         if not self.is_comm_blocked(i):
-                            #print(f"Agent {i} is communicating with Agent {j}")
+                            print(f"Agent {i} is communicating with Agent {j}")
                             other_agent.update_local_state(current_obs, current_pos)
-                        #else:
-                           #print(f"Agent {i} is within a jammed area and cannot communicate with Agent {j}")
-                    #else:
-                        #print(f"Agent {i} is out of communication range with Agent {j}")
+                        else:
+                           print(f"Agent {i} is within a jammed area and cannot communicate with Agent {j}")
+                    else:
+                        print(f"Agent {i} is out of communication range with Agent {j}")
+                    if self.is_comm_blocked(i):
+                        print("comm is blocked")
 
             #print(f"Agent {i} local state after communication:")
             #print(agent.local_state)
-            #print("---")
+            print("---")
     
     
     def within_comm_range(self, agent1, agent2):
         """Checks two agents are within communication range. Assumes constant comm range for all agents."""
         distance = np.linalg.norm(np.array(agent1) - np.array(agent2))
-        return distance <= self.comm_range
+        return distance <= self.comm_range/2
     
     
     def is_comm_blocked(self, agent_id):
@@ -522,7 +568,10 @@ class Environment(gym.Env):
         Returns:
         - bool: True if communication is blocked, False otherwise.
         """
-        agent_pos = self.agent_layer.agents[agent_id].current_position()
+        x, y = self.agent_layer.agents[agent_id].current_position()
+        x_int = int(x)
+        y_int = int(y)
+        agent_pos = x_int, y_int
         return tuple(agent_pos) in self.jammed_positions
     
     
@@ -597,10 +646,11 @@ class Environment(gym.Env):
         np.random.seed(seed)
         random.seed(seed)
 
-    def run_simulation(env, max_steps=21):
+    def run_simulation(env, max_steps=10):
         running = True
         step_count = 0
         while running and step_count < max_steps:
+            print(step_count)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False

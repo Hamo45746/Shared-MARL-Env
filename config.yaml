@@ -8,9 +8,9 @@ pixel_scale: 4 #Going down reduces the pixel_size, which reduces the map
 map_scale: 0.18 #Going up makes to map larger
 
 obs_range: 17 #13
-comm_range: 30 #10
-#agent_type: 'discrete'
-agent_type: 'continuous'
+comm_range: 40 #10 ---- this is actually diameter 
+agent_type: 'discrete'
+#agent_type: 'continuous'
 
 map_path: 'city_image_1.npy'
 #map_path: 'city_image_2.npy'
@@ -19,9 +19,9 @@ map_path: 'city_image_1.npy'
 n_agents: 5
 n_targets: 10
 n_jammers: 3
-jamming_radius: 30
+jamming_radius: 20 #This is radius, in comparison to comms_range. That is why it is a smaller value then comms_range, but looks bigger relitivly.  
 
-seed: 5
+seed: 9
 
 # Example locations
 #agent_positions:
