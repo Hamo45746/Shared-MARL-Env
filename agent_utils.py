@@ -1,7 +1,9 @@
 from discrete_agent import DiscreteAgent
 from continuous_agent import ContinuousAgent
+from task_allocation_agent import TaskAllocationAgent
 from target import Target
 import numpy as np
+
 
 def create_agents(nagents, map_matrix, obs_range, randomiser, pos_list=None, agent_type='discrete', flatten=False, randinit=False, constraints=None):
     """Initializes the agents on a map (map_matrix).
@@ -17,7 +19,9 @@ def create_agents(nagents, map_matrix, obs_range, randomiser, pos_list=None, age
     # Precompute feasible positions
     feasible_positions = get_feasible_positions(map_matrix)#, expanded_mat)
     if agent_type == 'discrete':
-        agent_class = DiscreteAgent  
+        agent_class = DiscreteAgent
+    elif agent_type == 'task_allocation':
+        agent_class = TaskAllocationAgent  
     else: 
         agent_class = ContinuousAgent
 
@@ -28,9 +32,12 @@ def create_agents(nagents, map_matrix, obs_range, randomiser, pos_list=None, age
         elif randinit and feasible_positions:
             idx = randomiser.integers(0, len(feasible_positions))
             xinit, yinit = feasible_positions.pop(idx)  # Remove to avoid reuse
+            
+        if agent_type == 'task_allocation':
+            agent = agent_class(xs, ys, map_matrix, randomiser, obs_range=obs_range, flatten=flatten, max_steps_per_action=5)
         else:
-            xinit, yinit = 0, 0
-        agent = agent_class(xs, ys, map_matrix, randomiser, obs_range=obs_range, flatten=flatten)
+            agent = agent_class(xs, ys, map_matrix, randomiser, obs_range=obs_range, flatten=flatten)
+            
         agent.set_position(xinit, yinit)
         agents.append(agent)
     return agents

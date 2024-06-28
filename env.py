@@ -66,11 +66,10 @@ class Environment(gym.Env):
         
         self.num_agents = self.config['n_agents']
         self.agent_type = self.config.get('agent_type', 'discrete')
+        # TODO: Create a agent_utils function to do this
         self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
-        print("Initial agent positions:")
-        for i, agent in enumerate(self.agents):
-            print(f"Agent {i}: {agent.current_position()}")
+
         # get agent id for class instance
         self.agent_name_mapping = dict(zip(self.agents, list(range(self.num_agents))))
 
@@ -176,7 +175,12 @@ class Environment(gym.Env):
         
         # Update agent positions and layer state based on the provided actions
         for agent_id, action in actions_dict.items():
-            self.agent_layer.move_agent(agent_id, action)
+            agent = self.agents[agent_id]
+            if self.agent_type == 'task_allocation':
+                waypoint = self.action_to_waypoint(action)
+                new_pos = agent.step(waypoint)
+            else:
+                self.agent_layer.move_agent(agent_id, action)
             
             # Check if the agent touches any jammer and destroy it
             agent_pos = self.agent_layer.agents[agent_id].current_position()
@@ -195,7 +199,6 @@ class Environment(gym.Env):
         self.global_state[1] = self.agent_layer.get_state_matrix()
         self.global_state[2] = self.target_layer.get_state_matrix()
         self.global_state[3] = self.jammer_layer.get_state_matrix()
-
 
 
         # Collect observations for each agent
@@ -217,12 +220,19 @@ class Environment(gym.Env):
             # print(f"Agent {agent_id} Position: {agent_pos}")
             # print("Corresponding Map Matrix Section:")
             # print(self.map_matrix[x_start:x_end, y_start:y_end])
-            print("---")
-            print(f"Agent {agent_id} Agent Layer Observation:")
-            print(self.agents[agent_id].get_observation_state()[1])
-            print(f"Agent {agent_id} Position: {agent_pos}")
+            # print("---")
+            # print(f"Agent {agent_id} Agent Layer Observation:")
+            # print(self.agents[agent_id].get_observation_state()[1])
+            # print(f"Agent {agent_id} Position: {agent_pos}")
             # print("Corresponding env agent layer Section:")
             # print(self.global_state[1][x_start:x_end, y_start:y_end])
+            # print("---")
+            # print("---")
+            # print(f"Agent {agent_id} Target Layer Observation:")
+            # print(self.agents[agent_id].get_observation_state()[2])
+            # print(f"Agent {agent_id} Position: {agent_pos}")
+            # print("Corresponding env target layer Section:")
+            # print(self.global_state[2][x_start:x_end, y_start:y_end])
             # print("---")
 
         # Share and update observations among agents within communication range
@@ -245,6 +255,12 @@ class Environment(gym.Env):
         # Create the info dictionary (idk if needed?)
         info = {}
         return observations, rewards, done, info
+    
+    def action_to_waypoint(self, action):
+        # Convert the action (which is now an index) to a waypoint (x, y) coordinate
+        x = action // self.Y
+        y = action % self.Y
+        return np.array([x, y])
 
     def draw_model_state(self):
         """
@@ -649,7 +665,7 @@ class Environment(gym.Env):
             env.render()  # Render the current state to the screen
 
             pygame.display.flip()  # Update the full display Surface to the screen
-            pygame.time.wait(100)  # Wait some time so it's visually comprehensible
+            # pygame.time.wait(100)  # Wait some time so it's visually comprehensible
 
             step_count += 1
 
@@ -658,4 +674,4 @@ class Environment(gym.Env):
 
 config_path = 'config.yaml' 
 env = Environment(config_path)
-Environment.run_simulation(env, 5)
+Environment.run_simulation(env, 100)

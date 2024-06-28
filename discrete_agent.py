@@ -57,7 +57,6 @@ class DiscreteAgent(BaseAgent):
 
     # Dynamics Functions
     def step(self, a):
-        print(f"Old pos: {self.current_pos}")
         cpos = self.current_pos
         lpos = self.last_pos
         # if dead or reached goal dont move
@@ -87,7 +86,6 @@ class DiscreteAgent(BaseAgent):
         cpos[1] = y
         self.current_pos = cpos
         self.last_pos = lpos
-        print(f"New pos: {cpos}")
         return cpos
 
     def get_state(self):

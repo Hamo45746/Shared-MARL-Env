@@ -26,5 +26,4 @@ class AgentController:
             agent.step(action)
 
     def calculate_reward(agent):
-        reward = reward.reward_calulation(agent)
-        return reward 
+        return reward.reward_calulation(agent)
