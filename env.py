@@ -14,6 +14,7 @@ from Continuous_controller.agent_controller import AgentController
 from Discrete_controller.agent_controller import DiscreteAgentController
 from Continuous_controller.reward import calculate_continuous_reward
 from gymnasium import spaces
+from path_processor import PathProcessor
 
 
 class Environment(gym.Env):
@@ -64,11 +65,19 @@ class Environment(gym.Env):
             target_goals = [tuple(pos) for pos in self.config['target_goals']]
         else:
             target_goals = None
-        
+                    
         self.num_agents = self.config['n_agents']
         self.agent_type = self.config.get('agent_type', 'discrete')
-        # TODO: Create a agent_utils function to do this
-        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, agent_type=self.agent_type, randinit=True)
+        
+        if self.agent_type == 'task_allocation':
+            # Assumes static environment map
+            self.path_processor = PathProcessor(self.map_matrix, self.X, self.Y)
+            self.agent_paths = {agent_id: [] for agent_id in range(self.num_agents)}
+            self.agent_waypoints = {agent_id: None for agent_id in range(self.num_agents)}
+        else:
+            self.path_processor = None
+
+        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, self.path_processor, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
 
         # get agent id for class instance
@@ -140,6 +149,16 @@ class Environment(gym.Env):
         self.jammer_layer = JammerLayer(self.X, self.Y, self.jammers)
         
         self.jammed_positions = set()
+        
+        # if self.agent_type == 'task_allocation':
+        #     # Reset action spaces for all agents
+        #     for agent in self.agents:
+        #         agent.reset_action_space()
+
+        #     # Update the environment's action space
+        #     self.action_space = spaces.Dict({
+        #         agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)
+        #     })
 
         # Update layers in global state
         self.global_state[1] = self.agent_layer.get_state_matrix()
@@ -155,12 +174,186 @@ class Environment(gym.Env):
             observations[agent_id] = obs
 
         return observations, info
-            
+
     def step(self, actions_dict):
-        # Need to update target position in target_layer, and target class itself
-        # Ensure three variables receive update: self.targets for each target class, self.target_layer state, target objects in target list within target_layer 
-        # Update current_position in each target instance, should be same target instance stored in self.targets and self.target_layer.targets.
-        # Then do target_layer.update() to update its representation of the current state. - same for agent
+        if self.agent_type == 'task_allocation':
+            return self.task_allocation_step(actions_dict)
+        else:
+            return self.regular_step(actions_dict)
+            
+    # OLD STEP FUNC
+    # def regular_step(self, actions_dict): 
+    #     # Need to update target position in target_layer, and target class itself
+    #     # Ensure three variables receive update: self.targets for each target class, self.target_layer state, target objects in target list within target_layer 
+    #     # Update current_position in each target instance, should be same target instance stored in self.targets and self.target_layer.targets.
+    #     # Then do target_layer.update() to update its representation of the current state. - same for agent
+    #     # Update target positions and layer state
+    #     for i, target in enumerate(self.target_layer.targets):
+    #         action = target.get_next_action()
+    #         self.target_layer.move_targets(i, action)
+
+    #     self.target_layer.update()
+        
+    #     # Update agent positions and layer state based on the provided actions
+    #     for agent_id, action in actions_dict.items():
+    #         agent = self.agents[agent_id]
+    #         self.agent_layer.move_agent(agent_id, action)
+            
+    #         # Check if the agent touches any jammer and destroy it
+    #         agent_pos = self.agent_layer.agents[agent_id].current_position()
+    #         for jammer in self.jammers:
+    #             if not jammer.get_destroyed() and jammer.current_position() == tuple(agent_pos):
+    #                 jammer.set_destroyed()
+    #                 self.update_jammed_areas()  # Update jammed areas after destroying the jammer
+        
+    #     self.agent_layer.update()
+        
+    #     self.jammer_layer.activate_jammers(self.current_step)
+    #     # Update jammed areas based on the current state of jammers
+    #     self.update_jammed_areas()
+
+    #     # Update the global state with the new layer states
+    #     self.global_state[1] = self.agent_layer.get_state_matrix()
+    #     self.global_state[2] = self.target_layer.get_state_matrix()
+    #     self.global_state[3] = self.jammer_layer.get_state_matrix()
+
+
+    #     # Collect observations for each agent
+    #     observations = {}
+    #     for agent_id in range(self.num_agents):
+    #         obs = self.safely_observe(agent_id)
+    #         self.agent_layer.agents[agent_id].set_observation_state(obs)
+    #         observations[agent_id] = obs
+            
+    #         #DEBUGGING: Print the agent's observation and corresponding section of map matrix
+    #         agent_pos = self.agents[agent_id].current_position()
+    #         # obs_range = self.obs_range
+    #         # obs_half_range = obs_range // 2
+    #         # x_start, x_end = agent_pos[0] - obs_half_range, agent_pos[0] + obs_half_range + 1
+    #         # y_start, y_end = agent_pos[1] - obs_half_range, agent_pos[1] + obs_half_range + 1
+
+    #         # print(f"Agent {agent_id} Position: {agent_pos}")
+    #         # np.set_printoptions(linewidth=200)
+    #         # print(f"Agent {agent_id} Observation:")
+    #         # print(self.agents[agent_id].get_observation_state()[0])
+    #         # print(self.agents[agent_id].get_observation_state()[1])
+    #         # print(self.agents[agent_id].get_observation_state()[2])
+    #         # print(self.agents[agent_id].get_observation_state()[3])
+        
+    #         # print("Corresponding Map Matrix Section:")
+    #         # print(self.map_matrix[x_start:x_end, y_start:y_end])
+    #         # print("---")
+    #         # print(f"Agent {agent_id} Agent Layer Observation:")
+    #         # print(self.agents[agent_id].get_observation_state()[1])
+    #         # print(f"Agent {agent_id} Position: {agent_pos}")
+    #         # print("Corresponding env agent layer Section:")
+    #         # print(self.global_state[1][x_start:x_end, y_start:y_end])
+    #         # print("---")
+    #         # print("---")
+    #         # print(f"Agent {agent_id} Target Layer Observation:")
+    #         # print(self.agents[agent_id].get_observation_state()[2])
+    #         # print(f"Agent {agent_id} Position: {agent_pos}")
+    #         # print("Corresponding env target layer Section:")
+    #         # print(self.global_state[2][x_start:x_end, y_start:y_end])
+    #         # print("---")
+    #         # # x1_start = int(x_start)
+    #         # # x2_end =int(x_end)
+    #         # # y1_start = int(y_start)
+    #         # # y2_end = int(y_end)
+    #         # # print(self.map_matrix[x1_end:x2_end, y1_start:y2_end])
+    #         # # print("---")
+            
+
+    #     # Share and update observations among agents within communication range
+    #     self.share_and_update_observations() # TODO: Test this function works correctly
+
+    #     # Calc rewards for each agent
+    #     rewards = {}
+    #     for agent_id in range(self.num_agents):
+    #         agent = self.agent_layer.agents[agent_id]
+    #         if self.agent_type == "discrete":
+    #             reward = DiscreteAgentController.calculate_reward(agent)
+    #         elif self.agent_type == "task_allocation":
+    #             reward = DiscreteAgentController.calculate_reward(agent) # TODO: PLACEHOLDER
+    #         else: 
+    #             agent_pos = agent.current_position()
+    #             reward = calculate_continuous_reward(agent, self)  # Implement the reward calculation logic in a separate function, depends on agent type
+    #         rewards[agent_id] = reward
+            
+    #     self.current_step += 1
+        
+    #     # Determine if the episode is done (implement termination conditions here)
+    #     terminated = self.is_episode_done()
+    #     truncated = self.is_episode_done()
+    #     # Create the info dictionary (idk if needed?)
+    #     info = {}
+    #     return observations, rewards, terminated, truncated, info
+    
+    def task_allocation_step(self, actions_dict):
+        print("\nStarting task_allocation_step")
+        print(f"Current agent positions: {[tuple(self.agent_layer.get_position(i)) for i in range(self.num_agents)]}")
+    
+        for agent_id, action in actions_dict.items():
+            agent = self.agents[agent_id]
+            start = tuple(self.agent_layer.get_position(agent_id))
+            goal = agent.action_to_waypoint(action)  # Use the agent's method to convert action to waypoint
+            print(f"\nAgent {agent_id}:")
+            print(f"  Current position: {start}")
+            print(f"  Goal position: {goal}")
+            
+            new_path = self.path_processor.get_path(start, goal)
+            self.agent_paths[agent_id] = new_path
+            
+            print(f"  Path length: {len(new_path)}")
+            if len(new_path) > 0:
+                print(f"  First few steps: {new_path[:min(5, len(new_path))]}")
+            else:
+                print("  Empty path!")
+
+        # Find the maximum path length
+        max_path_length = max(len(path) for path in self.agent_paths.values())
+
+        # Move agents and targets for max_path_length steps
+        for step in range(max_path_length):
+            # Move agents
+            for agent_id in actions_dict.keys():
+                if self.agent_paths[agent_id]:
+                    next_pos = self.agent_paths[agent_id].pop(0)
+                    self.agent_layer.set_position(agent_id, next_pos[0], next_pos[1])
+                    # self.agents[agent_id].reset_action_space()
+
+            # Move all targets
+            for target in self.target_layer.targets:
+                action = target.get_next_action()
+                self.target_layer.move_targets(self.target_layer.targets.index(target), action)
+            
+            self.target_layer.update()
+            self.agent_layer.update()
+            
+            # Update observations and communicate
+            self.update_observations()
+            self.share_and_update_observations()
+
+            # Update jammed areas and global state
+            self.jammer_layer.activate_jammers(self.current_step)
+            self.update_jammed_areas()
+            self.update_global_state()
+            
+            # Check for jammer destruction
+            self.check_jammer_destruction()
+            self.render()
+            self.current_step += 1
+
+        # Collect final local states and calculate rewards
+        local_states, rewards = self.collect_local_states_and_rewards()
+        
+        terminated = self.is_episode_done()
+        truncated = self.is_episode_done()
+        info = {}
+        print("End of task_allocation_step")
+        return local_states, rewards, terminated, truncated, info
+    
+    def regular_step(self, actions_dict):
         # Update target positions and layer state
         for i, target in enumerate(self.target_layer.targets):
             action = target.get_next_action()
@@ -170,106 +363,83 @@ class Environment(gym.Env):
         
         # Update agent positions and layer state based on the provided actions
         for agent_id, action in actions_dict.items():
-            agent = self.agents[agent_id]
-            if self.agent_type == 'task_allocation':
-                waypoint = self.action_to_waypoint(action)
-                new_pos = agent.step(waypoint)
-            else:
-                self.agent_layer.move_agent(agent_id, action)
-            
-            # Check if the agent touches any jammer and destroy it
-            agent_pos = self.agent_layer.agents[agent_id].current_position()
-            for jammer in self.jammers:
-                if not jammer.get_destroyed() and jammer.current_position() == tuple(agent_pos):
-                    jammer.set_destroyed()
-                    self.update_jammed_areas()  # Update jammed areas after destroying the jammer
+            self.agent_layer.move_agent(agent_id, action)
         
         self.agent_layer.update()
         
+        # Update observations and communicate
+        self.update_observations()
+        self.share_and_update_observations()
+        
         self.jammer_layer.activate_jammers(self.current_step)
-        # Update jammed areas based on the current state of jammers
         self.update_jammed_areas()
+        self.check_jammer_destruction()
 
         # Update the global state with the new layer states
-        self.global_state[1] = self.agent_layer.get_state_matrix()
-        self.global_state[2] = self.target_layer.get_state_matrix()
-        self.global_state[3] = self.jammer_layer.get_state_matrix()
+        self.update_global_state()
 
+        # Collect final local states and calculate rewards
+        local_states, rewards = self.collect_local_states_and_rewards()
+        
+        self.current_step += 1
+        
+        terminated = self.is_episode_done()
+        truncated = self.is_episode_done()
+        info = {}
+        
+        return local_states, rewards, terminated, truncated, info
 
-        # Collect observations for each agent
-        observations = {}
+    def update_observations(self):
         for agent_id in range(self.num_agents):
             obs = self.safely_observe(agent_id)
             self.agent_layer.agents[agent_id].set_observation_state(obs)
-            observations[agent_id] = obs
-            
-            #DEBUGGING: Print the agent's observation and corresponding section of map matrix
-            agent_pos = self.agents[agent_id].current_position()
-            # obs_range = self.obs_range
-            # obs_half_range = obs_range // 2
-            # x_start, x_end = agent_pos[0] - obs_half_range, agent_pos[0] + obs_half_range + 1
-            # y_start, y_end = agent_pos[1] - obs_half_range, agent_pos[1] + obs_half_range + 1
 
-            # print(f"Agent {agent_id} Position: {agent_pos}")
-            # np.set_printoptions(linewidth=200)
-            # print(f"Agent {agent_id} Observation:")
-            # print(self.agents[agent_id].get_observation_state()[0])
-            # print(self.agents[agent_id].get_observation_state()[1])
-            # print(self.agents[agent_id].get_observation_state()[2])
-            # print(self.agents[agent_id].get_observation_state()[3])
-        
-            # print("Corresponding Map Matrix Section:")
-            # print(self.map_matrix[x_start:x_end, y_start:y_end])
-            # print("---")
-            # print(f"Agent {agent_id} Agent Layer Observation:")
-            # print(self.agents[agent_id].get_observation_state()[1])
-            # print(f"Agent {agent_id} Position: {agent_pos}")
-            # print("Corresponding env agent layer Section:")
-            # print(self.global_state[1][x_start:x_end, y_start:y_end])
-            # print("---")
-            # print("---")
-            # print(f"Agent {agent_id} Target Layer Observation:")
-            # print(self.agents[agent_id].get_observation_state()[2])
-            # print(f"Agent {agent_id} Position: {agent_pos}")
-            # print("Corresponding env target layer Section:")
-            # print(self.global_state[2][x_start:x_end, y_start:y_end])
-            # print("---")
-            # # x1_start = int(x_start)
-            # # x2_end =int(x_end)
-            # # y1_start = int(y_start)
-            # # y2_end = int(y_end)
-            # # print(self.map_matrix[x1_end:x2_end, y1_start:y2_end])
-            # # print("---")
-            
-
-        # Share and update observations among agents within communication range
-        self.share_and_update_observations() # TODO: Test this function works correctly
-
-        # Calc rewards for each agent
+    def collect_local_states_and_rewards(self):
+        local_states = {}
         rewards = {}
         for agent_id in range(self.num_agents):
             agent = self.agent_layer.agents[agent_id]
+            local_states[agent_id] = agent.get_state()  # This returns the local_state
+            
             if self.agent_type == "discrete":
                 reward = DiscreteAgentController.calculate_reward(agent)
+            elif self.agent_type == "task_allocation":
+                reward = DiscreteAgentController.calculate_reward(agent)  # TODO: Implement task allocation reward
             else: 
-                agent_pos = agent.current_position()
-                reward = calculate_continuous_reward(agent, self)  # Implement the reward calculation logic in a separate function, depends on agent type
+                reward = calculate_continuous_reward(agent, self)
             rewards[agent_id] = reward
-            
-        self.current_step += 1
         
-        # Determine if the episode is done (implement termination conditions here)
-        terminated = self.is_episode_done()
-        truncated = self.is_episode_done()
-        # Create the info dictionary (idk if needed?)
-        info = {}
-        return observations, rewards, terminated, truncated, info
+        return local_states, rewards
     
     def action_to_waypoint(self, action):
         # Convert the action (which is now an index) to a waypoint (x, y) coordinate
         x = action // self.Y
         y = action % self.Y
         return np.array([x, y])
+    
+    def is_valid_action(self, agent_id, action):
+        agent = self.agents[agent_id]
+        if self.agent_type == 'task_allocation':
+            return (tuple(action) in agent.get_valid_actions() and 
+                    self.chebyshev_distance(agent.current_pos, action) <= agent.max_distance)
+        else:
+            return action in agent.action_space
+
+    def chebyshev_distance(self, pos1, pos2):
+        return max(abs(pos1[0] - pos2[0]), abs(pos1[1] - pos2[1]))
+    
+    def check_jammer_destruction(self):
+        for agent_id in range(self.num_agents):
+            agent_pos = self.agent_layer.get_position(agent_id)
+            for jammer in self.jammers:
+                if not jammer.get_destroyed() and jammer.current_position() == tuple(agent_pos):
+                    jammer.set_destroyed()
+                    self.update_jammed_areas()
+                    
+    def update_global_state(self):
+        self.global_state[1] = self.agent_layer.get_state_matrix()
+        self.global_state[2] = self.target_layer.get_state_matrix()
+        self.global_state[3] = self.jammer_layer.get_state_matrix()
 
     def draw_model_state(self):
         """
@@ -734,33 +904,35 @@ class Environment(gym.Env):
         np.random.seed(seed)
         random.seed(seed)
 
-    def run_simulation(env, max_steps=2):
+    def run_simulation(self, max_steps=100):
         running = True
         step_count = 0
+
         while running and step_count < max_steps:
-            print(step_count)
+            # print(f"Step: {step_count}")
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
 
-            # Create the action_dict for all agents
-            action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(env.agents)}
-
+            # Generate new actions for all agents in every step
+            action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(self.agents)}
+            print("Action_dict: ", action_dict)
             # Update environment states with the action_dict
-            observations, rewards, terminated, truncated, env.info = env.step(action_dict)
+            observations, rewards, terminated, truncated, self.info = self.step(action_dict)
 
-            env.render()  # Render the current state to the screen
-
-            #pygame.display.flip()  # Update the full display Surface to the screen - I don't think this is necessary (Alex)
-            #pygame.time.wait(1000)  # Wait some time so it's visually comprehensible
+            self.render()  # Render the current state to the screen
 
             step_count += 1
-        pygame.image.save(env.screen, "environment_snapshot.png")
-        env.reset()
+
+            if terminated or truncated:
+                break
+
+        pygame.image.save(self.screen, "environment_snapshot.png")
+        self.reset()
 
         pygame.quit()
 
 
-# config_path = 'config.yaml' 
-# env = Environment(config_path)
-# Environment.run_simulation(env)
+config_path = 'config.yaml' 
+env = Environment(config_path)
+Environment.run_simulation(env, max_steps=2)
