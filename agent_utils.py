@@ -40,6 +40,8 @@ def create_agents(nagents, map_matrix, obs_range, randomiser, pos_list=None, age
             
         agent.set_position(xinit, yinit)
         agents.append(agent)
+        #this is for lunch and learn 
+        agent.origin = agent.current_pos
     return agents
 
 def get_feasible_positions(map_matrix):#, expanded_mat):

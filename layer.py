@@ -21,7 +21,6 @@ class AgentLayer:
         self.agents = agents
         self.nagents = len(agents)
         self.layer_state = np.full((xs, ys), -20)
-        self.layer_state = np.full((xs, ys), -20)
 
     def n_agents(self):
         return self.nagents
@@ -78,7 +77,6 @@ class AgentLayer:
     #     return pos
     
     def update(self):
-        print("update per step")
         # Decay previous positions
         mask = (self.layer_state<=0) & (self.layer_state > -20)
         self.layer_state[mask] -= 1  # Decrement the state of previously occupied positions
@@ -87,7 +85,6 @@ class AgentLayer:
         self.layer_state[self.layer_state < -20] = -20
         # Update positions based on current agent locations
         for agent in self.agents:
-            print("agent update per step")
             #x, y = agent.current_position()
             x, y = tuple(map(int, agent.current_position()))
             self.layer_state[int(x), int(y)] = 0  # Set current agent positions to 0
@@ -181,4 +178,4 @@ class JammerLayer(AgentLayer):
     def get_state_matrix(self):
         """Returns a matrix representing the positions of active jammers."""
         self.update_layer_state()
-        return self.layer_state
+        return self.layer_state[:]

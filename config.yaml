@@ -8,7 +8,7 @@ pixel_scale: 4 #Going down reduces the pixel_size, which reduces the map
 map_scale: 0.18 #Going up makes to map larger
 
 obs_range: 17 #13
-comm_range: 50 #10
+comm_range: 40 #10
 #agent_type: 'discrete'
 agent_type: 'continuous'
 #agent_type: 'task_allocation'
@@ -22,17 +22,17 @@ n_targets: 10
 n_jammers: 3
 jamming_radius: 20 #This is radius, in comparison to comms_range. That is why it is a smaller value then comms_range, but looks bigger relitivly.  
 
-seed: 10
+seed: 7
 
 # Example locations
-agent_positions:
- - [17, 39]
+#agent_positions:
+#- [17, 39]
 #  - [71, 17]
 #  - [23, 37]
 #  - [31, 13]
 #  - [61, 19]
-target_positions:
-- [18, 39]
+#target_positions:
+#- [18, 39]
 #jammer_positions:
 #  - [0, 0]
 

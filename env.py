@@ -46,7 +46,7 @@ class Environment(gym.Env):
         obstacle_map = (resized_map != 0).astype(int)
         self.map_matrix = obstacle_map
         # Global state includes layers for map, agents, targets, and jammers
-        self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.int32)
+        self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.float32)
         
         # Initialise agents, targets, jammers
         # Created jammers, targets and agents at random positions if not given a position from config
@@ -87,7 +87,8 @@ class Environment(gym.Env):
         if self.agent_type == 'discrete':
             self.action_space = spaces.Discrete(len(self.agents[0].eactions))
         else:
-            self.action_space = spaces.Dict({agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)})
+            #self.action_space = spaces.Dict({agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)})
+            self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(self.num_agents * 2,), dtype=np.float32)
 
         self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32) for agent_id in range(self.num_agents)})
         # Set global state layers
@@ -166,7 +167,7 @@ class Environment(gym.Env):
             action = target.get_next_action()
             self.target_layer.move_targets(i, action)
 
-        self.target_layer.update()
+        #self.target_layer.update()
         
         # Update agent positions and layer state based on the provided actions
         for agent_id, action in actions_dict.items():
@@ -184,7 +185,7 @@ class Environment(gym.Env):
                     jammer.set_destroyed()
                     self.update_jammed_areas()  # Update jammed areas after destroying the jammer
         
-        self.agent_layer.update()
+        #self.agent_layer.update()
         
         self.jammer_layer.activate_jammers(self.current_step)
         # Update jammed areas based on the current state of jammers
@@ -572,6 +573,7 @@ class Environment(gym.Env):
                     other_agent_id = self.agent_name_mapping[other_agent]
                     if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(other_agent_id):
                         other_agent.update_local_state(current_obs, current_pos)
+                        agent.communicated = True 
     
     # IDK which of the two of these works best
     # def share_and_update_observations(self):
@@ -734,7 +736,7 @@ class Environment(gym.Env):
         np.random.seed(seed)
         random.seed(seed)
 
-    def run_simulation(env, max_steps=2):
+    def run_simulation(env, max_steps=20):
         running = True
         step_count = 0
         while running and step_count < max_steps:
