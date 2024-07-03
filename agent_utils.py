@@ -17,7 +17,7 @@ def create_agents(nagents, map_matrix, obs_range, randomiser, pos_list=None, age
     agents = []
 
     # Precompute feasible positions
-    feasible_positions = get_feasible_positions(map_matrix)#, expanded_mat)
+    feasible_positions = get_feasible_positions(map_matrix)
     if agent_type == 'discrete':
         agent_class = DiscreteAgent
     elif agent_type == 'task_allocation':
@@ -44,7 +44,7 @@ def create_agents(nagents, map_matrix, obs_range, randomiser, pos_list=None, age
         agent.origin = agent.current_pos
     return agents
 
-def get_feasible_positions(map_matrix):#, expanded_mat):
+def get_feasible_positions(map_matrix):
     feasible_positions = []
     xs, ys = map_matrix.shape
     for x in range(xs):
