@@ -4,8 +4,7 @@ from task_allocation_agent import TaskAllocationAgent
 from target import Target
 import numpy as np
 
-
-def create_agents(nagents, map_matrix, obs_range, randomiser, pos_list=None, agent_type='discrete', flatten=False, randinit=False, constraints=None):
+def create_agents(nagents, map_matrix, obs_range, randomiser, path_preprocessor, pos_list=None, agent_type='discrete', flatten=False, randinit=False, constraints=None):
     """Initializes the agents on a map (map_matrix).
 
      -nagents: the number of agents to put on the map
@@ -34,7 +33,7 @@ def create_agents(nagents, map_matrix, obs_range, randomiser, pos_list=None, age
             xinit, yinit = feasible_positions.pop(idx)  # Remove to avoid reuse
             
         if agent_type == 'task_allocation':
-            agent = agent_class(xs, ys, map_matrix, randomiser, obs_range=obs_range, flatten=flatten, max_steps_per_action=5)
+            agent = agent_class(xs, ys, map_matrix, randomiser, path_preprocessor, obs_range=obs_range, flatten=flatten, max_steps_per_action=15)
         else:
             agent = agent_class(xs, ys, map_matrix, randomiser, obs_range=obs_range, flatten=flatten)
             
