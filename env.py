@@ -70,12 +70,11 @@ class Environment(gym.Env):
         self.agent_type = self.config.get('agent_type', 'discrete')
         
         if self.agent_type == 'task_allocation':
-            # Assumes static environment map
-            self.path_processor = PathProcessor(self.map_matrix, self.X, self.Y)
             self.agent_paths = {agent_id: [] for agent_id in range(self.num_agents)}
             self.current_waypoints = {agent_id: None for agent_id in range(self.num_agents)}
-        else:
-            self.path_processor = None
+        
+        # Assumes static environment map
+        self.path_processor = PathProcessor(self.map_matrix, self.X, self.Y)
 
         self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, self.path_processor, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
@@ -138,7 +137,7 @@ class Environment(gym.Env):
         else:
             target_positions = None
 
-        self.targets = target_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, randinit=True)
+        self.targets = target_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, self.path_processor ,target_positions, randinit=True)
         self.target_layer = TargetLayer(self.X, self.Y, self.targets, self.map_matrix)
 
         # Reinitialise jammers
