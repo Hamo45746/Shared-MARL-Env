@@ -20,7 +20,6 @@ class ContinuousAgent(BaseAgent):
         self.observed_areas = set()
         self.path = []
         self.communicated = False
-        #this is for lunch and learn
         self.initial_position = None
 
     @property
@@ -75,55 +74,23 @@ class ContinuousAgent(BaseAgent):
         observer_x, observer_y = observer_position
         obs_half_range = self._obs_range // 2
         for layer in range(observed_state.shape[0]):
-            if layer == 0: 
-                for dx in range(-obs_half_range, obs_half_range + 1):
-                    for dy in range(-obs_half_range, obs_half_range + 1):
-                        global_x = observer_x + dx
-                        global_y = observer_y + dy
-                        global_x1 = int(global_x)
-                        global_y1 = int(global_y)
-                        if self.inbounds(global_x, global_y):
-                            obs_x = obs_half_range + dx
-                            obs_y = obs_half_range + dy
+            for dx in range(-obs_half_range, obs_half_range + 1):
+                for dy in range(-obs_half_range, obs_half_range + 1):
+                    global_x = observer_x + dx
+                    global_y = observer_y + dy
+                    global_x1 = int(global_x)
+                    global_y1 = int(global_y)
+                    obs_x = obs_half_range + dx
+                    obs_y = obs_half_range + dy
+                    if self.inbounds(global_x, global_y):
+                        if layer == 0:
                             self.local_state[layer, global_x1, global_y1] = observed_state[layer, obs_x, obs_y]
-            else:
-                for dx in range(-obs_half_range, obs_half_range + 1):
-                    for dy in range(-obs_half_range, obs_half_range + 1):
-                        global_x = observer_x + dx
-                        global_y = observer_y + dy
-                        global_x1 = int(global_x)
-                        global_y1 = int(global_y)
-                        if self.inbounds(global_x, global_y):
-                            obs_x = obs_half_range + dx
-                            obs_y = obs_half_range + dy
+                        else:
                             if observed_state[layer, obs_x, obs_y] == 0:
                                 self.local_state[layer, global_x1, global_y1] = 0
                             elif self.local_state[layer, global_x1, global_y1] > -20:
                                 self.local_state[layer, global_x1, global_y1] -= 1
-    
-    # def update_local_state(self, observed_state, observer_position):
-    #     #observed_state = observed_state.transpose((2,1,0))
-    #     observer_x, observer_y = observer_position
-    #     obs_half_range = self._obs_range // 2
-    #     self.communicated = True
-    #     for layer in range(observed_state.shape[0]):
-    #         for dx in range(-obs_half_range, obs_half_range + 1):
-    #             for dy in range(-obs_half_range, obs_half_range + 1):
-    #                 global_x = observer_x + dx
-    #                 global_y = observer_y + dy
-    #                 obs_x = obs_half_range + dx
-    #                 obs_y = obs_half_range + dy
-                    
-    #                 if (self.inbounds(global_x, global_y) and 
-    #                     0 <= obs_x < self._obs_range and 
-    #                     0 <= obs_y < self._obs_range):
-    #                     if layer == 0:  # Map layer
-    #                         self.local_state[layer, global_x, global_y] = observed_state[layer, obs_x, obs_y]
-    #                     else:
-    #                         if observed_state[layer, obs_x, obs_y] == 0:
-    #                             self.local_state[layer, global_x, global_y] = 0
-    #                         elif self.local_state[layer, global_x, global_y] > -20:
-    #                             self.local_state[layer, global_x, global_y] = max(self.local_state[layer, global_x, global_y] - 1, -20)
+                                # self.local_state[layer, global_x, global_y] = max(self.local_state[layer, global_x, global_y] - 1, -20) 
 
     def get_observation_state(self):
         return self.observation_state
@@ -135,11 +102,12 @@ class ContinuousAgent(BaseAgent):
         min_radius = 1.0
         while True:
             action = self.random_state.uniform(-1.0, 1.0, size=(2,))
+            #print(action)
             if np.linalg.norm(action) >= min_radius:
                 break
         return action
 
-    # #this is for lunch and learn 
+    # #this is for lunch and learn - sending agents away from origin
     # def get_next_action(self): 
     #     potential_actions = self.random_state.uniform(-1.0, 1.0, size=(100,2)) 
     #     max_distance = -1 
@@ -172,7 +140,7 @@ class ContinuousAgent(BaseAgent):
 
         # Calculate the percentage of new information
         percentage_new_information = (new_information_count / total_cells) * 100
-        print(f"Agent at {self.current_position()} gained {percentage_new_information}% new information.")
+        #print(f"Agent at {self.current_position()} gained {percentage_new_information}% new information.")
         return percentage_new_information
     
     def communicates_information(self):

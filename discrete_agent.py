@@ -207,4 +207,3 @@ class DiscreteAgent(BaseAgent):
 
     def get_next_action(self):
         return random.choice(self.eactions)
-        return random.choice(self.eactions)
