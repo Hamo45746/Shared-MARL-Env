@@ -7,7 +7,7 @@ class PathProcessor:
         self.height = height
         self.width = width
         self.path_cache = {}
-        print(f"PathProcessor initialized with map shape: {self.height}x{self.width}")
+        # print(f"PathProcessor initialized with map shape: {self.height}x{self.width}")
 
 
     def get_path(self, start, goal):
@@ -30,7 +30,7 @@ class PathProcessor:
         return 0 <= x < self.width and 0 <= y < self.height and self.map_matrix[x, y] != 0
 
     def _cache_aware_a_star(self, start, goal):
-        print(f"Running A* from {start} to {goal}")
+        # print(f"Running A* from {start} to {goal}")
         heap = [(0, start)]
         came_from = {}
         g_score = {start: 0}
@@ -41,7 +41,7 @@ class PathProcessor:
             
             if current == goal:
                 path = self._reconstruct_path(came_from, current)
-                print(f"Path found with length: {len(path)}")
+                # print(f"Path found with length: {len(path)}")
                 return path
             
             for neighbor in self._get_neighbors(current):
@@ -53,7 +53,7 @@ class PathProcessor:
                     f_score[neighbor] = tentative_g_score + self._heuristic(neighbor, goal)
                     heappush(heap, (f_score[neighbor], neighbor))
         
-        print("No path found")
+        # print("No path found")
         return []
 
     def _get_neighbors(self, pos):

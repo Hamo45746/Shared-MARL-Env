@@ -9,16 +9,16 @@ map_scale: 0.18 #Going up makes to map larger
 
 obs_range: 17 #13
 comm_range: 40 #10
-#agent_type: 'discrete'
-agent_type: 'continuous'
-#agent_type: 'task_allocation'
+# agent_type: 'discrete'
+# agent_type: 'continuous'
+agent_type: 'task_allocation'
 
 map_path: 'city_image_1.npy'
 #map_path: 'city_image_2.npy'
 #map_path: 'city_image_3.npy'
 
-n_agents: 5
-n_targets: 10
+n_agents: 2
+n_targets: 1
 n_jammers: 3
 jamming_radius: 20 #This is radius, in comparison to comms_range. That is why it is a smaller value then comms_range, but looks bigger relitivly.  
 

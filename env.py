@@ -172,8 +172,8 @@ class Environment(gym.Env):
         
     
     def task_allocation_step(self, actions_dict):
-        print("\nStarting task_allocation_step")
-        print(f"Current agent positions: {[tuple(self.agent_layer.get_position(i)) for i in range(self.num_agents)]}")
+        # print("\nStarting task_allocation_step")
+        # print(f"Current agent positions: {[tuple(self.agent_layer.get_position(i)) for i in range(self.num_agents)]}")
     
         for agent_id, action in actions_dict.items():
             agent = self.agents[agent_id]
@@ -188,10 +188,10 @@ class Environment(gym.Env):
             self.agent_paths[agent_id] = new_path
             
             # print(f"  Path length: {len(new_path)}")
-            if len(new_path) > 0:
-                print(f"  First few steps: {new_path[:min(5, len(new_path))]}")
-            else:
-                print("  Empty path!")
+            # if len(new_path) > 0:
+            #     print(f"  First few steps: {new_path[:min(5, len(new_path))]}")
+            # # else:
+            #     print("  Empty path!")
 
         # Find the maximum path length
         max_path_length = max(len(path) for path in self.agent_paths.values())
@@ -234,7 +234,11 @@ class Environment(gym.Env):
         terminated = self.is_episode_done()
         truncated = self.is_episode_done()
         info = {}
-        print("End of task_allocation_step")
+        
+        # np.set_printoptions(threshold=np.inf)
+        # print("local_states", local_states)
+        # print("local_states[0]", local_states[0])
+        # print("End of task_allocation_step")
         return local_states, rewards, terminated, truncated, info
     
     def regular_step(self, actions_dict):
@@ -288,7 +292,7 @@ class Environment(gym.Env):
         observations = {}
         for agent_id in range(self.num_agents):
             obs = self.safely_observe(agent_id)
-            print("This should come first agent id", agent_id, obs)
+            # print("This should come first agent id", agent_id, obs)
             self.agent_layer.agents[agent_id].set_observation_state(obs)
             observations[agent_id] = obs
         return observations
@@ -515,7 +519,7 @@ class Environment(gym.Env):
             observed_positions = (agent.local_state[0]==0) | (agent.local_state[0] == -1)
 
         observed_positions_2 = agent.local_state[observed_positions]
-        print(observed_positions_2)
+        # print(observed_positions_2)
 
         for x, y in observed_positions_2:
             pos = pygame.Rect(
@@ -866,7 +870,7 @@ class Environment(gym.Env):
             if terminated or truncated:
                 break
 
-        pygame.image.save(self.screen, "environment_snapshot.png")
+        # pygame.image.save(self.screen, "environment_snapshot.png")
         self.reset()
 
         pygame.quit()
@@ -874,4 +878,4 @@ class Environment(gym.Env):
 
 config_path = 'config.yaml' 
 env = Environment(config_path)
-Environment.run_simulation(env, max_steps=10)
+Environment.run_simulation(env, max_steps=1)

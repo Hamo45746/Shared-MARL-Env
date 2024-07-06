@@ -30,7 +30,7 @@ class TaskAllocationAgent(DiscreteAgent):
         return self._action_space
 
     def step(self, action):
-        print(f"TaskAllocationAgent step called with action: {action}")
+        # print(f"TaskAllocationAgent step called with action: {action}")
         waypoint = self.action_to_waypoint(action)
         if not self.path:
             self.path = self.compute_path(tuple(self.current_pos), waypoint)
@@ -86,12 +86,12 @@ class TaskAllocationAgent(DiscreteAgent):
     def get_next_action(self):
         valid_actions = self.get_valid_actions()
         if not valid_actions:
-            print("No valid actions available!")
+            # print("No valid actions available!")
             return self._action_space.sample()  # Return a random action if no valid actions
 
         action = self.randomiser.choice(valid_actions)
         waypoint = self.action_to_waypoint(action)
-        print(f"TaskAllocationAgent get_next_action returned: {action}, waypoint: {waypoint}")
+        # print(f"TaskAllocationAgent get_next_action returned: {action}, waypoint: {waypoint}")
         return action
 
     def inbuilding(self, x, y):
