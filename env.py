@@ -47,7 +47,7 @@ class Environment(gym.Env):
         obstacle_map = (resized_map != 0).astype(int)
         self.map_matrix = obstacle_map
         # Global state includes layers for map, agents, targets, and jammers
-        self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.int32)
+        self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.float32)
         
         # Initialise agents, targets, jammers
         # Created jammers, targets and agents at random positions if not given a position from config
@@ -96,7 +96,8 @@ class Environment(gym.Env):
         if self.agent_type == 'discrete':
             self.action_space = spaces.Discrete(len(self.agents[0].eactions))
         else:
-            self.action_space = spaces.Dict({agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)})
+            #self.action_space = spaces.Dict({agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)})
+            self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(self.num_agents * 2,), dtype=np.float32) #changed it to this to work with stable baselines
 
         self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32) for agent_id in range(self.num_agents)})
         # Set global state layers
@@ -113,10 +114,6 @@ class Environment(gym.Env):
 
     def reset(self, seed= None, options: dict = None):
         """ Reset the environment for a new episode"""
-        # Reinitialise the map and entities
-        # original_map = np.load(self.config['map_path'])[:, :, 0]
-        # resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
-        # self.map_matrix = (resized_map != 0).astype(int)
         super().reset(seed=self.seed_value)
         info = {}
         if seed is not None:
@@ -132,7 +129,7 @@ class Environment(gym.Env):
         else:
             agent_positions = None
 
-        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, agent_positions, agent_type=self.agent_type, randinit=True)
+        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, self.path_processor, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
         
         # Reinitialise target positions
@@ -150,16 +147,8 @@ class Environment(gym.Env):
         
         self.jammed_positions = set()
         
-        # if self.agent_type == 'task_allocation':
-        #     # Reset action spaces for all agents
-        #     for agent in self.agents:
-        #         agent.reset_action_space()
-
-        #     # Update the environment's action space
-        #     self.action_space = spaces.Dict({
-        #         agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)
-        #     })
-
+        self.target_layer.update()
+        self.agent_layer.update()
         # Update layers in global state
         self.global_state[1] = self.agent_layer.get_state_matrix()
         self.global_state[2] = self.target_layer.get_state_matrix()
@@ -174,120 +163,14 @@ class Environment(gym.Env):
             observations[agent_id] = obs
 
         return observations, info
+    
 
     def step(self, actions_dict):
         if self.agent_type == 'task_allocation':
             return self.task_allocation_step(actions_dict)
         else:
             return self.regular_step(actions_dict)
-            
-    # OLD STEP FUNC
-    # def regular_step(self, actions_dict): 
-    #     # Need to update target position in target_layer, and target class itself
-    #     # Ensure three variables receive update: self.targets for each target class, self.target_layer state, target objects in target list within target_layer 
-    #     # Update current_position in each target instance, should be same target instance stored in self.targets and self.target_layer.targets.
-    #     # Then do target_layer.update() to update its representation of the current state. - same for agent
-    #     # Update target positions and layer state
-    #     for i, target in enumerate(self.target_layer.targets):
-    #         action = target.get_next_action()
-    #         self.target_layer.move_targets(i, action)
-
-    #     self.target_layer.update()
         
-    #     # Update agent positions and layer state based on the provided actions
-    #     for agent_id, action in actions_dict.items():
-    #         agent = self.agents[agent_id]
-    #         self.agent_layer.move_agent(agent_id, action)
-            
-    #         # Check if the agent touches any jammer and destroy it
-    #         agent_pos = self.agent_layer.agents[agent_id].current_position()
-    #         for jammer in self.jammers:
-    #             if not jammer.get_destroyed() and jammer.current_position() == tuple(agent_pos):
-    #                 jammer.set_destroyed()
-    #                 self.update_jammed_areas()  # Update jammed areas after destroying the jammer
-        
-    #     self.agent_layer.update()
-        
-    #     self.jammer_layer.activate_jammers(self.current_step)
-    #     # Update jammed areas based on the current state of jammers
-    #     self.update_jammed_areas()
-
-    #     # Update the global state with the new layer states
-    #     self.global_state[1] = self.agent_layer.get_state_matrix()
-    #     self.global_state[2] = self.target_layer.get_state_matrix()
-    #     self.global_state[3] = self.jammer_layer.get_state_matrix()
-
-
-    #     # Collect observations for each agent
-    #     observations = {}
-    #     for agent_id in range(self.num_agents):
-    #         obs = self.safely_observe(agent_id)
-    #         self.agent_layer.agents[agent_id].set_observation_state(obs)
-    #         observations[agent_id] = obs
-            
-    #         #DEBUGGING: Print the agent's observation and corresponding section of map matrix
-    #         agent_pos = self.agents[agent_id].current_position()
-    #         # obs_range = self.obs_range
-    #         # obs_half_range = obs_range // 2
-    #         # x_start, x_end = agent_pos[0] - obs_half_range, agent_pos[0] + obs_half_range + 1
-    #         # y_start, y_end = agent_pos[1] - obs_half_range, agent_pos[1] + obs_half_range + 1
-
-    #         # print(f"Agent {agent_id} Position: {agent_pos}")
-    #         # np.set_printoptions(linewidth=200)
-    #         # print(f"Agent {agent_id} Observation:")
-    #         # print(self.agents[agent_id].get_observation_state()[0])
-    #         # print(self.agents[agent_id].get_observation_state()[1])
-    #         # print(self.agents[agent_id].get_observation_state()[2])
-    #         # print(self.agents[agent_id].get_observation_state()[3])
-        
-    #         # print("Corresponding Map Matrix Section:")
-    #         # print(self.map_matrix[x_start:x_end, y_start:y_end])
-    #         # print("---")
-    #         # print(f"Agent {agent_id} Agent Layer Observation:")
-    #         # print(self.agents[agent_id].get_observation_state()[1])
-    #         # print(f"Agent {agent_id} Position: {agent_pos}")
-    #         # print("Corresponding env agent layer Section:")
-    #         # print(self.global_state[1][x_start:x_end, y_start:y_end])
-    #         # print("---")
-    #         # print("---")
-    #         # print(f"Agent {agent_id} Target Layer Observation:")
-    #         # print(self.agents[agent_id].get_observation_state()[2])
-    #         # print(f"Agent {agent_id} Position: {agent_pos}")
-    #         # print("Corresponding env target layer Section:")
-    #         # print(self.global_state[2][x_start:x_end, y_start:y_end])
-    #         # print("---")
-    #         # # x1_start = int(x_start)
-    #         # # x2_end =int(x_end)
-    #         # # y1_start = int(y_start)
-    #         # # y2_end = int(y_end)
-    #         # # print(self.map_matrix[x1_end:x2_end, y1_start:y2_end])
-    #         # # print("---")
-            
-
-    #     # Share and update observations among agents within communication range
-    #     self.share_and_update_observations() # TODO: Test this function works correctly
-
-    #     # Calc rewards for each agent
-    #     rewards = {}
-    #     for agent_id in range(self.num_agents):
-    #         agent = self.agent_layer.agents[agent_id]
-    #         if self.agent_type == "discrete":
-    #             reward = DiscreteAgentController.calculate_reward(agent)
-    #         elif self.agent_type == "task_allocation":
-    #             reward = DiscreteAgentController.calculate_reward(agent) # TODO: PLACEHOLDER
-    #         else: 
-    #             agent_pos = agent.current_position()
-    #             reward = calculate_continuous_reward(agent, self)  # Implement the reward calculation logic in a separate function, depends on agent type
-    #         rewards[agent_id] = reward
-            
-    #     self.current_step += 1
-        
-    #     # Determine if the episode is done (implement termination conditions here)
-    #     terminated = self.is_episode_done()
-    #     truncated = self.is_episode_done()
-    #     # Create the info dictionary (idk if needed?)
-    #     info = {}
-    #     return observations, rewards, terminated, truncated, info
     
     def task_allocation_step(self, actions_dict):
         print("\nStarting task_allocation_step")
@@ -332,7 +215,8 @@ class Environment(gym.Env):
             self.agent_layer.update()
             
             # Update observations and communicate
-            self.update_observations()
+            observations = {}
+            observations = self.update_observations()
             self.share_and_update_observations()
 
             # Update jammed areas and global state
@@ -359,25 +243,32 @@ class Environment(gym.Env):
         for i, target in enumerate(self.target_layer.targets):
             action = target.get_next_action()
             self.target_layer.move_targets(i, action)
-
-        self.target_layer.update()
         
         # Update agent positions and layer state based on the provided actions
         for agent_id, action in actions_dict.items():
+            agent = self.agents[agent_id]
             self.agent_layer.move_agent(agent_id, action)
-        
+            
+            # Check if the agent touches any jammer and destroy it
+            agent_pos = self.agent_layer.agents[agent_id].current_position()
+            for jammer in self.jammers:
+                if not jammer.get_destroyed() and jammer.current_position() == tuple(agent_pos):
+                    jammer.set_destroyed()
+                    self.update_jammed_areas()  # Update jammed areas after destroying the jammer
+
+        self.target_layer.update()
         self.agent_layer.update()
+        # Update the global state with the new layer states
+        self.update_global_state()
         
         # Update observations and communicate
-        self.update_observations()
+        observations = {}
+        observations = self.update_observations()
         self.share_and_update_observations()
         
         self.jammer_layer.activate_jammers(self.current_step)
         self.update_jammed_areas()
         self.check_jammer_destruction()
-
-        # Update the global state with the new layer states
-        self.update_global_state()
 
         # Collect final local states and calculate rewards
         local_states, rewards = self.collect_local_states_and_rewards()
@@ -388,12 +279,25 @@ class Environment(gym.Env):
         truncated = self.is_episode_done()
         info = {}
         
+        print("observations", observations)
+        print("local_states", local_states)
+        np.set_printoptions(threshold=np.inf)
+        print("local_states0", local_states[0])
         return local_states, rewards, terminated, truncated, info
 
-    def update_observations(self):
+    def update_observations(self): #Alex had this one
+        observations = {}
         for agent_id in range(self.num_agents):
             obs = self.safely_observe(agent_id)
+            print("This should come first agent id", agent_id, obs)
             self.agent_layer.agents[agent_id].set_observation_state(obs)
+            observations[agent_id] = obs
+        return observations
+    
+    # def update_observations(self): # Hamish had this one
+    #     for agent_id in range(self.num_agents):
+    #         obs = self.safely_observe(agent_id)
+    #         self.agent_layer.agents[agent_id].set_observation_state(obs)
 
     def collect_local_states_and_rewards(self):
         local_states = {}
@@ -705,14 +609,6 @@ class Environment(gym.Env):
     ## OBSERVATION FUNCTIONS ##
     def observe(self, agent):
         return self.safely_observe(self.agent_name_mapping[agent])
-     
-     
-    # def safely_observe(self, agent_id):
-    #     obs = self.collect_obs(self.agent_layer, agent_id)
-    #     obs = np.where(obs == -np.inf, -1e10, obs)
-    #     obs = obs.transpose((1,2,0))
-    #     obs = np.clip(obs, self.observation_space[agent_id].low, self.observation_space[agent_id].high)
-    #     return obs
     
     def safely_observe(self, agent_id):
         obs = self.collect_obs(self.agent_layer, agent_id)
@@ -791,55 +687,50 @@ class Environment(gym.Env):
                     other_agent_id = self.agent_name_mapping[other_agent]
                     if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(other_agent_id):
                         other_agent.update_local_state(current_obs, current_pos)
-    
-    # IDK which of the two of these works best
+                        agent.communicated = True 
+
     # def share_and_update_observations(self):
     #     """
     #     Updates each agent's internal observation state and internal local (entire env) state.
     #     Will merge current observations of agents within communication range into each agent's local state.
     #     This function should be run in the step function.
     #     """
-    #     # Set NumPy print options to display the entire array
-    #     np.set_printoptions(threshold=np.inf, linewidth=np.inf)
-        
+
+    #     np.set_printoptions(threshold=np.inf, linewidth=np.inf) #THIS is for testing 
+
     #     for i, agent in enumerate(self.agents):
     #         current_obs = agent.get_observation_state()
     #         current_pos = agent.current_position()
+    #         #print(f"Agent {i} local state before communication:")
 
     #         for j, other_agent in enumerate(self.agents):
     #             if i != j:
     #                 other_pos = other_agent.current_position()
     #                 if self.within_comm_range(current_pos, other_pos):
     #                     if not self.is_comm_blocked(i):
-    #                         print(f"Agent {i} is communicating with Agent {j}")
-                            
+    #                         #print(f"Agent {i} is communicating with Agent {j}")
+
     #                         # Print the other agent's observation
-    #                         print(f"Agent {j}'s observation:")
-    #                         print(other_agent.get_observation_state())
-                            
+    #                         #print(f"Agent {j}'s observation:")
+    #                         #print(other_agent.get_observation_state())
+
     #                         # Print the section of the agent's local state before communication
-    #                         print(f"Agent {i} local state at Agent {j}'s observation location before communication:")
-    #                         self.print_local_state_section(agent, other_pos)
-                            
+    #                         #print(f"Agent {i} local state at Agent {j}'s observation location before communication:")
+    #                         #self.print_local_state_section(agent, other_pos)
+
     #                         other_agent.update_local_state(current_obs, current_pos)
-                            
+    #                         agent.communicated = True 
+
     #                         # Print the section of the agent's local state after communication
-    #                         print(f"Agent {i} local state at Agent {j}'s observation location after communication:")
-    #                         self.print_local_state_section(agent, other_pos)
-    #                         print("---")
-    #                     else:
-    #                         print(f"Agent {i} is within a jammed area and cannot communicate with Agent {j}")
-                            
-    #                         # Print the other agent's observation
-    #                         print(f"Agent {j}'s observation:")
-    #                         print(other_agent.get_observation_state())
-                            
-    #                         # Print the section of the agent's local state
-    #                         print(f"Agent {i} local state at Agent {j}'s observation location:")
-    #                         self.print_local_state_section(agent, other_pos)
-    #                         print("---")
-    #                 else:
-    #                     print(f"Agent {i} is out of communication range with Agent {j}")
+    #                         #print(f"Agent {i} local state at Agent {j}'s observation location after communication:")
+    #                         #self.print_local_state_section(agent, other_pos)
+    #                         #print("---")
+    #                     # else:
+    #                     #    print(f"Agent {i} is within a jammed area and cannot communicate with Agent {j}")
+    #                 #else:
+    #                     #print(f"Agent {i} is out of communication range with Agent {j}")
+    #                 #if self.is_comm_blocked(i):
+    #                     #print("comm is blocked")
 
     def print_local_state_section(self, agent, other_pos):
         """
@@ -953,19 +844,19 @@ class Environment(gym.Env):
         np.random.seed(seed)
         random.seed(seed)
 
-    def run_simulation(self, max_steps=100):
+    def run_simulation(self, max_steps=20):
         running = True
         step_count = 0
 
         while running and step_count < max_steps:
-            # print(f"Step: {step_count}")
+            print(f"Step: {step_count}")
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
 
             # Generate new actions for all agents in every step
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(self.agents)}
-            print("Action_dict: ", action_dict)
+            #print("Action_dict: ", action_dict)
             # Update environment states with the action_dict
             observations, rewards, terminated, truncated, self.info = self.step(action_dict)
 

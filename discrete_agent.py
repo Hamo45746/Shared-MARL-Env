@@ -51,7 +51,6 @@ class DiscreteAgent(BaseAgent):
     @property
     def observation_space(self):
         return spaces.Box(low=-20, high=1, shape=self._obs_shape, dtype=np.float32)
-        return spaces.Box(low=-20, high=1, shape=self._obs_shape, dtype=np.float32)
 
     @property
     def action_space(self):
@@ -207,5 +206,4 @@ class DiscreteAgent(BaseAgent):
     #     return a
 
     def get_next_action(self):
-        return random.choice(self.eactions)
         return random.choice(self.eactions)
