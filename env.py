@@ -73,7 +73,7 @@ class Environment(gym.Env):
             # Assumes static environment map
             self.path_processor = PathProcessor(self.map_matrix, self.X, self.Y)
             self.agent_paths = {agent_id: [] for agent_id in range(self.num_agents)}
-            self.agent_waypoints = {agent_id: None for agent_id in range(self.num_agents)}
+            self.current_waypoints = {agent_id: None for agent_id in range(self.num_agents)}
         else:
             self.path_processor = None
 
@@ -84,7 +84,7 @@ class Environment(gym.Env):
         self.agent_name_mapping = dict(zip(self.agents, list(range(self.num_agents))))
 
         self.num_targets = self.config['n_targets']
-        self.targets = target_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, target_positions, target_goals, randinit=True)
+        self.targets = target_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, self.path_processor, target_positions, randinit=True)
         self.target_layer = TargetLayer(self.X, self.Y, self.targets, self.map_matrix)
 
         self.num_jammers = self.config['n_jammers']
@@ -297,14 +297,15 @@ class Environment(gym.Env):
             agent = self.agents[agent_id]
             start = tuple(self.agent_layer.get_position(agent_id))
             goal = agent.action_to_waypoint(action)  # Use the agent's method to convert action to waypoint
-            print(f"\nAgent {agent_id}:")
-            print(f"  Current position: {start}")
-            print(f"  Goal position: {goal}")
+            self.current_waypoints[agent_id] = goal
+            # print(f"\nAgent {agent_id}:")
+            # print(f"  Current position: {start}")
+            # print(f"  Goal position: {goal}")
             
             new_path = self.path_processor.get_path(start, goal)
             self.agent_paths[agent_id] = new_path
             
-            print(f"  Path length: {len(new_path)}")
+            # print(f"  Path length: {len(new_path)}")
             if len(new_path) > 0:
                 print(f"  First few steps: {new_path[:min(5, len(new_path))]}")
             else:
@@ -554,6 +555,53 @@ class Environment(gym.Env):
                     self.pixel_scale * (y - ofst + 1 / 2),
                 ),
             )
+            
+    def draw_waypoints(self):
+        """
+        Draw waypoints for task allocation agents.
+        """
+        if self.agent_type != 'task_allocation':
+            return
+
+        # Define a list of distinct colors for waypoints
+        waypoint_colors = [
+            (255, 0, 0),    # Red
+            (0, 255, 0),    # Green
+            (0, 0, 255),    # Blue
+            (255, 255, 0),  # Yellow
+            (255, 0, 255),  # Magenta
+            (0, 255, 255),  # Cyan
+            (255, 128, 0),  # Orange
+            (128, 0, 255),  # Purple
+            (0, 128, 255),  # Light Blue
+            (128, 255, 0),  # Lime
+        ]
+
+        for i, agent in enumerate(self.agents):
+            agent_pos = agent.current_position()
+            agent_center = (
+                int(self.pixel_scale * agent_pos[0] + self.pixel_scale / 2),
+                int(self.pixel_scale * agent_pos[1] + self.pixel_scale / 2),
+            )
+
+            waypoint = self.current_waypoints[i]
+            if waypoint is not None:
+                waypoint_center = (
+                    int(self.pixel_scale * waypoint[0] + self.pixel_scale / 2),
+                    int(self.pixel_scale * waypoint[1] + self.pixel_scale / 2),
+                )
+
+                # Draw a line from agent to waypoint
+                color = waypoint_colors[i % len(waypoint_colors)]
+                pygame.draw.line(self.screen, color, agent_center, waypoint_center, 2)
+
+                # Draw the waypoint
+                pygame.draw.circle(self.screen, color, waypoint_center, int(self.pixel_scale / 3))
+
+                # Draw the agent number near the waypoint
+                font = pygame.font.Font(None, 24)
+                text = font.render(str(i), True, color)
+                self.screen.blit(text, (waypoint_center[0] + 5, waypoint_center[1] + 5))
 
     #Still working on this function - Trying to make it work to show all observed area 
     def draw_all_agents_observations(self):
@@ -623,6 +671,7 @@ class Environment(gym.Env):
         self.draw_agents_observations()
         self.draw_agent_communication_range()
         self.draw_jammers()
+        self.draw_waypoints()
 
         observation = pygame.surfarray.pixels3d(self.screen)
         new_observation = np.copy(observation)
@@ -935,4 +984,4 @@ class Environment(gym.Env):
 
 config_path = 'config.yaml' 
 env = Environment(config_path)
-Environment.run_simulation(env, max_steps=2)
+Environment.run_simulation(env, max_steps=10)

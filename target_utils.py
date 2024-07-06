@@ -1,7 +1,7 @@
 from target import Target
 import numpy as np
 
-def create_targets(ntargets, map_matrix, obs_range, randomiser, pos_list=None, goal_pos_list=None, flatten=False, randinit=False, constraints=None):
+def create_targets(ntargets, map_matrix, obs_range, randomiser, path_processor, pos_list=None, flatten=False, randinit=False, constraints=None):
     """Initializes the targets on a map (map_matrix)."""
     xs, ys = map_matrix.shape
     targets = []
@@ -19,16 +19,7 @@ def create_targets(ntargets, map_matrix, obs_range, randomiser, pos_list=None, g
         else:
             xinit, yinit = 0, 0
 
-        xgoal, ygoal = (0, 0)
-        if goal_pos_list and i < len(goal_pos_list):
-            xgoal, ygoal = goal_pos_list[i]
-        elif randinit and feasible_positions:
-            idx = randomiser.integers(0, len(feasible_positions))
-            xgoal, ygoal = feasible_positions.pop(idx)  # Remove to avoid reuse
-        else:
-            xgoal, ygoal = (0, 0)
-        
-        target = Target(xs, ys, map_matrix, randomiser, start_pos=[xinit, yinit], goal_pos=[xgoal, ygoal], obs_range=obs_range, flatten=flatten)
+        target = Target(xs, ys, map_matrix, randomiser, path_processor, start_pos=[xinit, yinit], obs_range=obs_range, flatten=flatten)
         target.set_position(xinit, yinit)
         targets.append(target)
     return targets
