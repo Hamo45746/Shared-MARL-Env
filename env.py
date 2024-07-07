@@ -282,10 +282,10 @@ class Environment(gym.Env):
         truncated = self.is_episode_done()
         info = {}
         
-        print("observations", observations)
-        print("local_states", local_states)
-        np.set_printoptions(threshold=np.inf)
-        print("local_states0", local_states[0])
+        # np.set_printoptions(threshold=np.inf)
+        # print("observations", observations)
+        # print("local_states", local_states)
+        # print("local_states0", local_states[0])
         return local_states, rewards, terminated, truncated, info
 
     def update_observations(self): #Alex had this one
@@ -870,12 +870,12 @@ class Environment(gym.Env):
             if terminated or truncated:
                 break
 
-        # pygame.image.save(self.screen, "environment_snapshot.png")
+        pygame.image.save(self.screen, "environment_snapshot.png")
         self.reset()
 
         pygame.quit()
 
 
-config_path = 'config.yaml' 
-env = Environment(config_path)
-Environment.run_simulation(env, max_steps=1)
+# config_path = 'config.yaml' 
+# env = Environment(config_path)
+# Environment.run_simulation(env, max_steps=1)
