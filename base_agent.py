@@ -1,6 +1,7 @@
 # BaseAgent.py
 from abc import ABC, abstractmethod
-from gymnasium import spaces
+# from gymnasium import spaces
+from gym import spaces # for MARLlib
 
 class BaseAgent(ABC):
 

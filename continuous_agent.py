@@ -1,5 +1,6 @@
 import numpy as np
-from gymnasium import spaces
+# from gymnasium import spaces
+from gym import spaces # for MARLlib
 from base_agent import BaseAgent
 
 class ContinuousAgent(BaseAgent):

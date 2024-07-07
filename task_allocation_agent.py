@@ -1,6 +1,7 @@
 import numpy as np
 from discrete_agent import DiscreteAgent
-from gymnasium import spaces
+# from gymnasium import spaces
+from gym import spaces # for MARLlib
 
 class TaskAllocationAgent(DiscreteAgent):
     def __init__(

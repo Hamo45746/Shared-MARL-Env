@@ -1,4 +1,5 @@
-import gymnasium as gym 
+import gym # needed for MARLlib
+# import gymnasium as gym
 import numpy as np
 import random
 import yaml
@@ -9,15 +10,17 @@ import heapq
 import pygame
 from skimage.transform import resize
 from layer import AgentLayer, JammerLayer, TargetLayer
-from gymnasium.utils import seeding
+from gym.utils import seeding
+# from gymnasium.utils import seeding
 from Continuous_controller.agent_controller import AgentController
 from Discrete_controller.agent_controller import DiscreteAgentController
 from Continuous_controller.reward import calculate_continuous_reward
-from gymnasium import spaces
+from gym import spaces
+# from gymnasium import spaces
 from path_processor import PathProcessor
 
 
-class Environment(gym.Env):
+class Environment(gym.core.Env): # was gym.Env
     def __init__(self, config_path, render_mode="human"):
         super(Environment, self).__init__()
         # Load configuration from YAML
@@ -31,7 +34,8 @@ class Environment(gym.Env):
         self.map_scale = self.config['map_scale'] # Scaling factor of map resolution
         self.seed_value = self.config['seed']
         self.comm_range = self.config['comm_range']
-        self._seed(self.seed_value)
+        # self._seed(self.seed_value)
+        self.seed(self.seed_value) # For MARLlib
 
         # Load the map
         original_map = np.load(self.config['map_path'])[:, :, 0]
@@ -117,7 +121,8 @@ class Environment(gym.Env):
         info = {}
         if seed is not None:
             self.seed_value = seed
-        self._seed(self.seed_value)
+        # self._seed(self.seed_value)
+        self.seed(self.seed_value) # For MARLlib
         # Reset global state
         self.global_state.fill(0)
         self.global_state[0] = self.map_matrix # Uncomment above code if map_matrix is changed by sim
@@ -159,10 +164,10 @@ class Environment(gym.Env):
         for agent_id in range(self.num_agents):
             obs = self.safely_observe(agent_id)
             self.agents[agent_id].set_observation_state(obs)
-            observations[agent_id] = obs
+            observations[agent_id] = self.agents[agent_id].get_state()
 
-        return observations, info
-    
+        # return observations, info # This for gymnasium
+        return observations # This for gym and MARLlib
 
     def step(self, actions_dict):
         if self.agent_type == 'task_allocation':
@@ -180,18 +185,9 @@ class Environment(gym.Env):
             start = tuple(self.agent_layer.get_position(agent_id))
             goal = agent.action_to_waypoint(action)  # Use the agent's method to convert action to waypoint
             self.current_waypoints[agent_id] = goal
-            # print(f"\nAgent {agent_id}:")
-            # print(f"  Current position: {start}")
-            # print(f"  Goal position: {goal}")
             
             new_path = self.path_processor.get_path(start, goal)
             self.agent_paths[agent_id] = new_path
-            
-            # print(f"  Path length: {len(new_path)}")
-            # if len(new_path) > 0:
-            #     print(f"  First few steps: {new_path[:min(5, len(new_path))]}")
-            # # else:
-            #     print("  Empty path!")
 
         # Find the maximum path length
         max_path_length = max(len(path) for path in self.agent_paths.values())
@@ -239,7 +235,8 @@ class Environment(gym.Env):
         # print("local_states", local_states)
         # print("local_states[0]", local_states[0])
         # print("End of task_allocation_step")
-        return local_states, rewards, terminated, truncated, info
+        # return local_states, rewards, terminated, truncated, info # For gymnasium
+        return observations, rewards, terminated, info # for gym and MARLlib
     
     def regular_step(self, actions_dict):
         # Update target positions and layer state
@@ -282,13 +279,14 @@ class Environment(gym.Env):
         truncated = self.is_episode_done()
         info = {}
         
-        print("observations", observations)
-        print("local_states", local_states)
-        np.set_printoptions(threshold=np.inf)
-        print("local_states0", local_states[0])
-        return local_states, rewards, terminated, truncated, info
+        # print("observations", observations)
+        # print("local_states", local_states)
+        # np.set_printoptions(threshold=np.inf)
+        # print("local_states0", local_states[0])
+        # return local_states, rewards, terminated, truncated, info # for gymnasium
+        return observations, rewards, terminated, info # for gym
 
-    def update_observations(self): #Alex had this one
+    def update_observations(self): # Merge Notes: Alex had this one
         observations = {}
         for agent_id in range(self.num_agents):
             obs = self.safely_observe(agent_id)
@@ -297,7 +295,7 @@ class Environment(gym.Env):
             observations[agent_id] = obs
         return observations
     
-    # def update_observations(self): # Hamish had this one
+    # def update_observations(self): # Merge Notes: Hamish had this one
     #     for agent_id in range(self.num_agents):
     #         obs = self.safely_observe(agent_id)
     #         self.agent_layer.agents[agent_id].set_observation_state(obs)
@@ -554,7 +552,7 @@ class Environment(gym.Env):
             pygame.draw.ellipse(self.screen, (72, 152, 255, 128), comms_area, width=1)
     
     
-    def render(self, mode="human") -> None | np.ndarray | str | list:
+    def render(self, mode="human"):
         """ 
         Basic render of environment using matplotlib scatter plot.
         REF: PettingZoo's pursuit example: PettingZoo/sisl/pursuit/pursuit_base.py
@@ -586,11 +584,11 @@ class Environment(gym.Env):
         if self.render_modes == "human":
             pygame.event.pump()
             pygame.display.update()
-        return (new_observation,
-            np.transpose(new_observation, axes=(1, 0, 2))
-            if self.render_modes == "rgb_array"
-            else None
-        )
+        # return (new_observation,
+        #     np.transpose(new_observation, axes=(1, 0, 2))
+        #     if self.render_modes == "rgb_array"
+        #     else None
+        # ) # for gymnasium
 
 
     def state(self) -> np.ndarray:
@@ -842,10 +840,14 @@ class Environment(gym.Env):
         return jammed_area
 
 
-    def _seed(self, seed=None):
-        self.np_random, seed_ = seeding.np_random(seed)
-        np.random.seed(seed)
-        random.seed(seed)
+    # def _seed(self, seed=None):
+    #     self.np_random, seed_ = seeding.np_random(seed)
+    #     np.random.seed(seed)
+    #     random.seed(seed)
+    
+    def seed(self, seed=None): # This version for MARLlib (gym)
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed] 
 
     def run_simulation(self, max_steps=20):
         running = True
@@ -861,13 +863,14 @@ class Environment(gym.Env):
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(self.agents)}
             #print("Action_dict: ", action_dict)
             # Update environment states with the action_dict
-            observations, rewards, terminated, truncated, self.info = self.step(action_dict)
+            # observations, rewards, terminated, truncated, self.info = self.step(action_dict)
+            observations, rewards, terminated, self.info = self.step(action_dict) # for MARLlib
 
             self.render()  # Render the current state to the screen
 
             step_count += 1
 
-            if terminated or truncated:
+            if terminated: # or truncated:
                 break
 
         # pygame.image.save(self.screen, "environment_snapshot.png")
@@ -878,4 +881,4 @@ class Environment(gym.Env):
 
 config_path = 'config.yaml' 
 env = Environment(config_path)
-Environment.run_simulation(env, max_steps=1)
+Environment.run_simulation(env, max_steps=15)
