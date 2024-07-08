@@ -1,5 +1,5 @@
 8/07/2024
-Current banches: /n
+Current banches:
 Main, env2, pygame-rendering, Modular, broken-observations: Stages of development for the final environment. 
 Temporary: Current working environment, training with stable baselines3
 marllib - integration: Branch of the current working environment to integrate with MARLlib 
