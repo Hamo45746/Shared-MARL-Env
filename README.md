@@ -5,7 +5,7 @@ Cut observations at buildings \
 Observation map at the end of simulation to show full observed / discovered area \
 Ensure Task Allocation and Continuous agents can intergrate together \
 Create interface doc \
-Gazebo integration \ 
+Gazebo integration 
 
 
 ## Current banches:
