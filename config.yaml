@@ -9,7 +9,7 @@ map_scale: 0.18 #Going up makes to map larger
 
 obs_range: 17 #13
 comm_range: 40 #10
-# agent_type: 'discrete'
+#agent_type: 'discrete'
 agent_type: 'continuous'
 #agent_type: 'task_allocation'
 

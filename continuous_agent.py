@@ -160,3 +160,6 @@ class ContinuousAgent(BaseAgent):
                 if self.inbounds(nx, ny) and self.inbuilding(nx, ny):
                     return True
         return False
+
+
+       
