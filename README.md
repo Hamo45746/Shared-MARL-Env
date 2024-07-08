@@ -5,9 +5,12 @@ Temporary: Current working environment, training with stable baselines3 \
 marllib - integration: Branch of the current working environment to integrate with MARLlib \
 
 ## MARL/Rl open source libraries for use to look into integrating for benchmarking:
-### Stable Baselines3 
-### RLLib: By anyscale, uses Ray https://www.anyscale.com/ray-open-source
-  - https://docs.ray.io/en/latest/rllib/index.html
+### Stable Baselines3: https://stable-baselines3.readthedocs.io/en/master/guide/quickstart.html
+  - https://github.com/DLR-RM/stable-baselines3
+### RLLib: https://docs.ray.io/en/latest/rllib/index.html
+  - https://docs.ray.io/en/latest/rllib/key-concepts.html
+  - By anyscale, uses Ray https://www.anyscale.com/ray-open-source
+  - https://github.com/ray-project/ray/tree/master/rllib
 ### MARLLib: https://marllib.readthedocs.io/en/latest/index.html
   - Extension of RLlib but not by the Rllib team
   - Github: https://github.com/Replicable-MARL/MARLlib/tree/master
