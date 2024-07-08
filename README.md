@@ -11,8 +11,8 @@ Gazebo integration
 ## Current banches:
 Main, env2, pygame-rendering, Modular, broken-observations: Stages of development for the training environment. \
 Temporary: Current working environment. \
-SB3 integration: Branch of the current working environment to integrate with MARLlib. \ 
-marllib integration: Branch of the current working environment to integrate with MARLlib. \
+SB3 integration: Branch of the current working environment to integrate with MARLlib. \\
+marllib integration: Branch of the current working environment to integrate with MARLlib. \\
 
 ## MARL/Rl open source libraries for use to look into integrating for benchmarking:
 ### Stable Baselines3: https://stable-baselines3.readthedocs.io/en/master/guide/quickstart.html
