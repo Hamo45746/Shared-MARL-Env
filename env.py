@@ -98,7 +98,9 @@ class Environment(gym.Env):
             #self.action_space = spaces.Dict({agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)})
             self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(self.num_agents * 2,), dtype=np.float32) #changed it to this to work with stable baselines
 
-        self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32) for agent_id in range(self.num_agents)})
+        #self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32) for agent_id in range(self.num_agents)})
+        self.observation_space = spaces.Dict({str(agent_id): spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32) for agent_id in range(self.num_agents)}) #changed it to this to work with stable baselines
+
         # Set global state layers
         self.global_state[0] = self.map_matrix
         self.global_state[1] = self.agent_layer.get_state_matrix()
@@ -159,7 +161,8 @@ class Environment(gym.Env):
         for agent_id in range(self.num_agents):
             obs = self.safely_observe(agent_id)
             self.agents[agent_id].set_observation_state(obs)
-            observations[agent_id] = obs
+            #observations[agent_id] = obs
+            observations[str(agent_id)] = obs #changed it to this to work with stable baselines
 
         return observations, info
     
@@ -294,7 +297,8 @@ class Environment(gym.Env):
             obs = self.safely_observe(agent_id)
             # print("This should come first agent id", agent_id, obs)
             self.agent_layer.agents[agent_id].set_observation_state(obs)
-            observations[agent_id] = obs
+            #observations[agent_id] = obs
+            observations[str(agent_id)] = obs #changed it to this to work with stable baselines
         return observations
     
     # def update_observations(self): # Hamish had this one
@@ -615,9 +619,9 @@ class Environment(gym.Env):
     
     def safely_observe(self, agent_id):
         obs = self.collect_obs(self.agent_layer, agent_id)
-        #obs = np.where(obs == -np.inf, -1e10, obs)
         obs = obs.transpose((0,2,1))
-        obs = np.clip(obs, self.observation_space[agent_id].low, self.observation_space[agent_id].high)
+        #obs = np.clip(obs, self.observation_space[agent_id].low, self.observation_space[agent_id].high)
+        obs = np.clip(obs, self.observation_space[str(agent_id)].low, self.observation_space[str(agent_id)].high) #changed it to this to work with stable baselines
         return obs
 
     def collect_obs(self, agent_layer, agent_id):
