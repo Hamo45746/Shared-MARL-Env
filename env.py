@@ -99,7 +99,7 @@ class Environment(gym.Env):
             self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(self.num_agents * 2,), dtype=np.float32) #changed it to this to work with stable baselines
 
         if self.agent_type == 'task_allocation' or 'discrete':
-            self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32) for agent_id in range(self.num_agents)})
+            self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-20, high=1, shape=(self.global_state.shape[0], self.obs_range, self.obs_range), dtype=np.float32) for agent_id in range(self.num_agents)})
         else: 
             self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-30, high=2, shape=(self.global_state.shape[0] + 1, self.obs_range, self.obs_range), dtype=np.float32) for agent_id in range(self.num_agents)})
 
@@ -286,8 +286,8 @@ class Environment(gym.Env):
         truncated = self.is_episode_done()
         info = {}
         
-        # np.set_printoptions(threshold=np.inf)
-        # print("observations", observations)
+        np.set_printoptions(threshold=np.inf, linewidth=np.inf)
+        print("observations", observations)
         # print("local_states", local_states)
         # print("local_states0", local_states[0])
         return local_states, rewards, terminated, truncated, info
