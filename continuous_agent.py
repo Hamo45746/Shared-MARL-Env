@@ -2,6 +2,10 @@ import numpy as np
 from gymnasium import spaces
 from base_agent import BaseAgent
 
+import numpy as np
+from gymnasium import spaces
+from base_agent import BaseAgent
+
 class ContinuousAgent(BaseAgent):
     def __init__(self, xs, ys, map_matrix, randomiser, obs_range=3, n_layers=4, seed=10, flatten=False):
         self.random_state = randomiser
@@ -10,13 +14,14 @@ class ContinuousAgent(BaseAgent):
         self.current_pos = np.zeros(2, dtype=np.float32)
         self.last_pos = np.zeros(2, dtype=np.float32)
         self.temp_pos = np.zeros(2, dtype=np.float32)
+        self.velocity = np.zeros(2, dtype=np.float32)  # Add velocity
         self.map_matrix = map_matrix
         self.terminal = False
         self._obs_range = obs_range
         self.X, self.Y = self.map_matrix.shape
-        self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-20)
-        self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20)
-        self._obs_shape = (n_layers * obs_range**2 + 1,) if flatten else (obs_range, obs_range, n_layers)
+        self.observation_state = np.full((n_layers + 1, obs_range, obs_range), fill_value=-20)
+        self.local_state = np.full((n_layers + 1, self.X, self.Y), fill_value=-20)
+        self._obs_shape = (n_layers + 1, obs_range, obs_range)  # Update observation shape to include velocity and position
         self.observed_areas = set()
         self.path = []
         self.communicated = False
@@ -31,27 +36,40 @@ class ContinuousAgent(BaseAgent):
         return spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
 
     def step(self, action):
-        cpos = self.current_pos
-        lpos = self.last_pos
-        if self.inbuilding(cpos[0], cpos[1]):
-            return cpos
-        tpos = self.temp_pos
-        tpos[0] = cpos[0]
-        tpos[1] = cpos[1]
-        tpos += action
-        x, y = tpos
-        if not self.inbounds(x, y):
-            return cpos
-        if self.inbuilding(x,y):
-            lpos[:] = cpos
-            return cpos
-        lpos[:] = cpos
-        cpos[:] = tpos
-        self.path.append((cpos[0], cpos[1]))
-        return cpos
+        # Convert action to acceleration (assuming action is in range [-1, 1] and maps to [-2, 2] km/h)
+        acceleration = action * 2.0
+        # Adjust velocity
+        self.velocity += acceleration
+        # Clamp velocity to the desired range
+        self.velocity = np.clip(self.velocity, -10.0, 10.0)  # Adjust as per your requirements
+
+        # Determine the new direction based on the constraints
+        if np.linalg.norm(self.velocity) > 10.0:
+            current_direction = np.arctan2(self.velocity[1], self.velocity[0])
+            max_angle_change = np.deg2rad(75)
+            desired_direction = np.arctan2(acceleration[1], acceleration[0])
+            angle_diff = desired_direction - current_direction
+            angle_diff = np.arctan2(np.sin(angle_diff), np.cos(angle_diff))  # Normalize angle to [-pi, pi]
+
+            if np.abs(angle_diff) > max_angle_change:
+                angle_diff = np.sign(angle_diff) * max_angle_change
+
+            new_direction = current_direction + angle_diff
+            speed = np.linalg.norm(self.velocity)
+            self.velocity = np.array([speed * np.cos(new_direction), speed * np.sin(new_direction)])
+
+        # Update position based on velocity
+        self.temp_pos = self.current_pos + self.velocity
+
+        if self.inbounds(self.temp_pos[0], self.temp_pos[1]) and not self.inbuilding(self.temp_pos[0], self.temp_pos[1]):
+            self.last_pos[:] = self.current_pos
+            self.current_pos[:] = self.temp_pos
+            self.path.append((self.current_pos[0], self.current_pos[1]))
+
+        return self.current_pos
 
     def get_state(self):
-        return self.current_pos
+        return np.concatenate([self.velocity, self.current_pos])
     
     def get_observation_state(self):
         return self.observation_state
@@ -65,7 +83,7 @@ class ContinuousAgent(BaseAgent):
     def set_position(self, x, y):
         self.current_pos[:] = x, y
         if self.initial_position is None:
-            self.initial_position = np.array([x,y], dtype = np.float32)
+            self.initial_position = np.array([x, y], dtype=np.float32)
 
     def current_position(self):
         return self.current_pos
@@ -90,47 +108,18 @@ class ContinuousAgent(BaseAgent):
                                 self.local_state[layer, global_x1, global_y1] = 0
                             elif self.local_state[layer, global_x1, global_y1] > -20:
                                 self.local_state[layer, global_x1, global_y1] -= 1
-                                # self.local_state[layer, global_x, global_y] = max(self.local_state[layer, global_x, global_y] - 1, -20) 
 
-    def get_observation_state(self):
-        return self.observation_state
+    def get_next_action(self):
+        action = self.random_state.uniform(-1.0, 1.0, size=(2,))
+        return action
     
     def set_observation_state(self, observation):
         self.observation_state = observation
-    
-    def get_next_action(self):
-        min_radius = 1.0
-        while True:
-            action = self.random_state.uniform(-1.0, 1.0, size=(2,))
-            #print(action)
-            if np.linalg.norm(action) >= min_radius:
-                break
-        return action
 
-    # #this is for lunch and learn - sending agents away from origin
-    # def get_next_action(self): 
-    #     potential_actions = self.random_state.uniform(-1.0, 1.0, size=(100,2)) 
-    #     max_distance = -1 
-    #     best_action = None 
-    #     print(self.origin)
-    #     for action in potential_actions: 
-    #         potential_position = self.current_pos + action 
-    #         if self.inbounds(potential_position[0], potential_position[1]) and not self.inbuilding(potential_position[0], potential_position[1]):
-    #             distance = np.linalg.norm(potential_position - self.initial_position) 
-    #             if distance > max_distance: 
-    #                 max_distance = distance 
-    #                 best_action = action 
-    #     # If all potential actions are invalid 
-    #     if best_action is None: 
-    #         best_action = self.random_state.uniform(-1.0, 1.0, size=(2,)) 
-    #         print("here")
-    #     return best_action
-    
     def gains_information(self):
         new_information_count = 0
         total_cells = self.observation_state.shape[1] * self.observation_state.shape[2]
 
-        # Iterate over the observation space
         for x in range(self.observation_state.shape[1]):
             for y in range(self.observation_state.shape[2]):
                 pos = (int(self.current_pos[0] - self._obs_range // 2 + x), int(self.current_pos[1] - self._obs_range // 2 + y))
@@ -138,20 +127,16 @@ class ContinuousAgent(BaseAgent):
                     self.observed_areas.add(pos)
                     new_information_count += 1
 
-        # Calculate the percentage of new information
         percentage_new_information = (new_information_count / total_cells) * 100
-        #print(f"Agent at {self.current_position()} gained {percentage_new_information}% new information.")
         return percentage_new_information
     
     def communicates_information(self):
-        # Logic to check if the agent successfully shares new information with another agent
         if self.communicated:
             self.communicated = False
             return True
         return False
     
     def calls_obstacle_avoidance(self):
-        # Define the obstacle avoidance threshold
         threshold = 2
         x, y = self.current_pos
         for dx in range(-threshold, threshold + 1):
@@ -161,5 +146,3 @@ class ContinuousAgent(BaseAgent):
                     return True
         return False
 
-
-       

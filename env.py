@@ -10,7 +10,7 @@ import pygame
 from skimage.transform import resize
 from layer import AgentLayer, JammerLayer, TargetLayer
 from gymnasium.utils import seeding
-from Continuous_controller.agent_controller import AgentController
+#from Continuous_controller.agent_controller import AgentController
 from Discrete_controller.agent_controller import DiscreteAgentController
 from Continuous_controller.reward import calculate_continuous_reward
 from gymnasium import spaces
@@ -98,7 +98,11 @@ class Environment(gym.Env):
             #self.action_space = spaces.Dict({agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)})
             self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(self.num_agents * 2,), dtype=np.float32) #changed it to this to work with stable baselines
 
-        self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32) for agent_id in range(self.num_agents)})
+        if self.agent_type == 'task_allocation' or 'discrete':
+            self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32) for agent_id in range(self.num_agents)})
+        else: 
+            self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-30, high=2, shape=(self.global_state.shape[0] + 1, self.obs_range, self.obs_range), dtype=np.float32) for agent_id in range(self.num_agents)})
+
         # Set global state layers
         self.global_state[0] = self.map_matrix
         self.global_state[1] = self.agent_layer.get_state_matrix()
@@ -623,12 +627,19 @@ class Environment(gym.Env):
     def collect_obs(self, agent_layer, agent_id):
         return self.collect_obs_by_idx(agent_layer, agent_id)
 
-
     def collect_obs_by_idx(self, agent_layer, agent_idx):
-        # Initialise the observation array for all layers, ensuring no information loss
-        obs = np.full((self.global_state.shape[0], self.obs_range, self.obs_range), fill_value=-20, dtype=np.float32)
+        if self.agent_type == 'task_allocation' or 'discrete':
+            # Initialize the observation array to include velocity, position, and the previous state observation
+            obs = np.full((self.global_state.shape[0], self.obs_range, self.obs_range), fill_value=-20, dtype=np.float32)
+        else:
+            obs = np.full((self.global_state.shape[0] + 1, self.obs_range, self.obs_range), fill_value=-20, dtype=np.float32)
+
         # Get the current position of the agent
         xp, yp = agent_layer.get_position(agent_idx)
+        # Get the current velocity of the agent
+        if self.agent_type == 'continuous':
+            vx, vy = self.agents[agent_idx].velocity
+        
         # Calculate bounds for the observation
         xlo, xhi, ylo, yhi, xolo, xohi, yolo, yohi = self.obs_clip(xp, yp)
         
@@ -655,8 +666,16 @@ class Environment(gym.Env):
                 pad_width = [(0,0), (self.obs_range-obs_shape[0], 0),(0, self.obs_range-obs_shape[1])]
             obs_padded = np.pad(obs_slice, pad_width[1:], mode='constant', constant_values=-21)
             obs[layer, :obs_padded.shape[0], :obs_padded.shape[1]] = obs_padded
-        return obs
-
+        
+        if self.agent_type == 'continuous':
+            # Add the velocity and position to the observation
+            obs[-1, 0, 0] = vx
+            obs[-1, 0, 1] = vy
+            obs[-1, 0, 2] = xp
+            obs[-1, 0, 3] = yp
+    
+        return obs    
+    
     def obs_clip(self, x, y):
         xld = x - self.obs_range // 2
         xhd = x + self.obs_range // 2
@@ -847,7 +866,7 @@ class Environment(gym.Env):
         np.random.seed(seed)
         random.seed(seed)
 
-    def run_simulation(self, max_steps=20):
+    def run_simulation(self, max_steps=100):
         running = True
         step_count = 0
 
