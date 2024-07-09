@@ -2,12 +2,8 @@ import numpy as np
 from gymnasium import spaces
 from base_agent import BaseAgent
 
-import numpy as np
-from gymnasium import spaces
-from base_agent import BaseAgent
-
 class ContinuousAgent(BaseAgent):
-    def __init__(self, xs, ys, map_matrix, randomiser, obs_range=3, n_layers=4, seed=10, flatten=False):
+    def __init__(self, xs, ys, map_matrix, randomiser, obs_range=3, n_layers=5, seed=10, flatten=False):
         self.random_state = randomiser
         self.xs = xs
         self.ys = ys
@@ -19,9 +15,9 @@ class ContinuousAgent(BaseAgent):
         self.terminal = False
         self._obs_range = obs_range
         self.X, self.Y = self.map_matrix.shape
-        self.observation_state = np.full((n_layers + 1, obs_range, obs_range), fill_value=-20)
-        self.local_state = np.full((n_layers + 1, self.X, self.Y), fill_value=-20)
-        self._obs_shape = (n_layers + 1, obs_range, obs_range)  # Update observation shape to include velocity and position
+        self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-20)
+        self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20)
+        self._obs_shape = (n_layers, obs_range, obs_range)  # Update observation shape to include velocity and position
         self.observed_areas = set()
         self.path = []
         self.communicated = False
@@ -37,11 +33,11 @@ class ContinuousAgent(BaseAgent):
 
     def step(self, action):
         # Convert action to acceleration (assuming action is in range [-1, 1] and maps to [-2, 2] km/h)
-        acceleration = action * 2.0
+        acceleration = action #acceleration = action * 2.0
         # Adjust velocity
         self.velocity += acceleration
         # Clamp velocity to the desired range
-        self.velocity = np.clip(self.velocity, -10.0, 10.0)  # Adjust as per your requirements
+        self.velocity = np.clip(self.velocity, -1.0, 1.0)  # Adjust as per your requirements
 
         # Determine the new direction based on the constraints
         if np.linalg.norm(self.velocity) > 10.0:

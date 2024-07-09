@@ -98,10 +98,14 @@ class Environment(gym.Env):
             #self.action_space = spaces.Dict({agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)})
             self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(self.num_agents * 2,), dtype=np.float32) #changed it to this to work with stable baselines
 
-        if self.agent_type == 'task_allocation' or 'discrete':
-            self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-20, high=1, shape=(self.global_state.shape[0], self.obs_range, self.obs_range), dtype=np.float32) for agent_id in range(self.num_agents)})
-        else: 
-            self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-30, high=2, shape=(self.global_state.shape[0] + 1, self.obs_range, self.obs_range), dtype=np.float32) for agent_id in range(self.num_agents)})
+        if self.agent_type == 'continuous':
+            self.observation_space = spaces.Dict({
+                agent_id: spaces.Box(low=-20, high=1, shape=(5, self.obs_range, self.obs_range), dtype=np.float32)
+                for agent_id in range(self.num_agents)})
+        else:
+            self.observation_space = spaces.Dict({
+                agent_id: spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32)
+                for agent_id in range(self.num_agents)})
 
         # Set global state layers
         self.global_state[0] = self.map_matrix
@@ -269,7 +273,6 @@ class Environment(gym.Env):
         self.update_global_state()
         
         # Update observations and communicate
-        observations = {}
         observations = self.update_observations()
         self.share_and_update_observations()
         
@@ -286,9 +289,9 @@ class Environment(gym.Env):
         truncated = self.is_episode_done()
         info = {}
         
-        np.set_printoptions(threshold=np.inf, linewidth=np.inf)
+        np.set_printoptions(threshold=2000, suppress=True, precision=1, linewidth=2000)
         print("observations", observations)
-        # print("local_states", local_states)
+        #print("local_states", local_states)
         # print("local_states0", local_states[0])
         return local_states, rewards, terminated, truncated, info
 
@@ -619,7 +622,6 @@ class Environment(gym.Env):
     
     def safely_observe(self, agent_id):
         obs = self.collect_obs(self.agent_layer, agent_id)
-        #obs = np.where(obs == -np.inf, -1e10, obs)
         obs = obs.transpose((0,2,1))
         obs = np.clip(obs, self.observation_space[agent_id].low, self.observation_space[agent_id].high)
         return obs
@@ -628,11 +630,11 @@ class Environment(gym.Env):
         return self.collect_obs_by_idx(agent_layer, agent_id)
 
     def collect_obs_by_idx(self, agent_layer, agent_idx):
-        if self.agent_type == 'task_allocation' or 'discrete':
-            # Initialize the observation array to include velocity, position, and the previous state observation
-            obs = np.full((self.global_state.shape[0], self.obs_range, self.obs_range), fill_value=-20, dtype=np.float32)
-        else:
+        # Initialize the observation array based on the agent type
+        if self.agent_type == 'continuous':
             obs = np.full((self.global_state.shape[0] + 1, self.obs_range, self.obs_range), fill_value=-20, dtype=np.float32)
+        else:
+            obs = np.full((self.global_state.shape[0], self.obs_range, self.obs_range), fill_value=-20, dtype=np.float32)
 
         # Get the current position of the agent
         xp, yp = agent_layer.get_position(agent_idx)
@@ -669,12 +671,12 @@ class Environment(gym.Env):
         
         if self.agent_type == 'continuous':
             # Add the velocity and position to the observation
-            obs[-1, 0, 0] = vx
-            obs[-1, 0, 1] = vy
-            obs[-1, 0, 2] = xp
-            obs[-1, 0, 3] = yp
-    
-        return obs    
+            velocity_layer = np.full((self.obs_range, self.obs_range), fill_value=-20, dtype=np.float32)
+            velocity_layer[0, 0] = vx
+            velocity_layer[0, 1] = vy
+            obs[self.global_state.shape[0]] = velocity_layer
+
+        return obs  
     
     def obs_clip(self, x, y):
         xld = x - self.obs_range // 2
@@ -711,48 +713,6 @@ class Environment(gym.Env):
                         other_agent.update_local_state(current_obs, current_pos)
                         agent.communicated = True 
 
-    # def share_and_update_observations(self):
-    #     """
-    #     Updates each agent's internal observation state and internal local (entire env) state.
-    #     Will merge current observations of agents within communication range into each agent's local state.
-    #     This function should be run in the step function.
-    #     """
-
-    #     np.set_printoptions(threshold=np.inf, linewidth=np.inf) #THIS is for testing 
-
-    #     for i, agent in enumerate(self.agents):
-    #         current_obs = agent.get_observation_state()
-    #         current_pos = agent.current_position()
-    #         #print(f"Agent {i} local state before communication:")
-
-    #         for j, other_agent in enumerate(self.agents):
-    #             if i != j:
-    #                 other_pos = other_agent.current_position()
-    #                 if self.within_comm_range(current_pos, other_pos):
-    #                     if not self.is_comm_blocked(i):
-    #                         #print(f"Agent {i} is communicating with Agent {j}")
-
-    #                         # Print the other agent's observation
-    #                         #print(f"Agent {j}'s observation:")
-    #                         #print(other_agent.get_observation_state())
-
-    #                         # Print the section of the agent's local state before communication
-    #                         #print(f"Agent {i} local state at Agent {j}'s observation location before communication:")
-    #                         #self.print_local_state_section(agent, other_pos)
-
-    #                         other_agent.update_local_state(current_obs, current_pos)
-    #                         agent.communicated = True 
-
-    #                         # Print the section of the agent's local state after communication
-    #                         #print(f"Agent {i} local state at Agent {j}'s observation location after communication:")
-    #                         #self.print_local_state_section(agent, other_pos)
-    #                         #print("---")
-    #                     # else:
-    #                     #    print(f"Agent {i} is within a jammed area and cannot communicate with Agent {j}")
-    #                 #else:
-    #                     #print(f"Agent {i} is out of communication range with Agent {j}")
-    #                 #if self.is_comm_blocked(i):
-    #                     #print("comm is blocked")
 
     def print_local_state_section(self, agent, other_pos):
         """
