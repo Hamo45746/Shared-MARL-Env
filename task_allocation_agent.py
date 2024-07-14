@@ -29,6 +29,19 @@ class TaskAllocationAgent(DiscreteAgent):
     @property
     def action_space(self):
         return self._action_space
+    
+    @property
+    def observation_space(self):
+        return spaces.Dict({
+            'local_obs': spaces.Box(low=-20, high=1, shape=self._obs_shape, dtype=np.float32),
+            'full_state': spaces.Box(low=-20, high=1, shape=(self.n_layers, self.X, self.Y), dtype=np.float32)
+        })
+
+    def get_observation(self):
+        return {
+            'local_obs': self.observation_state,
+            'full_state': self.local_state
+        }
 
     def step(self, action):
         # print(f"TaskAllocationAgent step called with action: {action}")
@@ -101,3 +114,4 @@ class TaskAllocationAgent(DiscreteAgent):
     def reset(self):
         super().reset()
         self.path = []
+        return self.get_observation()

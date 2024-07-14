@@ -13,101 +13,54 @@ from layer import AgentLayer, JammerLayer, TargetLayer
 from gym.utils import seeding
 # from gymnasium.utils import seeding
 from Continuous_controller.agent_controller import AgentController
-from Discrete_controller.agent_controller import DiscreteAgentController
+from Task_controller.agent_controller import DiscreteAgentController
 from Continuous_controller.reward import calculate_continuous_reward
+# from gym.spaces import Dict as GymDict, Box, Discrete
 from gym import spaces
 # from gymnasium import spaces
 from path_processor import PathProcessor
 
 
-class Environment(gym.core.Env): # was gym.Env
+class Environment(gym.core.Env):
     def __init__(self, config_path, render_mode="human"):
         super(Environment, self).__init__()
         # Load configuration from YAML
         with open(config_path, 'r') as file:
             self.config = yaml.safe_load(file)
         
-        # Initialise from config
+        # Initialize environment parameters
         self.D = self.config['grid_size']['D']
         self.obs_range = self.config['obs_range']
-        self.pixel_scale = self.config['pixel_scale'] # Size in pixels of each map cell
-        self.map_scale = self.config['map_scale'] # Scaling factor of map resolution
+        self.pixel_scale = self.config['pixel_scale']
+        self.map_scale = self.config['map_scale']
         self.seed_value = self.config['seed']
         self.comm_range = self.config['comm_range']
-        # self._seed(self.seed_value)
-        self.seed(self.seed_value) # For MARLlib
+        self.seed(self.seed_value)
 
-        # Load the map
-        original_map = np.load(self.config['map_path'])[:, :, 0]
-        original_map = original_map.transpose() 
- 
-        original_x, original_y = original_map.shape
-        # Scale map according to config
-        self.X = int(original_x * self.map_scale)
-        self.Y = int(original_y * self.map_scale)
-        # Resizing the map, using nearest interpolation
-        resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
-        # Assuming obstacles are any non-zero value - convert to binary map
-        obstacle_map = (resized_map != 0).astype(int)
-        self.map_matrix = obstacle_map
-        # Global state includes layers for map, agents, targets, and jammers
+        # Load and process the map
+        self.map_matrix = self.load_map()
         self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.float32)
+        self.global_state[0] = self.map_matrix
         
-        # Initialise agents, targets, jammers
-        # Created jammers, targets and agents at random positions if not given a position from config
-        if 'agent_positions' in self.config:
-            agent_positions = [tuple(pos) for pos in self.config['agent_positions']]
-        else:
-            agent_positions = None
-        
-        if 'target_positions' in self.config:
-            target_positions = [tuple(pos) for pos in self.config['target_positions']]
-        else:
-            target_positions = None
-
-        if 'target_goals' in self.config:
-            target_goals = [tuple(pos) for pos in self.config['target_goals']]
-        else:
-            target_goals = None
-                    
+        # Initialise agents, targets, and jammers
         self.num_agents = self.config['n_agents']
         self.agent_type = self.config.get('agent_type', 'discrete')
+        self.path_processor = PathProcessor(self.map_matrix, self.X, self.Y)
         
         if self.agent_type == 'task_allocation':
             self.agent_paths = {agent_id: [] for agent_id in range(self.num_agents)}
             self.current_waypoints = {agent_id: None for agent_id in range(self.num_agents)}
         
-        # Assumes static environment map
-        self.path_processor = PathProcessor(self.map_matrix, self.X, self.Y)
-
-        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, self.path_processor, agent_positions, agent_type=self.agent_type, randinit=True)
-        self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
-
-        # get agent id for class instance
-        self.agent_name_mapping = dict(zip(self.agents, list(range(self.num_agents))))
-
-        self.num_targets = self.config['n_targets']
-        self.targets = target_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, self.path_processor, target_positions, randinit=True)
-        self.target_layer = TargetLayer(self.X, self.Y, self.targets, self.map_matrix)
-
-        self.num_jammers = self.config['n_jammers']
-        self.jammers = jammer_utils.create_jammers(self.num_jammers, self.map_matrix, self.np_random, self.config['jamming_radius'])
-        self.jammer_layer = JammerLayer(self.X, self.Y, self.jammers)
-        self.jammed_positions = set()
-
+        self.initialise_agents()
+        self.initialise_targets()
+        self.initialise_jammers()
+        
         # Define action and observation spaces
-        if self.agent_type == 'discrete':
-            self.action_space = spaces.Discrete(len(self.agents[0].eactions))
-        else:
-            #self.action_space = spaces.Dict({agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)})
-            self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(self.num_agents * 2,), dtype=np.float32) #changed it to this to work with stable baselines
-
-        self.observation_space = spaces.Dict({agent_id: spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32) for agent_id in range(self.num_agents)})
+        self.define_action_space()
+        self.define_observation_space()
+        
         # Set global state layers
-        self.global_state[0] = self.map_matrix
-        self.global_state[1] = self.agent_layer.get_state_matrix()
-        self.global_state[2] = self.target_layer.get_state_matrix()
-        self.global_state[3] = self.jammer_layer.get_state_matrix()
+        self.update_global_state()
         
         self.current_step = 0
         self.render_modes = render_mode
@@ -115,60 +68,92 @@ class Environment(gym.core.Env): # was gym.Env
         pygame.init()
 
 
-    def reset(self, seed= None, options: dict = None):
-        """ Reset the environment for a new episode"""
-        super().reset(seed=self.seed_value)
-        info = {}
-        if seed is not None:
-            self.seed_value = seed
-        # self._seed(self.seed_value)
-        self.seed(self.seed_value) # For MARLlib
-        # Reset global state
-        self.global_state.fill(0)
-        self.global_state[0] = self.map_matrix # Uncomment above code if map_matrix is changed by sim
+    def load_map(self):
+        original_map = np.load(self.config['map_path'])[:, :, 0]
+        original_map = original_map.transpose()
+        original_x, original_y = original_map.shape
+        self.X = int(original_x * self.map_scale)
+        self.Y = int(original_y * self.map_scale)
+        resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
+        return (resized_map != 0).astype(int) # 1 for obstacles, 0 for free space
 
-        # Reinitialise agent positions
-        if 'agent_positions' in self.config:
-            agent_positions = [tuple(pos) for pos in self.config['agent_positions']]
-        else:
-            agent_positions = None
 
-        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, self.path_processor, agent_positions, agent_type=self.agent_type, randinit=True)
+    def initialise_agents(self):
+        agent_positions = self.config.get('agent_positions')
+        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, 
+                                                self.path_processor, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
-        
-        # Reinitialise target positions
-        if 'target_positions' in self.config:
-            target_positions = [tuple(pos) for pos in self.config['target_positions']]
-        else:
-            target_positions = None
+        self.agent_name_mapping = dict(zip(self.agents, list(range(self.num_agents))))
 
-        self.targets = target_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, self.path_processor ,target_positions, randinit=True)
+
+    def initialise_targets(self):
+        self.num_targets = self.config['n_targets']
+        target_positions = self.config.get('target_positions')
+        self.targets = target_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, 
+                                                   self.path_processor, target_positions, randinit=True)
         self.target_layer = TargetLayer(self.X, self.Y, self.targets, self.map_matrix)
 
-        # Reinitialise jammers
+
+    def initialise_jammers(self):
+        self.num_jammers = self.config['n_jammers']
         self.jammers = jammer_utils.create_jammers(self.num_jammers, self.map_matrix, self.np_random, self.config['jamming_radius'])
         self.jammer_layer = JammerLayer(self.X, self.Y, self.jammers)
-        
         self.jammed_positions = set()
-        
-        self.target_layer.update()
-        self.agent_layer.update()
-        # Update layers in global state
-        self.global_state[1] = self.agent_layer.get_state_matrix()
-        self.global_state[2] = self.target_layer.get_state_matrix()
-        self.global_state[3] = self.jammer_layer.get_state_matrix()
+
+
+    def define_action_space(self):
+        if self.agent_type == 'discrete':
+            self.action_space = spaces.Discrete(len(self.agents[0].eactions))
+        elif self.agent_type == 'task_allocation':
+            self.action_space = spaces.Discrete((2 * self.agents[0].max_distance + 1) ** 2)
+        else:
+            self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
+
+
+    def define_observation_space(self):
+        if self.agent_type == 'task_allocation':
+            self.observation_space = spaces.Dict({
+                'local_obs': spaces.Box(low=-20, high=1, shape=(self.D, self.obs_range, self.obs_range), dtype=np.float32),
+                'full_state': spaces.Box(low=-20, high=1, shape=(self.D, self.X, self.Y), dtype=np.float32)
+            })
+        else:
+            self.observation_space = spaces.Box(low=-20, high=1, shape=(self.D, self.obs_range, self.obs_range), dtype=np.float32)
+
+
+    def reset(self, seed=None):
+        super().reset(seed=seed)
+        if seed is not None:
+            self.seed_value = seed
+        self.seed(self.seed_value)
+
+        self.global_state.fill(0)
+        self.global_state[0] = self.map_matrix
+
+        self.initialise_agents()
+        self.initialise_targets()
+        self.initialise_jammers()
+
+        self.update_global_state()
         self.current_step = 0
 
+        return self.get_obs()
+
+
+    def get_obs(self):
         observations = {}
-        #observations = np.zeros(self.observation_space.shape, dtype=np.float32)
-        for agent_id in range(self.num_agents):
-            obs = self.safely_observe(agent_id)
-            self.agents[agent_id].set_observation_state(obs)
-            observations[agent_id] = self.agents[agent_id].get_state()
-
-        # return observations, info # This for gymnasium
-        return observations # This for gym and MARLlib
-
+        for agent_id, agent in enumerate(self.agents):
+            if self.agent_type == 'task_allocation':
+                local_obs = self.safely_observe(agent_id)
+                full_state = agent.get_state()
+                observations[agent_id] = {
+                    'local_obs': local_obs,
+                    'full_state': full_state
+                }
+            else:
+                observations[agent_id] = agent.get_observation()
+        return observations
+    
+    
     def step(self, actions_dict):
         if self.agent_type == 'task_allocation':
             return self.task_allocation_step(actions_dict)
@@ -177,9 +162,6 @@ class Environment(gym.core.Env): # was gym.Env
         
     
     def task_allocation_step(self, actions_dict):
-        # print("\nStarting task_allocation_step")
-        # print(f"Current agent positions: {[tuple(self.agent_layer.get_position(i)) for i in range(self.num_agents)]}")
-    
         for agent_id, action in actions_dict.items():
             agent = self.agents[agent_id]
             start = tuple(self.agent_layer.get_position(agent_id))
@@ -210,13 +192,13 @@ class Environment(gym.core.Env): # was gym.Env
             self.agent_layer.update()
             
             # Update observations and communicate
-            observations = {}
-            observations = self.update_observations()
+            self.update_observations()
             self.share_and_update_observations()
 
-            # Update jammed areas and global state
+            # Update jammed areas
             self.jammer_layer.activate_jammers(self.current_step)
             self.update_jammed_areas()
+            # Update global state
             self.update_global_state()
             
             # Check for jammer destruction
@@ -224,17 +206,16 @@ class Environment(gym.core.Env): # was gym.Env
             self.render()
             self.current_step += 1
 
-        # Collect final local states and calculate rewards
-        local_states, rewards = self.collect_local_states_and_rewards()
-        
+        # Calculate rewards
+        rewards = self.collect_rewards()
+        observations = {}
+        for agent_id, agent in enumerate(self.agents):
+            observations[agent_id] = agent.get_observation()
+            
         terminated = self.is_episode_done()
-        truncated = self.is_episode_done()
+        # truncated = self.is_episode_done()
         info = {}
-        
-        # np.set_printoptions(threshold=np.inf)
-        # print("local_states", local_states)
-        # print("local_states[0]", local_states[0])
-        # print("End of task_allocation_step")
+
         # return local_states, rewards, terminated, truncated, info # For gymnasium
         return observations, rewards, terminated, info # for gym and MARLlib
     
@@ -270,13 +251,13 @@ class Environment(gym.core.Env): # was gym.Env
         self.update_jammed_areas()
         self.check_jammer_destruction()
 
-        # Collect final local states and calculate rewards
-        local_states, rewards = self.collect_local_states_and_rewards()
+        # Collect rewards
+        rewards = self.collect_rewards()
         
         self.current_step += 1
         
         terminated = self.is_episode_done()
-        truncated = self.is_episode_done()
+        # truncated = self.is_episode_done()
         info = {}
         
         # print("observations", observations)
@@ -290,7 +271,6 @@ class Environment(gym.core.Env): # was gym.Env
         observations = {}
         for agent_id in range(self.num_agents):
             obs = self.safely_observe(agent_id)
-            # print("This should come first agent id", agent_id, obs)
             self.agent_layer.agents[agent_id].set_observation_state(obs)
             observations[agent_id] = obs
         return observations
@@ -300,12 +280,12 @@ class Environment(gym.core.Env): # was gym.Env
     #         obs = self.safely_observe(agent_id)
     #         self.agent_layer.agents[agent_id].set_observation_state(obs)
 
-    def collect_local_states_and_rewards(self):
-        local_states = {}
+    def collect_rewards(self):
+        # local_states = {}
         rewards = {}
         for agent_id in range(self.num_agents):
             agent = self.agent_layer.agents[agent_id]
-            local_states[agent_id] = agent.get_state()  # This returns the local_state
+            # local_states[agent_id] = agent.get_state()  # This returns the local_state
             
             if self.agent_type == "discrete":
                 reward = DiscreteAgentController.calculate_reward(agent)
@@ -315,13 +295,15 @@ class Environment(gym.core.Env): # was gym.Env
                 reward = calculate_continuous_reward(agent, self)
             rewards[agent_id] = reward
         
-        return local_states, rewards
+        return rewards #, local_states (was before rewards if uncommented)
+    
     
     def action_to_waypoint(self, action):
         # Convert the action (which is now an index) to a waypoint (x, y) coordinate
         x = action // self.Y
         y = action % self.Y
         return np.array([x, y])
+    
     
     def is_valid_action(self, agent_id, action):
         agent = self.agents[agent_id]
@@ -331,8 +313,10 @@ class Environment(gym.core.Env): # was gym.Env
         else:
             return action in agent.action_space
 
+
     def chebyshev_distance(self, pos1, pos2):
         return max(abs(pos1[0] - pos2[0]), abs(pos1[1] - pos2[1]))
+    
     
     def check_jammer_destruction(self):
         for agent_id in range(self.num_agents):
@@ -342,10 +326,12 @@ class Environment(gym.core.Env): # was gym.Env
                     jammer.set_destroyed()
                     self.update_jammed_areas()
                     
+                    
     def update_global_state(self):
         self.global_state[1] = self.agent_layer.get_state_matrix()
         self.global_state[2] = self.target_layer.get_state_matrix()
         self.global_state[3] = self.jammer_layer.get_state_matrix()
+        
 
     def draw_model_state(self):
         """
@@ -362,14 +348,16 @@ class Environment(gym.core.Env): # was gym.Env
                     self.pixel_scale,
                     self.pixel_scale,
                 )
-                col = (0, 0, 0) 
-                if self.global_state[0][x][y] != 0:
-                    col = (255, 255, 255)
+                if self.global_state[0][x][y] == 1:  # Obstacle
+                    col = (255, 255, 255)  # Black for obstacles
+                else:  # Free space
+                    col = (0, 0, 0)  # White for free space
                 pygame.draw.rect(self.screen, col, pos)
     
-    #need to update this, doing it for testing
+    # need to update this, doing it for testing
     def is_episode_done(self):
-        return False 
+        # return all(self.agent_layer.is_agent_terminated(i) for i in range(len(self.agents)))
+        return False
 
     def draw_agents(self):
         """
@@ -563,7 +551,7 @@ class Environment(gym.core.Env): # was gym.Env
                 self.screen = pygame.display.set_mode(
                     (self.pixel_scale * self.X, self.pixel_scale * self.Y)
                 )
-                pygame.display.set_caption("Search & Track Task Assign")
+                pygame.display.set_caption("Search & Track Thesis Project")
             else:
                 self.screen = pygame.Surface(
                     (self.pixel_scale * self.X, self.pixel_scale * self.Y)
@@ -611,12 +599,16 @@ class Environment(gym.core.Env): # was gym.Env
     def observe(self, agent):
         return self.safely_observe(self.agent_name_mapping[agent])
     
+    
     def safely_observe(self, agent_id):
         obs = self.collect_obs(self.agent_layer, agent_id)
-        #obs = np.where(obs == -np.inf, -1e10, obs)
         obs = obs.transpose((0,2,1))
-        obs = np.clip(obs, self.observation_space[agent_id].low, self.observation_space[agent_id].high)
+        if self.agent_type == 'task_allocation':
+            obs = np.clip(obs, self.observation_space['local_obs'].low, self.observation_space['local_obs'].high)
+        else:
+            obs = np.clip(obs, self.observation_space.low, self.observation_space.high)
         return obs
+
 
     def collect_obs(self, agent_layer, agent_id):
         return self.collect_obs_by_idx(agent_layer, agent_id)
@@ -655,6 +647,7 @@ class Environment(gym.core.Env): # was gym.Env
             obs[layer, :obs_padded.shape[0], :obs_padded.shape[1]] = obs_padded
         return obs
 
+
     def obs_clip(self, x, y):
         xld = x - self.obs_range // 2
         xhd = x + self.obs_range // 2
@@ -669,6 +662,7 @@ class Environment(gym.core.Env): # was gym.Env
         xolo, yolo = abs(np.clip(xld, -self.obs_range // 2, 0)), abs(np.clip(yld, -self.obs_range // 2, 0))
         xohi, yohi = xolo + (xhi - xlo), yolo + (yhi - ylo)
         return xlo, xhi + 1, ylo, yhi + 1, xolo, xohi + 1, yolo, yohi + 1
+
 
     def share_and_update_observations(self):
         """
@@ -839,7 +833,6 @@ class Environment(gym.core.Env): # was gym.Env
 
         return jammed_area
 
-
     # def _seed(self, seed=None):
     #     self.np_random, seed_ = seeding.np_random(seed)
     #     np.random.seed(seed)
@@ -848,6 +841,7 @@ class Environment(gym.core.Env): # was gym.Env
     def seed(self, seed=None): # This version for MARLlib (gym)
         self.np_random, seed = seeding.np_random(seed)
         return [seed] 
+
 
     def run_simulation(self, max_steps=20):
         running = True

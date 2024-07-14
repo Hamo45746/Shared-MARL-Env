@@ -32,6 +32,7 @@ class DiscreteAgent(BaseAgent):
             7, #cross down left
             8, #cross down right 
         ] 
+        self.n_layers = n_layers
         self.motion_range = [[-1, 0], [1, 0], [0, 1], [0, -1], [0, 0], [1, 1], [-1, 1], [-1, -1], [1, -1]]
         self.current_pos = np.zeros(2, dtype=np.int32)  # x and y position
         self.last_pos = np.zeros(2, dtype=np.int32)
@@ -41,8 +42,11 @@ class DiscreteAgent(BaseAgent):
         self._obs_range = obs_range # Initialise the local observation state
         self.X, self.Y = self.map_matrix.shape
         self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-20)
-        self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20, dtype=np.int32)
+        self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20, dtype=np.float32)
         self.path = []
+        
+        # Ensure the action space is compatible with MARLlib
+        self._action_space = spaces.Discrete(len(self.eactions))
         
         if flatten:
             self._obs_shape = (n_layers * obs_range**2 + 1,)
@@ -53,9 +57,16 @@ class DiscreteAgent(BaseAgent):
     def observation_space(self):
         return spaces.Box(low=-20, high=1, shape=self._obs_shape, dtype=np.float32)
 
+    # @property
+    # def action_space(self):
+    #     return spaces.Discrete(len(self.eactions))
+    
     @property
     def action_space(self):
-        return spaces.Discrete(len(self.eactions))
+        return self._action_space
+
+    def get_observation(self):
+        return self.observation_state
 
     # Dynamics Functions
     def step(self, a):
@@ -91,6 +102,15 @@ class DiscreteAgent(BaseAgent):
 
     def get_observation_state(self):
         return self.observation_state
+    
+    def reset(self):
+        self.current_pos = np.zeros(2, dtype=np.int32)
+        self.last_pos = np.zeros(2, dtype=np.int32)
+        self.temp_pos = np.zeros(2, dtype=np.int32)
+        self.path = []
+        self.observation_state.fill(-20)
+        self.local_state.fill(-20)
+        return self.get_observation()
 
     # Helper Functions
     def inbounds(self, x, y):
@@ -208,3 +228,4 @@ class DiscreteAgent(BaseAgent):
 
     def get_next_action(self):
         return random.choice(self.eactions)
+    
