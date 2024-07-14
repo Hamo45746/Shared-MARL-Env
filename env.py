@@ -95,7 +95,6 @@ class Environment(gym.Env):
         if self.agent_type == 'discrete':
             self.action_space = spaces.Discrete(len(self.agents[0].eactions))
         else:
-            #self.action_space = spaces.Dict({agent_id: agent.action_space for agent_id, agent in enumerate(self.agents)})
             self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(self.num_agents * 2,), dtype=np.float32) #changed it to this to work with stable baselines
 
         if self.agent_type == 'continuous':
@@ -243,10 +242,6 @@ class Environment(gym.Env):
         truncated = self.is_episode_done()
         info = {}
         
-        # np.set_printoptions(threshold=np.inf)
-        # print("local_states", local_states)
-        # print("local_states[0]", local_states[0])
-        # print("End of task_allocation_step")
         return local_states, rewards, terminated, truncated, info
     
     def regular_step(self, actions_dict):
@@ -289,8 +284,8 @@ class Environment(gym.Env):
         truncated = self.is_episode_done()
         info = {}
         
-        np.set_printoptions(threshold=2000, suppress=True, precision=1, linewidth=2000)
-        print("observations", observations)
+        # np.set_printoptions(threshold=2000, suppress=True, precision=1, linewidth=2000)
+        # print("observations", observations)
         #print("local_states", local_states)
         # print("local_states0", local_states[0])
         return local_states, rewards, terminated, truncated, info
@@ -303,11 +298,6 @@ class Environment(gym.Env):
             self.agent_layer.agents[agent_id].set_observation_state(obs)
             observations[agent_id] = obs
         return observations
-    
-    # def update_observations(self): # Hamish had this one
-    #     for agent_id in range(self.num_agents):
-    #         obs = self.safely_observe(agent_id)
-    #         self.agent_layer.agents[agent_id].set_observation_state(obs)
 
     def collect_local_states_and_rewards(self):
         local_states = {}
@@ -526,7 +516,6 @@ class Environment(gym.Env):
             observed_positions = (agent.local_state[0]==0) | (agent.local_state[0] == -1)
 
         observed_positions_2 = agent.local_state[observed_positions]
-        # print(observed_positions_2)
 
         for x, y in observed_positions_2:
             pos = pygame.Rect(
@@ -826,7 +815,7 @@ class Environment(gym.Env):
         np.random.seed(seed)
         random.seed(seed)
 
-    def run_simulation(self, max_steps=100):
+    def run_simulation(self, max_steps=150):
         running = True
         step_count = 0
 
@@ -838,11 +827,9 @@ class Environment(gym.Env):
 
             # Generate new actions for all agents in every step
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(self.agents)}
-            #print("Action_dict: ", action_dict)
-            # Update environment states with the action_dict
             observations, rewards, terminated, truncated, self.info = self.step(action_dict)
 
-            self.render()  # Render the current state to the screen
+            self.render()  
 
             step_count += 1
 
@@ -853,8 +840,3 @@ class Environment(gym.Env):
         self.reset()
 
         pygame.quit()
-
-
-# config_path = 'config.yaml' 
-# env = Environment(config_path)
-# Environment.run_simulation(env, max_steps=1)

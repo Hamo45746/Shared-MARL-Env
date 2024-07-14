@@ -48,6 +48,10 @@ def calculate_continuous_reward(agent, env):
     if agent.calls_obstacle_avoidance():
         reward -= 10
 
+    # check if the agent has to change it's angle choice 
+    if agent.angle_change():
+        reward -= 3
+
     #Jammer reward for removing it - If its near the same zone as a jammer it will remove it 
 
 

@@ -22,6 +22,7 @@ class ContinuousAgent(BaseAgent):
         self.path = []
         self.communicated = False
         self.initial_position = None
+        self.change_angle = False
 
     @property
     def observation_space(self):
@@ -37,10 +38,13 @@ class ContinuousAgent(BaseAgent):
         # Adjust velocity
         self.velocity += acceleration
         # Clamp velocity to the desired range
-        self.velocity = np.clip(self.velocity, -1.0, 1.0)  # Adjust as per your requirements
+        self.velocity = np.clip(self.velocity, -10.0, 10.0)  # Adjust as per your requirements
 
         # Determine the new direction based on the constraints
+        print(self.velocity)
+        print(np.linalg.norm(self.velocity))
         if np.linalg.norm(self.velocity) > 10.0:
+            print("sikenowimhere")
             current_direction = np.arctan2(self.velocity[1], self.velocity[0])
             max_angle_change = np.deg2rad(75)
             desired_direction = np.arctan2(acceleration[1], acceleration[0])
@@ -106,7 +110,7 @@ class ContinuousAgent(BaseAgent):
                                 self.local_state[layer, global_x1, global_y1] -= 1
 
     def get_next_action(self):
-        action = self.random_state.uniform(-1.0, 1.0, size=(2,))
+        action = self.random_state.uniform(-1, 1, size=(2,))
         return action
     
     def set_observation_state(self, observation):
@@ -142,3 +146,8 @@ class ContinuousAgent(BaseAgent):
                     return True
         return False
 
+    def angle_change(self):
+        if self.change_angle:
+            self.change_angle = False
+            return True
+        return False
