@@ -843,36 +843,32 @@ class Environment(gym.core.Env):
         return [seed] 
 
 
-    def run_simulation(self, max_steps=20):
-        running = True
+    # Updated to collect data for auto encoder
+    def run_simulation(self, max_steps=100):
         step_count = 0
-
-        while running and step_count < max_steps:
-            print(f"Step: {step_count}")
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-
+        collected_data = []
+        
+        observations = self.reset()  # Reset the environment and get initial observations
+        collected_data.append(observations)
+        
+        while step_count < max_steps:
             # Generate new actions for all agents in every step
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(self.agents)}
-            #print("Action_dict: ", action_dict)
+            
             # Update environment states with the action_dict
-            # observations, rewards, terminated, truncated, self.info = self.step(action_dict)
-            observations, rewards, terminated, self.info = self.step(action_dict) # for MARLlib
-
-            self.render()  # Render the current state to the screen
-
+            observations, rewards, terminated, info = self.step(action_dict)
+            
+            # Collect the observations
+            collected_data.append(observations)
+            
             step_count += 1
-
-            if terminated: # or truncated:
+            
+            if terminated:
                 break
-
-        # pygame.image.save(self.screen, "environment_snapshot.png")
-        self.reset()
-
-        pygame.quit()
+        
+        return collected_data
 
 
 config_path = 'config.yaml' 
 env = Environment(config_path)
-Environment.run_simulation(env, max_steps=15)
+Environment.run_simulation(env, max_steps=100)
