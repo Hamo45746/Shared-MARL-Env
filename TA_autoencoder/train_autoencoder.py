@@ -13,6 +13,7 @@ import yaml
 
 DATA_FOLDER = 'collected_data'
 COMBINED_DATA_FILE = 'combined_data.npy'
+PROGRESS_FILE = 'collection_progress.txt'
 
 def load_config(config_path):
     with open(config_path, 'r') as file:
@@ -57,7 +58,7 @@ def process_config(args):
     
     if config_data is not None:
         print(f"Loaded data for seed={seed}, targets={num_targets}, jammers={num_jammers}, agents={num_agents}")
-        return config_data
+        return config_filename
     
     print(f"Collecting data for seed={seed}, targets={num_targets}, jammers={num_jammers}, agents={num_agents}")
     config = original_config.copy()
@@ -68,7 +69,19 @@ def process_config(args):
     
     data = collect_data_for_config(config, config_path, steps_per_episode=100)
     save_config_data(data, config_filename)
-    return data
+    return config_filename
+
+def save_progress(completed_configs):
+    with open(os.path.join(DATA_FOLDER, PROGRESS_FILE), 'w') as f:
+        for config in completed_configs:
+            f.write(f"{config}\n")
+
+def load_progress():
+    progress_file = os.path.join(DATA_FOLDER, PROGRESS_FILE)
+    if os.path.exists(progress_file):
+        with open(progress_file, 'r') as f:
+            return set(f.read().splitlines())
+    return set()
 
 def main():
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
@@ -76,21 +89,27 @@ def main():
     
     # Set up ranges for randomization
     seed_range = range(1, 11)
-    num_targets_range = range(1, 11)
-    num_jammers_range = range(0, 6)
-    num_agents_range = range(1, 11)
+    num_targets_range = range(1, 6)
+    num_jammers_range = range(0, 4)
+    num_agents_range = range(1, 6)
     
+    completed_configs = load_progress()
     configs = [
         (seed, num_targets, num_jammers, num_agents, original_config, config_path)
         for seed in seed_range
         for num_targets in num_targets_range
         for num_jammers in num_jammers_range
         for num_agents in num_agents_range
+        if get_config_filename(seed, num_targets, num_jammers, num_agents) not in completed_configs
     ]
     
     with mp.Pool(processes=mp.cpu_count()) as pool:
-        all_data = pool.map(process_config, configs)
+        for config_filename in pool.imap_unordered(process_config, configs):
+            completed_configs.add(config_filename)
+            save_progress(completed_configs)
     
+    print("All configurations processed. Combining data...")
+    all_data = [load_config_data(filename) for filename in completed_configs]
     combined_data = np.concatenate(all_data)
     np.save(os.path.join(DATA_FOLDER, COMBINED_DATA_FILE), combined_data)
     

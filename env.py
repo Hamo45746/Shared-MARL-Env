@@ -18,7 +18,7 @@ from Continuous_controller.reward import calculate_continuous_reward
 # from gym.spaces import Dict as GymDict, Box, Discrete
 from gym import spaces
 # from gymnasium import spaces
-from path_processor import PathProcessor
+from path_processor_simple import PathProcessor
 
 
 class Environment(gym.core.Env):
