@@ -40,7 +40,7 @@ class ContinuousAgent(BaseAgent):
         # Adjust velocity
         self.velocity += acceleration
         # Clamp velocity to the desired range
-        self.velocity = np.clip(self.velocity, -10.0, 10.0)  # Adjust as per your requirements
+        self.velocity = np.clip(self.velocity, -1.0, 1.0)  # Adjust as per your requirements
 
         # Determine the new direction based on the constraints
         # Determine the number of sub-steps based on the current velocity
