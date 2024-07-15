@@ -31,6 +31,7 @@ class Environment(gym.Env):
         self.map_scale = self.config['map_scale'] # Scaling factor of map resolution
         self.seed_value = self.config['seed']
         self.comm_range = self.config['comm_range']
+        self.use_task_allocation = self.config.get('use_task_allocation_with_continuous', False)
         self._seed(self.seed_value)
 
         # Load the map
@@ -253,6 +254,23 @@ class Environment(gym.Env):
         # Update agent positions and layer state based on the provided actions
         for agent_id, action in actions_dict.items():
             agent = self.agents[agent_id]
+
+            #if there is a goal provided from task allocation 
+            if self.use_task_allocation and agent_id in self.task_goals:
+                agent.set_goal_area(self.task_goals[agent_id])
+
+            current_direction = np.arctan2(agent.velocity[1], agent.velocity[0])
+            desired_direction = np.arctan2(action[1], action[0])
+            angle_diff = desired_direction - current_direction
+            angle_diff = np.arctan2(np.sin(angle_diff), np.cos(angle_diff))  
+
+            # Enforce the angle change constraint
+            if np.abs(angle_diff) > np.deg2rad(75):
+                # Flag the angle change for reward penalty
+                agent.change_angle = True
+            else:
+                agent.change_angle = False
+
             self.agent_layer.move_agent(agent_id, action)
             
             # Check if the agent touches any jammer and destroy it
@@ -284,10 +302,10 @@ class Environment(gym.Env):
         truncated = self.is_episode_done()
         info = {}
         
-        # np.set_printoptions(threshold=2000, suppress=True, precision=1, linewidth=2000)
-        # print("observations", observations)
-        #print("local_states", local_states)
-        # print("local_states0", local_states[0])
+        np.set_printoptions(threshold=2000, suppress=True, precision=1, linewidth=2000)
+        print("observations", observations)
+        print("local_states", local_states)
+        print("local_states0", local_states[0])
         return local_states, rewards, terminated, truncated, info
 
     def update_observations(self): #Alex had this one

@@ -23,6 +23,8 @@ class ContinuousAgent(BaseAgent):
         self.communicated = False
         self.initial_position = None
         self.change_angle = False
+        self.goal_area = None
+        self.previous_distance_to_goal = None
 
     @property
     def observation_space(self):
@@ -41,30 +43,30 @@ class ContinuousAgent(BaseAgent):
         self.velocity = np.clip(self.velocity, -10.0, 10.0)  # Adjust as per your requirements
 
         # Determine the new direction based on the constraints
-        print(self.velocity)
-        print(np.linalg.norm(self.velocity))
-        if np.linalg.norm(self.velocity) > 10.0:
-            print("sikenowimhere")
-            current_direction = np.arctan2(self.velocity[1], self.velocity[0])
-            max_angle_change = np.deg2rad(75)
-            desired_direction = np.arctan2(acceleration[1], acceleration[0])
-            angle_diff = desired_direction - current_direction
-            angle_diff = np.arctan2(np.sin(angle_diff), np.cos(angle_diff))  # Normalize angle to [-pi, pi]
+        # Determine the number of sub-steps based on the current velocity
+        speed = np.linalg.norm(self.velocity)
+        num_sub_steps = max(1, int((speed // 2) * 2))
 
-            if np.abs(angle_diff) > max_angle_change:
-                angle_diff = np.sign(angle_diff) * max_angle_change
+        sub_step_velocity = self.velocity / num_sub_steps
 
-            new_direction = current_direction + angle_diff
-            speed = np.linalg.norm(self.velocity)
-            self.velocity = np.array([speed * np.cos(new_direction), speed * np.sin(new_direction)])
+        valid_move = True
 
-        # Update position based on velocity
-        self.temp_pos = self.current_pos + self.velocity
+        for _ in range(num_sub_steps):
+            # Update position based on sub-step velocity
+            self.temp_pos = self.current_pos + sub_step_velocity
 
-        if self.inbounds(self.temp_pos[0], self.temp_pos[1]) and not self.inbuilding(self.temp_pos[0], self.temp_pos[1]):
-            self.last_pos[:] = self.current_pos
-            self.current_pos[:] = self.temp_pos
-            self.path.append((self.current_pos[0], self.current_pos[1]))
+            # Check bounds and obstacles for each sub-step
+            if self.inbounds(self.temp_pos[0], self.temp_pos[1]) and not self.inbuilding(self.temp_pos[0], self.temp_pos[1]):
+                self.last_pos[:] = self.current_pos
+                self.current_pos[:] = self.temp_pos
+                self.path.append((self.current_pos[0], self.current_pos[1]))
+            else:
+                valid_move = False
+                break  # Exit the loop if an invalid move is detected
+
+        # If the final position after all sub-steps is invalid, reset to the last valid position
+        if not valid_move:
+            self.current_pos[:] = self.last_pos
 
         return self.current_pos
 
@@ -115,6 +117,15 @@ class ContinuousAgent(BaseAgent):
     
     def set_observation_state(self, observation):
         self.observation_state = observation
+
+    def set_goal_area(self, goal_area):
+        self.goal_area = goal_area
+        self.previous_distance_to_goal = self.calculate_distance_to_goal()
+
+    def calculate_distance_to_goal(self):
+        if self.goal_area is not None:
+            return np.linalg.norm(self.current_pos - self.goal_area)
+        return None
 
     def gains_information(self):
         new_information_count = 0

@@ -52,6 +52,15 @@ def calculate_continuous_reward(agent, env):
     if agent.angle_change():
         reward -= 3
 
+    if agent.goal_area is not None:
+        current_distance_to_goal = agent.calculate_distance_to_goal()
+        if current_distance_to_goal is not None and agent.previous_distance_to_goal is not None:
+            if current_distance_to_goal < agent.previous_distance_to_goal:
+                reward += 10  # Reward for moving closer to the goal
+            else:
+                reward -= 10  # Penalty for moving away from the goal
+            agent.previous_distance_to_goal = current_distance_to_goal
+
     #Jammer reward for removing it - If its near the same zone as a jammer it will remove it 
 
 

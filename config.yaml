@@ -12,6 +12,7 @@ comm_range: 40 #10
 #agent_type: 'discrete'
 agent_type: 'continuous'
 #agent_type: 'task_allocation'
+use_task_allocation_with_continuous: false
 
 map_path: 'city_image_1.npy'
 #map_path: 'city_image_2.npy'
