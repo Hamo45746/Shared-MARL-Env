@@ -59,7 +59,7 @@ def train_autoencoder(data_path, model_save_path, input_shape):
     autoencoder = EnvironmentAutoencoder(input_shape)
     
     # Train the autoencoder
-    autoencoder.train(observation_data, epochs=100, batch_size=32)
+    autoencoder.train(observation_data, epochs=150, batch_size=32)
     
     # Save the trained model
     autoencoder.save(model_save_path)

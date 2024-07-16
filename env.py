@@ -850,14 +850,14 @@ class Environment(gym.Env):
             observations, rewards, terminated, truncated, self.info = self.step(action_dict)
 
             collected_data.append(observations)
-            self.render()  
+            #self.render()  
 
             step_count += 1
 
             if terminated or truncated:
                 break
 
-        pygame.image.save(self.screen, "environment_snapshot.png")
+        #pygame.image.save(self.screen, "environment_snapshot.png")
         self.reset()
 
         pygame.quit()
