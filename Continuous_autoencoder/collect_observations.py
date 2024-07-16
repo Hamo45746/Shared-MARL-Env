@@ -43,8 +43,8 @@ def main():
     config_path = 'config.yaml'  # Update this to your config file path
     base_config = load_config(config_path)
     
-    num_configs = 15  # Number of different settings you want to generate data for
-    steps_per_episode = 200  # Number of steps per episode
+    num_configs = 10  # Number of different settings you want to generate data for
+    steps_per_episode = 100  # Number of steps per episode
     all_data = []
 
     random_configs = generate_random_configs(base_config, num_configs)
@@ -53,7 +53,7 @@ def main():
         all_data.append(data)
 
     all_data = np.concatenate(all_data, axis=0)
-    np.save('combined_data.npy', all_data)
+    np.save('outputs/combined_data.npy', all_data)
 
 if __name__ == "__main__":
     main()

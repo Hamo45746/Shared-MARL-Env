@@ -857,7 +857,7 @@ class Environment(gym.Env):
             if terminated or truncated:
                 break
 
-        pygame.image.save(self.screen, "environment_snapshot.png")
+        pygame.image.save(self.screen, "outputs/environment_snapshot.png")
         self.reset()
 
         pygame.quit()

@@ -65,8 +65,8 @@ def train_autoencoder(data_path, model_save_path, input_shape):
     autoencoder.save(model_save_path)
 
 def main():
-    data_path = 'combined_data.npy'
-    model_save_path = 'trained_autoencoder.pth'
+    data_path = 'outputs/combined_data.npy'
+    model_save_path = 'outputs/trained_autoencoder.pth'
     
     # Assuming the shape of your observations is (5, 17, 17)
     input_shape = (5, 17, 17)
