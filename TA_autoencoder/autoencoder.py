@@ -38,7 +38,7 @@ class ConvAutoencoder(nn.Module):
 
 class EnvironmentAutoencoder:
     def __init__(self, input_shape):
-        self.device = torch.device("cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"Using device: {self.device}")
         self.autoencoder = ConvAutoencoder(input_shape).to(self.device)
         self.optimizer = optim.Adam(self.autoencoder.parameters())
