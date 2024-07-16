@@ -1,19 +1,21 @@
 import sys
 import os
 import multiprocessing as mp
+import numpy as np
+import torch
+import yaml
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from env import Environment
 from autoencoder import EnvironmentAutoencoder
-import numpy as np
-import torch
-import yaml
 
-DATA_FOLDER = 'collected_data'
-COMBINED_DATA_FILE = 'combined_data.npy'
+# Update the data folder path
+DATA_FOLDER = '/Volumes/T7 Shield/METR4911/TA_autoencoder_data'
 PROGRESS_FILE = 'collection_progress.txt'
+AUTOENCODER_FILE = 'trained_autoencoder.pth'
+TRAINING_STATE_FILE = 'training_state.pth'
 
 def load_config(config_path):
     with open(config_path, 'r') as file:
@@ -83,11 +85,33 @@ def load_progress():
             return set(f.read().splitlines())
     return set()
 
+def save_training_state(autoencoder, epoch, optimizer):
+    state = {
+        'model_state_dict': autoencoder.autoencoder.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'epoch': epoch
+    }
+    torch.save(state, os.path.join(DATA_FOLDER, TRAINING_STATE_FILE))
+
+def load_training_state(autoencoder, optimizer):
+    state_path = os.path.join(DATA_FOLDER, TRAINING_STATE_FILE)
+    if os.path.exists(state_path):
+        state = torch.load(state_path)
+        autoencoder.autoencoder.load_state_dict(state['model_state_dict'])
+        optimizer.load_state_dict(state['optimizer_state_dict'])
+        return state['epoch']
+    return 0
+
+def train_on_batch(autoencoder, batch_data, epoch):
+    batch_tensor = torch.FloatTensor(batch_data).to(autoencoder.device)
+    loss = autoencoder.train(batch_tensor, start_epoch=epoch, epochs=epoch+1, batch_size=32)
+    return loss
+
 def main():
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
     original_config = load_config(config_path)
     
-    # Set up ranges for randomization
+    # Set up ranges for randomization (reverted to original)
     seed_range = range(1, 11)
     num_targets_range = range(1, 6)
     num_jammers_range = range(0, 4)
@@ -108,22 +132,44 @@ def main():
             completed_configs.add(config_filename)
             save_progress(completed_configs)
     
-    print("All configurations processed. Combining data...")
-    all_data = [load_config_data(filename) for filename in completed_configs]
-    combined_data = np.concatenate(all_data)
-    np.save(os.path.join(DATA_FOLDER, COMBINED_DATA_FILE), combined_data)
-    
-    print("Creating and training autoencoder...")
-    input_shape = combined_data.shape[1:]
+    print("All configurations processed. Starting autoencoder training...")
+
+    # Initialize autoencoder with the shape of the first batch
+    first_batch = load_config_data(next(iter(completed_configs)))
+    input_shape = first_batch.shape[1:]
     autoencoder = EnvironmentAutoencoder(input_shape)
-    
-    combined_data = torch.FloatTensor(combined_data)
-    autoencoder.train(combined_data, epochs=100, batch_size=32)
-    
-    save_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'trained_autoencoder.pth')
-    autoencoder.save(save_path)
-    
-    print(f"Autoencoder training completed and model saved at {save_path}")
+
+    # Load previous training state if it exists
+    start_epoch = load_training_state(autoencoder, autoencoder.optimizer)
+
+    num_epochs = 100
+    for epoch in range(start_epoch, num_epochs):
+        total_loss = 0
+        batch_count = 0
+        for config_filename in completed_configs:
+            batch_data = load_config_data(config_filename)
+            if batch_data is not None:
+                loss = train_on_batch(autoencoder, batch_data, epoch)
+                total_loss += loss
+                batch_count += 1
+                
+                if batch_count % 10 == 0:
+                    print(f"Epoch {epoch+1}/{num_epochs}, Batch {batch_count}/{len(completed_configs)}, "
+                          f"Average Loss: {total_loss/batch_count:.4f}")
+        
+        epoch_loss = total_loss / batch_count
+        print(f"Epoch {epoch+1}/{num_epochs} completed. Average Loss: {epoch_loss:.4f}")
+        
+        # Save training state
+        save_training_state(autoencoder, epoch + 1, autoencoder.optimizer)
+        
+        # Optionally, save the model periodically
+        if (epoch + 1) % 10 == 0:
+            autoencoder.save(os.path.join(DATA_FOLDER, f"autoencoder_epoch_{epoch+1}.pth"))
+
+    # Save the final model
+    autoencoder.save(os.path.join(DATA_FOLDER, AUTOENCODER_FILE))
+    print(f"Autoencoder training completed and model saved at {os.path.join(DATA_FOLDER, AUTOENCODER_FILE)}")
 
 if __name__ == "__main__":
     main()

@@ -53,22 +53,24 @@ class EnvironmentAutoencoder:
         self.optimizer = optim.Adam(self.autoencoder.parameters())
         self.criterion = nn.MSELoss()
 
-    def train(self, data, epochs=100, batch_size=32):
+    def train(self, data, start_epoch=0, epochs=1, batch_size=32):
         dataloader = torch.utils.data.DataLoader(data, batch_size=batch_size, shuffle=True)
 
-        for epoch in range(epochs):
-            total_loss = 0
-            for batch in dataloader:
-                batch = batch.to(self.device)
-                self.optimizer.zero_grad()
-                outputs = self.autoencoder(batch)
-                loss = self.criterion(outputs, batch)
-                loss.backward()
-                self.optimizer.step()
-                total_loss += loss.item()
+        total_loss = 0
+        for batch in dataloader:
+            batch = batch.to(self.device)
+            self.optimizer.zero_grad()
+            outputs = self.autoencoder(batch)
+            
+            # Ensure the output has the same size as the input
+            outputs = nn.functional.interpolate(outputs, size=batch.shape[2:], mode='bilinear', align_corners=False)
+            
+            loss = self.criterion(outputs, batch)
+            loss.backward()
+            self.optimizer.step()
+            total_loss += loss.item()
 
-            if (epoch + 1) % 10 == 0:
-                print(f"Epoch [{epoch+1}/{epochs}], Loss: {total_loss/len(dataloader):.4f}")
+        return total_loss / len(dataloader)
 
     def encode_state(self, state):
         with torch.no_grad():
