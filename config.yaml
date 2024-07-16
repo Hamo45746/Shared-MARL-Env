@@ -14,9 +14,9 @@ agent_type: 'continuous'
 #agent_type: 'task_allocation'
 use_task_allocation_with_continuous: false
 
-map_path: 'city_image_1.npy'
-#map_path: 'city_image_2.npy'
-#map_path: 'city_image_3.npy'
+map_path: 'maps/city_image_1.npy'
+#map_path: 'maps/city_image_2.npy'
+#map_path: 'maps/city_image_3.npy'
 
 n_agents: 5
 n_targets: 5

@@ -840,7 +840,7 @@ class Environment(MultiAgentEnv):
         collected_data = []
 
         while running and step_count < max_steps:
-            print(f"Step: {step_count}")
+            #print(f"Step: {step_count}")
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
@@ -857,7 +857,7 @@ class Environment(MultiAgentEnv):
             if terminated or truncated:
                 break
 
-        pygame.image.save(self.screen, "environment_snapshot.png")
+        pygame.image.save(self.screen, "outputs/environment_snapshot.png")
         self.reset()
 
         pygame.quit()
