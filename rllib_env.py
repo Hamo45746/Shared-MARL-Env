@@ -10,14 +10,14 @@ import pygame
 from skimage.transform import resize
 from layer import AgentLayer, JammerLayer, TargetLayer
 from gymnasium.utils import seeding
-#from Continuous_controller.agent_controller import AgentController
 from Discrete_controller.agent_controller import DiscreteAgentController
 from Continuous_controller.reward import calculate_continuous_reward
 from gymnasium import spaces
 from path_processor import PathProcessor
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
-class Environment(gym.Env):
+class Environment(MultiAgentEnv):
     def __init__(self, config_path, render_mode="human"):
         super(Environment, self).__init__()
         # Load configuration from YAML

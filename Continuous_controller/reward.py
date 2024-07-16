@@ -63,5 +63,4 @@ def calculate_continuous_reward(agent, env):
 
     #Jammer reward for removing it - If its near the same zone as a jammer it will remove it 
 
-
     return reward
