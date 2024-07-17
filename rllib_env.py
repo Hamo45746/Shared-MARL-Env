@@ -15,7 +15,7 @@ from Continuous_controller.reward import calculate_continuous_reward
 from gymnasium import spaces
 from path_processor import PathProcessor
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-
+from Continuous_autoencoder.autoencoder import EnvironmentAutoencoder
 
 class Environment(MultiAgentEnv):
     def __init__(self, config_path, render_mode="human"):
@@ -33,6 +33,10 @@ class Environment(MultiAgentEnv):
         self.comm_range = self.config['comm_range']
         self.use_task_allocation = self.config.get('use_task_allocation_with_continuous', False)
         self._seed(self.seed_value)
+
+        #for autoencoding the observation space
+        self.autoencoder = EnvironmentAutoencoder((5, self.obs_range, self.obs_range))
+        self.autoencoder.load('outputs/trained_autoencoder.pth')
 
         self.map_matrix = self.load_map()
         # Global state includes layers for map, agents, targets, and jammers
@@ -302,11 +306,25 @@ class Environment(MultiAgentEnv):
         terminated = self.is_episode_done()
         truncated = self.is_episode_done()
         info = {}
+
+        np.set_printoptions(threshold=2000, suppress=True, precision=1, linewidth=2000)
+    
+        # print("Raw Observations")
+        # for agent_id, obs in observations.items():
+        #     print(f"Agent {agent_id}: {obs}")
+
+        # print("Encoded Observations")
+        # encoded_obs = {}
+        # for agent_id, obs in observations.items():
+        #     encoded_obs[agent_id] = self.autoencoder.encode_state(obs)
+        #     print(f"Agent {agent_id}: {encoded_obs[agent_id]}")
         
-        # np.set_printoptions(threshold=2000, suppress=True, precision=1, linewidth=2000)
-        # print("observations", observations)
-        # print("local_states", local_states)
-        # print("local_states0", local_states[0])
+        # print("Decoded Observations")
+        # decoded_obs = {}
+        # for agent_id, encoded in encoded_obs.items():
+        #     decoded_obs[agent_id] = self.autoencoder.decode_state(encoded)
+        #     print(f"Agent {agent_id}: {decoded_obs[agent_id]}")
+            
         return observations, rewards, terminated, truncated, info
 
     def update_observations(self): #Alex had this one
@@ -834,7 +852,7 @@ class Environment(MultiAgentEnv):
         np.random.seed(seed)
         random.seed(seed)
 
-    def run_simulation(self, max_steps=100):
+    def run_simulation(self, max_steps=10):
         running = True
         step_count = 0
         collected_data = []
@@ -850,14 +868,14 @@ class Environment(MultiAgentEnv):
             observations, rewards, terminated, truncated, self.info = self.step(action_dict)
 
             collected_data.append(observations)
-            self.render()  
+            #self.render()  
 
             step_count += 1
 
             if terminated or truncated:
                 break
 
-        pygame.image.save(self.screen, "outputs/environment_snapshot.png")
+        #pygame.image.save(self.screen, "outputs/environment_snapshot.png")
         self.reset()
 
         pygame.quit()

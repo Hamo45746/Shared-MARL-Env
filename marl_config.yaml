@@ -1,0 +1,42 @@
+env: custom_multi_agent_env
+env_config:
+  config_path: "config.yaml"
+  render_mode: "human"  
+num_workers: 1
+framework: torch  
+lr: 0.0003
+train_batch_size: 4000
+sgd_minibatch_size: 64
+num_sgd_iter: 10
+rollout_fragment_length: 200
+batch_mode: truncate_episodes
+num_gpus: 0
+model:
+  conv_filters:
+    - [32, [3, 3], 1]
+    - [64, [3, 3], 1]
+    - [128, [3, 3], 1]
+  conv_activation: relu
+logger_config:
+  loggers: ["ray.tune.logger.TBXLogger"]
+  logdir: "./logs"  # Directory where logs will be stored
+multiagent:
+  policies:
+    policy_0:
+      - None
+      - type: dict
+        content:
+          agent_id: box
+          low: -20
+          high: 1
+          shape: [4, 17, 17]
+          dtype: np.float32
+      - type: box
+        low: -1.0
+        high: 1.0
+        shape: [10]
+        dtype: np.float32
+      - {}
+  policy_mapping_fn:
+    type: function
+    function: policy_mapping_fn
