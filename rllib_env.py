@@ -307,7 +307,7 @@ class Environment(MultiAgentEnv):
         truncated = self.is_episode_done()
         info = {}
 
-        np.set_printoptions(threshold=2000, suppress=True, precision=1, linewidth=2000)
+        #np.set_printoptions(threshold=2000, suppress=True, precision=1, linewidth=2000)
     
         # print("Raw Observations")
         # for agent_id, obs in observations.items():
