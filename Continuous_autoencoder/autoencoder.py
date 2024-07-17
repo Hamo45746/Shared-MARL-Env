@@ -77,6 +77,12 @@ class EnvironmentAutoencoder:
             state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
             encoded = self.autoencoder.encode(state_tensor)
         return encoded.cpu().numpy().squeeze()
+    
+    def decode_state(self, state):
+        with torch.no_grad():
+            encoded_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+            decoded_tensor = self.autoencoder.decoder(encoded_tensor)
+        return decoded_tensor.cpu().numpy().squeeze() 
 
     def save(self, path):
         torch.save(self.autoencoder.state_dict(), path)
