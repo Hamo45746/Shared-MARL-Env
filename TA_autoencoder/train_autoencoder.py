@@ -120,8 +120,8 @@ def save_progress(completed_configs):
 
 def save_training_state(autoencoder, epoch):
     state = {
-        'model_state_dict': autoencoder.autoencoder.state_dict(),
-        'optimizer_state_dict': autoencoder.optimizer.state_dict(),
+        'model_state_dicts': [ae.state_dict() for ae in autoencoder.autoencoders],
+        'optimizer_state_dicts': [opt.state_dict() for opt in autoencoder.optimizers],
         'epoch': epoch
     }
     torch.save(state, os.path.join(H5_FOLDER, TRAINING_STATE_FILE))
@@ -130,8 +130,9 @@ def load_training_state(autoencoder):
     state_path = os.path.join(H5_FOLDER, TRAINING_STATE_FILE)
     if os.path.exists(state_path):
         state = torch.load(state_path, map_location=autoencoder.device)
-        autoencoder.autoencoder.load_state_dict(state['model_state_dict'])
-        autoencoder.optimizer.load_state_dict(state['optimizer_state_dict'])
+        for i, ae in enumerate(autoencoder.autoencoders):
+            ae.load_state_dict(state['model_state_dicts'][i])
+            autoencoder.optimizers[i].load_state_dict(state['optimizer_state_dicts'][i])
         return state['epoch']
     return 0
 
