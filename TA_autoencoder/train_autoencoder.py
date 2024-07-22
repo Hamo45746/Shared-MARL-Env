@@ -44,9 +44,10 @@ class H5Dataset(Dataset):
         else:
             internal_idx = idx - self.cumulative_sizes[file_idx - 1]
         with h5py.File(self.h5_files[file_idx], 'r') as f:
-            data = f['data'][internal_idx]
-            full_state = data['full_state']
-            local_obs = data['local_obs']
+            step_data = f['data'][internal_idx]
+            agent_data = step_data[list(step_data.keys())[0]]  # Get data for the first agent
+            full_state = agent_data['full_state'][()]
+            local_obs = agent_data['local_obs'][()]
         return {
             'full_state': torch.FloatTensor(full_state),
             'local_obs': torch.FloatTensor(local_obs)
@@ -73,31 +74,24 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
         return filepath
 
     with h5py.File(filepath, 'w') as hf:
-        initial_shape = (100,)
-        max_shape = (None,)
-        dataset = hf.create_dataset('data', shape=initial_shape, maxshape=max_shape, dtype=h5py.special_dtype(vlen=np.dtype('float32')))
+        dataset = hf.create_group('data')
 
         total_steps = 0
         while True:
             episode_data = env.run_simulation(max_steps=steps_per_episode)
             for step_data in episode_data:
-                for obs in step_data.values():
-                    if total_steps >= dataset.shape[0]:
-                        dataset.resize((dataset.shape[0] * 2,))
-
-                    dataset[total_steps] = np.void(np.array(obs))
-                    total_steps += 1
-
-                    if total_steps >= 10000:  # Limit to 10000 steps per configuration
-                        break
+                step_group = dataset.create_group(str(total_steps))
+                for agent_id, obs in step_data.items():
+                    agent_group = step_group.create_group(str(agent_id))
+                    agent_group.create_dataset('full_state', data=obs['full_state'])
+                    agent_group.create_dataset('local_obs', data=obs['local_obs'])
                 
-                if total_steps >= 10000:
+                total_steps += 1
+                if total_steps >= 10000:  # Limit to 10000 steps per configuration
                     break
             
             if total_steps >= 10000:
                 break
-
-        dataset.resize((total_steps,))
 
     print(f"Data collection complete. File saved: {filepath}")
     return filepath
@@ -174,8 +168,9 @@ def main():
     
     # Initialize autoencoder with the shape of the first batch
     with h5py.File(h5_files[0], 'r') as f:
-        sample_data = f['data'][0]
-        input_shape = sample_data['full_state'].shape
+        first_step = f['data']['0']
+        first_agent = first_step[list(first_step.keys())[0]]
+        input_shape = first_agent['full_state'].shape
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     autoencoder = EnvironmentAutoencoder(input_shape, device)
