@@ -15,7 +15,7 @@ from env import Environment
 from autoencoder import EnvironmentAutoencoder
 
 # Constants
-H5_FOLDER = '/Volumes/T7 Shield/METR4911/TA_autoencoder_h5_data'
+H5_FOLDER = '/path/to/your/data/TA_autoencoder_h5_data'  # Update this path
 H5_PROGRESS_FILE = 'h5_collection_progress.txt'
 AUTOENCODER_FILE = 'trained_autoencoder.pth'
 TRAINING_STATE_FILE = 'training_state.pth'
@@ -158,7 +158,9 @@ def main():
         if f"data_agents{config['n_agents']}_targets{config['n_targets']}_jammers{config['n_jammers']}.h5" not in completed_configs
     ]
     
-    with mp.Pool(processes=mp.cpu_count()) as pool:
+    # Use half of the available CPU cores for data collection
+    num_processes = max(1, mp.cpu_count() // 2)
+    with mp.Pool(processes=num_processes) as pool:
         for filepath in tqdm(pool.imap_unordered(process_config, configs_to_process), total=len(configs_to_process)):
             completed_configs.add(os.path.basename(filepath))
             save_progress(completed_configs)
@@ -169,13 +171,14 @@ def main():
     
     # Initialize autoencoder with the shape of the first batch
     with h5py.File(h5_files[0], 'r') as f:
-        input_shape = f['data'].shape[1:]
-    
-    autoencoder = EnvironmentAutoencoder(input_shape)
+        input_shape = f['data'].shape[1:]  # This should be (D, X, Y)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    autoencoder = EnvironmentAutoencoder(input_shape, device)
     start_epoch = load_training_state(autoencoder)
 
     dataset = H5Dataset(h5_files)
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=mp.cpu_count())
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=4, pin_memory=True)
 
     num_epochs = 100
     for epoch in range(start_epoch, num_epochs):
