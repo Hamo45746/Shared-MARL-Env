@@ -15,7 +15,7 @@ from env import Environment
 from autoencoder import EnvironmentAutoencoder
 
 # Constants
-H5_FOLDER = '/path/to/your/data/TA_autoencoder_h5_data'  # Update this path
+H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
 H5_PROGRESS_FILE = 'h5_collection_progress.txt'
 AUTOENCODER_FILE = 'trained_autoencoder.pth'
 TRAINING_STATE_FILE = 'training_state.pth'
@@ -141,22 +141,33 @@ def main():
     original_config = load_config(config_path)
     
     # Set up ranges for randomization
+    seed_range = range(1,11)
     num_agents_range = range(1, 6)
     num_targets_range = range(1, 6)
     num_jammers_range = range(0, 4)
     
     completed_configs = load_progress()
     configs = [
-        {'n_agents': num_agents, 'n_targets': num_targets, 'n_jammers': num_jammers}
+        {'seed': seed, 'n_agents': num_agents, 'n_targets': num_targets, 'n_jammers': num_jammers}
+        for seed in seed_range
         for num_agents in num_agents_range
         for num_targets in num_targets_range
         for num_jammers in num_jammers_range
     ]
+
+    # configs = [
+    #     (seed, num_targets, num_jammers, num_agents, config_path)
+    #     for seed in seed_range
+    #     for num_targets in num_targets_range
+    #     for num_jammers in num_jammers_range
+    #     for num_agents in num_agents_range
+    #     if get_config_filename(seed, num_targets, num_jammers, num_agents) not in completed_configs
+    # ]
     
     configs_to_process = [
         (config, config_path, H5_FOLDER)
         for config in configs
-        if f"data_agents{config['n_agents']}_targets{config['n_targets']}_jammers{config['n_jammers']}.h5" not in completed_configs
+        if f"data_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5" not in completed_configs
     ]
     
     # Use half of the available CPU cores for data collection
@@ -175,6 +186,7 @@ def main():
         input_shape = f['data'].shape[1:]  # This should be (D, X, Y)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cuda")
     autoencoder = EnvironmentAutoencoder(input_shape, device)
     start_epoch = load_training_state(autoencoder)
 
