@@ -45,7 +45,12 @@ class H5Dataset(Dataset):
             internal_idx = idx - self.cumulative_sizes[file_idx - 1]
         with h5py.File(self.h5_files[file_idx], 'r') as f:
             data = f['data'][internal_idx]
-        return torch.FloatTensor(data)
+            full_state = data['full_state']
+            local_obs = data['local_obs']
+        return {
+            'full_state': torch.FloatTensor(full_state),
+            'local_obs': torch.FloatTensor(local_obs)
+        }
 
 def load_config(config_path):
     with open(config_path, 'r') as file:
@@ -60,7 +65,7 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
     env.initialise_jammers()
     env.update_global_state()
 
-    filename = f"data_agents{config['n_agents']}_targets{config['n_targets']}_jammers{config['n_jammers']}.h5"
+    filename = f"data_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
     filepath = os.path.join(h5_folder, filename)
 
     if os.path.exists(filepath):
@@ -68,24 +73,19 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
         return filepath
 
     with h5py.File(filepath, 'w') as hf:
-        initial_shape = (100, env.D, env.X, env.Y)
-        max_shape = (None, env.D, env.X, env.Y)
-        dataset = hf.create_dataset('data', shape=initial_shape, maxshape=max_shape, dtype='float32')
+        initial_shape = (100,)
+        max_shape = (None,)
+        dataset = hf.create_dataset('data', shape=initial_shape, maxshape=max_shape, dtype=h5py.special_dtype(vlen=np.dtype('float32')))
 
         total_steps = 0
         while True:
             episode_data = env.run_simulation(max_steps=steps_per_episode)
             for step_data in episode_data:
                 for obs in step_data.values():
-                    if isinstance(obs, dict) and 'full_state' in obs:
-                        state = obs['full_state']
-                    else:
-                        state = obs
-                    
                     if total_steps >= dataset.shape[0]:
-                        dataset.resize((dataset.shape[0] * 2, env.D, env.X, env.Y))
+                        dataset.resize((dataset.shape[0] * 2,))
 
-                    dataset[total_steps] = state
+                    dataset[total_steps] = np.void(np.array(obs))
                     total_steps += 1
 
                     if total_steps >= 10000:  # Limit to 10000 steps per configuration
@@ -97,7 +97,7 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
             if total_steps >= 10000:
                 break
 
-        dataset.resize((total_steps, env.D, env.X, env.Y))
+        dataset.resize((total_steps,))
 
     print(f"Data collection complete. File saved: {filepath}")
     return filepath
@@ -154,15 +154,6 @@ def main():
         for num_targets in num_targets_range
         for num_jammers in num_jammers_range
     ]
-
-    # configs = [
-    #     (seed, num_targets, num_jammers, num_agents, config_path)
-    #     for seed in seed_range
-    #     for num_targets in num_targets_range
-    #     for num_jammers in num_jammers_range
-    #     for num_agents in num_agents_range
-    #     if get_config_filename(seed, num_targets, num_jammers, num_agents) not in completed_configs
-    # ]
     
     configs_to_process = [
         (config, config_path, H5_FOLDER)
@@ -183,10 +174,10 @@ def main():
     
     # Initialize autoencoder with the shape of the first batch
     with h5py.File(h5_files[0], 'r') as f:
-        input_shape = f['data'].shape[1:]  # This should be (D, X, Y)
+        sample_data = f['data'][0]
+        input_shape = sample_data['full_state'].shape
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # device = torch.device("cuda")
     autoencoder = EnvironmentAutoencoder(input_shape, device)
     start_epoch = load_training_state(autoencoder)
 

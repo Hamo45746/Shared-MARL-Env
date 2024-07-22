@@ -56,12 +56,12 @@ class EnvironmentAutoencoder:
         
         total_loss = 0
         for batch in dataloader:
-            batch = batch.to(self.device)
+            full_state = batch['full_state'].to(self.device)
             
             loss = 0
             for i, ae in enumerate(self.autoencoders):
                 self.optimizers[i].zero_grad()
-                layer_input = batch[:, i:i+1, :, :]  # Select one layer and keep dimension
+                layer_input = full_state[:, i:i+1, :, :]  # Select one layer and keep dimension
                 
                 # Use mixed precision training
                 with amp.autocast():
@@ -81,7 +81,7 @@ class EnvironmentAutoencoder:
 
     def encode_state(self, state):
         with torch.no_grad():
-            state_tensor = torch.FloatTensor(state).unsqueeze(1).to(self.device)  # Add channel dimension
+            state_tensor = torch.FloatTensor(state['full_state']).unsqueeze(1).to(self.device)  # Add channel dimension
             encoded_layers = []
             for i, ae in enumerate(self.autoencoders):
                 ae.eval()
