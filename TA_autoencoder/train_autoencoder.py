@@ -10,6 +10,7 @@ from tqdm import tqdm
 import logging
 import psutil
 import time
+import gc
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -75,7 +76,7 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
     with h5py.File(filepath, 'w') as hf:
         dataset = hf.create_group('data')
         
-        for step in range(steps_per_episode):
+        for step in tqdm(range(steps_per_episode), desc=f"Collecting data for {filename}"):
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(env.agents)}
             observations, rewards, done, info = env.step(action_dict)
             
@@ -89,6 +90,15 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
                 agent_group.create_dataset('full_state', data=obs['full_state'])
                 agent_group.create_dataset('local_obs', data=obs['local_obs'])
             
+            if step % 10 == 0:
+                hf.flush()
+                gc.collect()
+                mem_usage = psutil.virtual_memory().percent
+                logging.info(f"Step {step}: Memory usage {mem_usage}%")
+                
+                if mem_usage > 90:
+                    logging.warning(f"High memory usage detected: {mem_usage}%")
+            
             if done:
                 break
 
@@ -98,7 +108,9 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
 def process_config(args):
     try:
         config, config_path, h5_folder = args
-        return collect_data_for_config(config, config_path, steps_per_episode=100, h5_folder=h5_folder)
+        result = collect_data_for_config(config, config_path, steps_per_episode=100, h5_folder=h5_folder)
+        gc.collect()
+        return result
     except Exception as e:
         logging.error(f"Error processing config {args[0]}: {str(e)}")
         return None
