@@ -307,17 +307,17 @@ class Environment(MultiAgentEnv):
         truncated = self.is_episode_done()
         info = {}
 
-        #np.set_printoptions(threshold=2000, suppress=True, precision=1, linewidth=2000)
+        np.set_printoptions(threshold=2000, suppress=True, precision=1, linewidth=2000)
     
         # print("Raw Observations")
         # for agent_id, obs in observations.items():
         #     print(f"Agent {agent_id}: {obs}")
 
-        # print("Encoded Observations")
+        # # print("Encoded Observations")
         # encoded_obs = {}
         # for agent_id, obs in observations.items():
         #     encoded_obs[agent_id] = self.autoencoder.encode_state(obs)
-        #     print(f"Agent {agent_id}: {encoded_obs[agent_id]}")
+        #     # print(f"Agent {agent_id}: {encoded_obs[agent_id]}")
         
         # print("Decoded Observations")
         # decoded_obs = {}
@@ -852,7 +852,7 @@ class Environment(MultiAgentEnv):
         np.random.seed(seed)
         random.seed(seed)
 
-    def run_simulation(self, max_steps=10):
+    def run_simulation(self, max_steps=200):
         running = True
         step_count = 0
         collected_data = []

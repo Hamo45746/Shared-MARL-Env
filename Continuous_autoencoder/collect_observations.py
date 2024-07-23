@@ -1,10 +1,9 @@
 import numpy as np
-import torch
 import yaml
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from env import Environment
+from rllib_env import Environment
 
 def load_config(config_path):
     with open(config_path, 'r') as file:
@@ -43,8 +42,8 @@ def main():
     config_path = 'config.yaml'  # Update this to your config file path
     base_config = load_config(config_path)
     
-    num_configs = 15  # Number of different settings you want to generate data for
-    steps_per_episode = 200  # Number of steps per episode
+    num_configs = 50  # Number of different settings you want to generate data for
+    steps_per_episode = 700  # Number of steps per episode
     all_data = []
 
     random_configs = generate_random_configs(base_config, num_configs)

@@ -69,7 +69,7 @@ class EnvironmentAutoencoder:
                 self.optimizer.step()
                 total_loss += loss.item()
 
-            if (epoch + 1) % 10 == 0:
+            if (epoch + 1) % 2 == 0:
                 print(f"Epoch [{epoch+1}/{epochs}], Loss: {total_loss/len(dataloader):.4f}")
 
     def encode_state(self, state):
