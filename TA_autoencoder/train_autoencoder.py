@@ -15,7 +15,8 @@ from env import Environment
 from autoencoder import EnvironmentAutoencoder
 
 # Constants
-H5_FOLDER = '/path/to/your/h5/folder'
+H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
+# H5_FOLDER = '/Volumes/T7 Shield/METR4911/TA_autoencoder_h5_data'
 H5_PROGRESS_FILE = 'h5_collection_progress.txt'
 AUTOENCODER_FILE = 'trained_autoencoder.pth'
 TRAINING_STATE_FILE = 'training_state.pth'
