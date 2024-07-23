@@ -44,11 +44,11 @@ class EnvironmentAutoencoder:
     def __init__(self, input_shape, device):
         self.device = device
         print(f"Autoencoder using device: {self.device}")
-        self.input_shape = input_shape  # (D, X, Y)
+        self.input_shape = input_shape  # (4, X, Y)
         self.autoencoders = nn.ModuleList([LayerAutoencoder((input_shape[1], input_shape[2])).to(device) for _ in range(input_shape[0])])
         self.optimizers = [optim.Adam(ae.parameters(), lr=0.001) for ae in self.autoencoders]
         self.criterion = nn.MSELoss()
-        self.scalers = [amp.GradScaler() for _ in range(input_shape[0])]  # For mixed precision training
+        self.scalers = [amp.GradScaler() for _ in range(input_shape[0])]
 
     def train(self, dataloader):
         for ae in self.autoencoders:
@@ -56,19 +56,15 @@ class EnvironmentAutoencoder:
         
         total_loss = 0
         for batch in dataloader:
-            full_state = batch['full_state'].to(self.device)
-            
             loss = 0
             for i, ae in enumerate(self.autoencoders):
                 self.optimizers[i].zero_grad()
-                layer_input = full_state[:, i:i+1, :, :]  # Select one layer and keep dimension
+                layer_input = batch[f'layer_{i}'].to(self.device)
                 
-                # Use mixed precision training
                 with amp.autocast():
                     outputs = ae(layer_input)
                     layer_loss = self.criterion(outputs, layer_input)
                 
-                # Scale the loss and call backward
                 self.scalers[i].scale(layer_loss).backward()
                 self.scalers[i].step(self.optimizers[i])
                 self.scalers[i].update()
@@ -81,11 +77,11 @@ class EnvironmentAutoencoder:
 
     def encode_state(self, state):
         with torch.no_grad():
-            state_tensor = torch.FloatTensor(state['full_state']).unsqueeze(1).to(self.device)  # Add channel dimension
+            state_tensor = torch.FloatTensor(state).unsqueeze(1).to(self.device)  # Add channel dimension
             encoded_layers = []
             for i, ae in enumerate(self.autoencoders):
                 ae.eval()
-                layer_input = state_tensor[:, :, i, :, :]  # Select one layer
+                layer_input = state_tensor[i].unsqueeze(0)  # Add batch dimension
                 encoded_layer = ae.encode(layer_input)
                 encoded_layers.append(encoded_layer.cpu().numpy().squeeze())
         return np.array(encoded_layers)

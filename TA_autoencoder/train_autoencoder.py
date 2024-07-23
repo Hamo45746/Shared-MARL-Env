@@ -15,43 +15,36 @@ from env import Environment
 from autoencoder import EnvironmentAutoencoder
 
 # Constants
-H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
+H5_FOLDER = '/path/to/your/h5/folder'
 H5_PROGRESS_FILE = 'h5_collection_progress.txt'
 AUTOENCODER_FILE = 'trained_autoencoder.pth'
 TRAINING_STATE_FILE = 'training_state.pth'
 
-class H5Dataset(Dataset):
+class FlattenedMultiAgentH5Dataset(Dataset):
     def __init__(self, h5_files):
         self.h5_files = h5_files
-        self.cumulative_sizes = self._get_cumulative_sizes()
+        self.data_index = self._index_data()
 
-    def _get_cumulative_sizes(self):
-        sizes = []
-        total = 0
-        for h5_file in self.h5_files:
+    def _index_data(self):
+        index = []
+        for file_idx, h5_file in enumerate(self.h5_files):
             with h5py.File(h5_file, 'r') as f:
-                total += len(f['data'])
-            sizes.append(total)
-        return sizes
+                for step_idx in f['data']:
+                    step_data = f['data'][step_idx]
+                    for agent_id in step_data:
+                        index.append((file_idx, step_idx, agent_id))
+        return index
 
     def __len__(self):
-        return self.cumulative_sizes[-1]
+        return len(self.data_index)
 
     def __getitem__(self, idx):
-        file_idx = np.searchsorted(self.cumulative_sizes, idx, side='right')
-        if file_idx == 0:
-            internal_idx = idx
-        else:
-            internal_idx = idx - self.cumulative_sizes[file_idx - 1]
+        file_idx, step_idx, agent_id = self.data_index[idx]
         with h5py.File(self.h5_files[file_idx], 'r') as f:
-            step_data = f['data'][internal_idx]
-            agent_data = step_data[list(step_data.keys())[0]]  # Get data for the first agent
+            agent_data = f['data'][step_idx][agent_id]
             full_state = agent_data['full_state'][()]
-            local_obs = agent_data['local_obs'][()]
-        return {
-            'full_state': torch.FloatTensor(full_state),
-            'local_obs': torch.FloatTensor(local_obs)
-        }
+
+        return {f'layer_{i}': torch.FloatTensor(full_state[i]).unsqueeze(0) for i in range(full_state.shape[0])}
 
 def load_config(config_path):
     with open(config_path, 'r') as file:
@@ -130,6 +123,22 @@ def load_training_state(autoencoder):
         return state['epoch']
     return 0
 
+def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32, start_epoch=0):
+    dataset = FlattenedMultiAgentH5Dataset(h5_files)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+
+    for epoch in range(start_epoch, num_epochs):
+        loss = autoencoder.train(dataloader)
+        print(f"Epoch {epoch+1}/{num_epochs} completed. Average Loss: {loss:.4f}")
+        
+        save_training_state(autoencoder, epoch + 1)
+        
+        if (epoch + 1) % 10 == 0:
+            autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_epoch_{epoch+1}.pth"))
+
+    autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
+    print(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
+
 def main():
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
     original_config = load_config(config_path)
@@ -155,8 +164,8 @@ def main():
         if f"data_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5" not in completed_configs
     ]
     
-    # Use half of the available CPU cores for data collection
-    num_processes = max(1, mp.cpu_count() // 2)
+    # Use all but 2 of the available CPU cores for data collection
+    num_processes = max(1, mp.cpu_count() - 2)
     with mp.Pool(processes=num_processes) as pool:
         for filepath in tqdm(pool.imap_unordered(process_config, configs_to_process), total=len(configs_to_process)):
             completed_configs.add(os.path.basename(filepath))
@@ -176,21 +185,7 @@ def main():
     autoencoder = EnvironmentAutoencoder(input_shape, device)
     start_epoch = load_training_state(autoencoder)
 
-    dataset = H5Dataset(h5_files)
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=4, pin_memory=True)
-
-    num_epochs = 100
-    for epoch in range(start_epoch, num_epochs):
-        loss = autoencoder.train(dataloader)
-        print(f"Epoch {epoch+1}/{num_epochs} completed. Average Loss: {loss:.4f}")
-        
-        save_training_state(autoencoder, epoch + 1)
-        
-        if (epoch + 1) % 10 == 0:
-            autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_epoch_{epoch+1}.pth"))
-
-    autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
-    print(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
+    train_autoencoder(autoencoder, h5_files, start_epoch=start_epoch)
 
 if __name__ == "__main__":
     main()
