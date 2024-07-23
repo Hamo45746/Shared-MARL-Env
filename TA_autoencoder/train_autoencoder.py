@@ -75,35 +75,32 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
     with h5py.File(filepath, 'w') as hf:
         dataset = hf.create_group('data')
         
-        for step in tqdm(range(steps_per_episode), desc=f"Collecting data for {filename}"):
-            observations = env.step({agent_id: agent.get_next_action() for agent_id, agent in enumerate(env.agents)})
+        for step in range(steps_per_episode):
+            action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(env.agents)}
+            observations, rewards, done, info = env.step(action_dict)
             
+            if not isinstance(observations, dict):
+                logging.error(f"Unexpected observation type: {type(observations)}")
+                break
+
             step_group = dataset.create_group(str(step))
             for agent_id, obs in observations.items():
                 agent_group = step_group.create_group(str(agent_id))
-                agent_group.create_dataset('full_state', data=obs['full_state'], compression="gzip", compression_opts=9)
-                agent_group.create_dataset('local_obs', data=obs['local_obs'], compression="gzip", compression_opts=9)
+                agent_group.create_dataset('full_state', data=obs['full_state'])
+                agent_group.create_dataset('local_obs', data=obs['local_obs'])
             
-            # Flush data to disk every 10 steps
-            if step % 10 == 0:
-                hf.flush()
-            
-            # Log memory usage every 20 steps
-            if step % 20 == 0:
-                mem_usage = psutil.virtual_memory().percent
-                logging.info(f"Memory usage at step {step}: {mem_usage}%")
-                if mem_usage > 90:
-                    logging.warning(f"High memory usage detected: {mem_usage}%")
+            if done:
+                break
 
     logging.info(f"Data collection complete. File saved: {filepath}")
     return filepath
 
 def process_config(args):
-    config, config_path, h5_folder = args
     try:
+        config, config_path, h5_folder = args
         return collect_data_for_config(config, config_path, steps_per_episode=100, h5_folder=h5_folder)
     except Exception as e:
-        logging.error(f"Error processing config {config}: {str(e)}")
+        logging.error(f"Error processing config {args[0]}: {str(e)}")
         return None
 
 def load_progress():
