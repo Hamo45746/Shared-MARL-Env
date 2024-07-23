@@ -7,6 +7,9 @@ from torch.utils.data import DataLoader, Dataset
 import yaml
 import multiprocessing as mp
 from tqdm import tqdm
+import logging
+import psutil
+import time
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -16,10 +19,12 @@ from autoencoder import EnvironmentAutoencoder
 
 # Constants
 H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
-# H5_FOLDER = '/Volumes/T7 Shield/METR4911/TA_autoencoder_h5_data'
 H5_PROGRESS_FILE = 'h5_collection_progress.txt'
 AUTOENCODER_FILE = 'trained_autoencoder.pth'
 TRAINING_STATE_FILE = 'training_state.pth'
+
+logging.basicConfig(filename='autoencoder_training.log', level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 class FlattenedMultiAgentH5Dataset(Dataset):
     def __init__(self, h5_files):
@@ -64,27 +69,42 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
     filepath = os.path.join(h5_folder, filename)
 
     if os.path.exists(filepath):
-        print(f"File already exists: {filepath}")
+        logging.info(f"File already exists: {filepath}")
         return filepath
-
-    episode_data = env.run_simulation(max_steps=steps_per_episode)
 
     with h5py.File(filepath, 'w') as hf:
         dataset = hf.create_group('data')
-
-        for step, step_data in enumerate(episode_data):
+        
+        for step in tqdm(range(steps_per_episode), desc=f"Collecting data for {filename}"):
+            observations = env.step({agent_id: agent.get_next_action() for agent_id, agent in enumerate(env.agents)})
+            
             step_group = dataset.create_group(str(step))
-            for agent_id, obs in step_data.items():
+            for agent_id, obs in observations.items():
                 agent_group = step_group.create_group(str(agent_id))
-                agent_group.create_dataset('full_state', data=obs['full_state'])
-                agent_group.create_dataset('local_obs', data=obs['local_obs'])
+                agent_group.create_dataset('full_state', data=obs['full_state'], compression="gzip", compression_opts=9)
+                agent_group.create_dataset('local_obs', data=obs['local_obs'], compression="gzip", compression_opts=9)
+            
+            # Flush data to disk every 10 steps
+            if step % 10 == 0:
+                hf.flush()
+            
+            # Log memory usage every 20 steps
+            if step % 20 == 0:
+                mem_usage = psutil.virtual_memory().percent
+                logging.info(f"Memory usage at step {step}: {mem_usage}%")
+                if mem_usage > 90:
+                    logging.warning(f"High memory usage detected: {mem_usage}%")
 
-    print(f"Data collection complete. File saved: {filepath}")
+    logging.info(f"Data collection complete. File saved: {filepath}")
     return filepath
 
 def process_config(args):
     config, config_path, h5_folder = args
-    return collect_data_for_config(config, config_path, steps_per_episode=100, h5_folder=h5_folder)
+    try:
+        return collect_data_for_config(config, config_path, steps_per_episode=100, h5_folder=h5_folder)
+    except Exception as e:
+        logging.error(f"Error processing config {config}: {str(e)}")
+        return None
 
 def load_progress():
     progress_file = os.path.join(H5_FOLDER, H5_PROGRESS_FILE)
@@ -121,16 +141,30 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32, star
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
 
     for epoch in range(start_epoch, num_epochs):
-        loss = autoencoder.train(dataloader)
-        print(f"Epoch {epoch+1}/{num_epochs} completed. Average Loss: {loss:.4f}")
-        
-        save_training_state(autoencoder, epoch + 1)
-        
-        if (epoch + 1) % 10 == 0:
-            autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_epoch_{epoch+1}.pth"))
+        try:
+            loss = autoencoder.train(dataloader)
+            print(f"Epoch {epoch+1}/{num_epochs} completed. Average Loss: {loss:.4f}")
+            logging.info(f"Epoch {epoch+1}/{num_epochs} completed. Average Loss: {loss:.4f}")
+            
+            save_training_state(autoencoder, epoch + 1)
+            
+            if (epoch + 1) % 10 == 0:
+                autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_epoch_{epoch+1}.pth"))
+            
+            # Monitor system resources
+            mem_percent = psutil.virtual_memory().percent
+            logging.info(f"Memory usage: {mem_percent}%")
+            
+            if mem_percent > 90:
+                logging.warning("High memory usage detected. Pausing for 60 seconds.")
+                time.sleep(60)  # Give system time to free up memory
+
+        except Exception as e:
+            logging.error(f"Error during training: {str(e)}")
+            raise
 
     autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
-    print(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
+    logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
 
 def main():
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
@@ -157,12 +191,19 @@ def main():
         if f"data_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5" not in completed_configs
     ]
     
-    # Use all but 2 of the available CPU cores for data collection
-    num_processes = max(1, mp.cpu_count() - 2)
+    # Use all but 1 of the available CPU cores for data collection
+    num_processes = max(1, mp.cpu_count() - 1)
     with mp.Pool(processes=num_processes) as pool:
         for filepath in tqdm(pool.imap_unordered(process_config, configs_to_process), total=len(configs_to_process)):
-            completed_configs.add(os.path.basename(filepath))
-            save_progress(completed_configs)
+            if filepath:
+                completed_configs.add(os.path.basename(filepath))
+                save_progress(completed_configs)
+            
+            # Check overall memory usage
+            mem_usage = psutil.virtual_memory().percent
+            if mem_usage > 90:
+                logging.warning(f"High overall memory usage detected: {mem_usage}%. Pausing for 60 seconds.")
+                time.sleep(60)  # Give system time to free up memory
     
     print("All configurations processed. Starting autoencoder training...")
 
