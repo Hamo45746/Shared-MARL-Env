@@ -67,25 +67,17 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
         print(f"File already exists: {filepath}")
         return filepath
 
+    episode_data = env.run_simulation(max_steps=steps_per_episode)
+
     with h5py.File(filepath, 'w') as hf:
         dataset = hf.create_group('data')
 
-        total_steps = 0
-        while True:
-            episode_data = env.run_simulation(max_steps=steps_per_episode)
-            for step_data in episode_data:
-                step_group = dataset.create_group(str(total_steps))
-                for agent_id, obs in step_data.items():
-                    agent_group = step_group.create_group(str(agent_id))
-                    agent_group.create_dataset('full_state', data=obs['full_state'])
-                    agent_group.create_dataset('local_obs', data=obs['local_obs'])
-                
-                total_steps += 1
-                if total_steps >= 10000:  # Limit to 10000 steps per configuration
-                    break
-            
-            if total_steps >= 10000:
-                break
+        for step, step_data in enumerate(episode_data):
+            step_group = dataset.create_group(str(step))
+            for agent_id, obs in step_data.items():
+                agent_group = step_group.create_group(str(agent_id))
+                agent_group.create_dataset('full_state', data=obs['full_state'])
+                agent_group.create_dataset('local_obs', data=obs['local_obs'])
 
     print(f"Data collection complete. File saved: {filepath}")
     return filepath
