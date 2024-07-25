@@ -11,9 +11,6 @@ import logging
 import psutil
 import time
 import gc
-import signal
-import cProfile
-import pstats
 from memory_profiler import profile
 
 # Add the parent directory to the Python path
@@ -31,29 +28,6 @@ TRAINING_STATE_FILE = 'training_state.pth'
 
 logging.basicConfig(filename='autoencoder_training.log', level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
-
-class GracefulKiller:
-    kill_now = False
-    def __init__(self):
-        self.kill_now = False
-        signal.signal(signal.SIGINT, self.exit_gracefully)
-        signal.signal(signal.SIGTERM, self.exit_gracefully)
-
-    def exit_gracefully(self, *args):
-        self.kill_now = True
-        print("Received exit signal. Terminating child processes...")
-        for child in mp.active_children():
-            child.terminate()
-        print("All child processes terminated.")
-
-def save_profile_data(profiler, filename):
-    stats = pstats.Stats(profiler)
-    stats.dump_stats(filename)
-    print(f"Profile data saved to {filename}")
-    print(f"To visualize the results, run: snakeviz {filename}")
-
-def get_virtual_memory():
-    return psutil.virtual_memory().used
 
 class FlattenedMultiAgentH5Dataset(Dataset):
     def __init__(self, h5_files):
@@ -87,7 +61,6 @@ def load_config(config_path):
 
 @profile
 def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
-    initial_vm = get_virtual_memory()
     env = Environment(config_path)
     env.config.update(config)
     env.num_agents = config['n_agents']
@@ -101,10 +74,10 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
 
     if os.path.exists(filepath):
         logging.info(f"File already exists: {filepath}")
-        return filepath, 0
+        return filepath
 
     with h5py.File(filepath, 'w') as hf:
-        dataset = hf.create_group('data')
+        dataset = hf.create_group('data', track_order=True)
         
         for step in tqdm(range(steps_per_episode), desc=f"Collecting data for {filename}"):
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(env.agents)}
@@ -114,11 +87,11 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
                 logging.error(f"Unexpected observation type: {type(observations)}")
                 break
 
-            step_group = dataset.create_group(str(step))
+            step_group = dataset.create_group(str(step), track_order=True)
             for agent_id, obs in observations.items():
-                agent_group = step_group.create_group(str(agent_id))
-                agent_group.create_dataset('full_state', data=obs['full_state'])
-                agent_group.create_dataset('local_obs', data=obs['local_obs'])
+                agent_group = step_group.create_group(str(agent_id), track_order=True)
+                agent_group.create_dataset('full_state', data=obs['full_state'], compression="gzip", compression_opts=9)
+                agent_group.create_dataset('local_obs', data=obs['local_obs'], compression="gzip", compression_opts=9)
             
             if step % 10 == 0:
                 hf.flush()
@@ -133,21 +106,18 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
             if done:
                 break
 
-    final_vm = get_virtual_memory()
-    vm_increase = final_vm - initial_vm
     logging.info(f"Data collection complete. File saved: {filepath}")
-    logging.info(f"Virtual memory increase for this config: {vm_increase / (1024 * 1024):.2f} MB")
-    return filepath, vm_increase
+    return filepath
 
 def process_config(args):
     try:
         config, config_path, h5_folder = args
-        result, vm_increase = collect_data_for_config(config, config_path, steps_per_episode=100, h5_folder=h5_folder)
+        result = collect_data_for_config(config, config_path, steps_per_episode=100, h5_folder=h5_folder)
         gc.collect()
-        return result, vm_increase
+        return result
     except Exception as e:
         logging.error(f"Error processing config {args[0]}: {str(e)}")
-        return None, 0
+        return None
 
 def load_progress():
     progress_file = os.path.join(H5_FOLDER, H5_PROGRESS_FILE)
@@ -157,9 +127,11 @@ def load_progress():
     return set()
 
 def save_progress(completed_configs):
-    with open(os.path.join(H5_FOLDER, H5_PROGRESS_FILE), 'w') as f:
-        for config in completed_configs:
-            f.write(f"{config}\n")
+    filepath = os.path.join(H5_FOLDER, H5_PROGRESS_FILE)
+    with h5py.File(filepath, 'r') as hf:
+        if 'data' in hf and len(hf['data']) == 100:
+            with open(os.path.join(H5_FOLDER, H5_PROGRESS_FILE), 'a') as f:
+                f.write(f"{os.path.basename(filepath)}\n")
 
 def save_training_state(autoencoder, epoch):
     state = {
@@ -179,9 +151,7 @@ def load_training_state(autoencoder):
         return state['epoch']
     return 0
 
-@profile
 def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32, start_epoch=0):
-    initial_vm = get_virtual_memory()
     dataset = FlattenedMultiAgentH5Dataset(h5_files)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
 
@@ -209,94 +179,63 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32, star
             raise
 
     autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
-    final_vm = get_virtual_memory()
-    vm_increase = final_vm - initial_vm
     logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
-    logging.info(f"Virtual memory increase during training: {vm_increase / (1024 * 1024):.2f} MB")
 
 @profile
 def main():
-    killer = GracefulKiller()
-    profiler = cProfile.Profile()
-    profiler.enable()
-
-    try:
-        config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
-        original_config = load_config(config_path)
-        
-        # Set up ranges for randomization
-        seed_range = range(1,11)
-        num_agents_range = range(1, 6)
-        num_targets_range = range(1, 6)
-        num_jammers_range = range(0, 4)
-        
-        completed_configs = load_progress()
-        configs = [
-            {'seed': seed, 'n_agents': num_agents, 'n_targets': num_targets, 'n_jammers': num_jammers}
-            for seed in seed_range
-            for num_agents in num_agents_range
-            for num_targets in num_targets_range
-            for num_jammers in num_jammers_range
-        ]
-        
-        configs_to_process = [
-            (config, config_path, H5_FOLDER)
-            for config in configs
-            if f"data_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5" not in completed_configs
-        ]
-        
-        # Use all but 1 of the available CPU cores for data collection
-        num_processes = max(1, mp.cpu_count() - 1)
-        
-        # Use get_context to ensure we're using the 'spawn' start method
-        ctx = mp.get_context('spawn')
-        with ctx.Pool(processes=num_processes) as pool:
-            total_vm_increase = 0
-            for filepath, vm_increase in tqdm(pool.imap_unordered(process_config, configs_to_process), total=len(configs_to_process)):
-                if killer.kill_now:
-                    print("Interrupted by user, saving profile data...")
-                    break
-                
-                if filepath:
-                    completed_configs.add(os.path.basename(filepath))
-                    save_progress(completed_configs)
-                
-                total_vm_increase += vm_increase
-                
-                # Check overall memory usage
-                mem_usage = psutil.virtual_memory().percent
-                logging.info(f"Current memory usage: {mem_usage}%, Total VM increase: {total_vm_increase / (1024 * 1024):.2f} MB")
-                
-                if mem_usage > 90:
-                    logging.warning(f"High overall memory usage detected: {mem_usage}%. Pausing for 60 seconds.")
-                    time.sleep(60)  # Give system time to free up memory
-                
-                # Periodically save profile data
-                save_profile_data(profiler, 'interim_profile.prof')
-        
-        if not killer.kill_now:
-            print("All configurations processed. Starting autoencoder training...")
-
-            h5_files = [os.path.join(H5_FOLDER, filename) for filename in completed_configs]
+    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
+    original_config = load_config(config_path)
+    
+    # Set up ranges for randomization
+    seed_range = range(1,11)
+    num_agents_range = range(1, 6)
+    num_targets_range = range(1, 6)
+    num_jammers_range = range(0, 4)
+    
+    completed_configs = load_progress()
+    configs = [
+        {'seed': seed, 'n_agents': num_agents, 'n_targets': num_targets, 'n_jammers': num_jammers}
+        for seed in seed_range
+        for num_agents in num_agents_range
+        for num_targets in num_targets_range
+        for num_jammers in num_jammers_range
+    ]
+    
+    configs_to_process = [
+        (config, config_path, H5_FOLDER)
+        for config in configs
+        if f"data_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5" not in completed_configs
+    ]
+    
+    # Use all but 1 of the available CPU cores for data collection
+    num_processes = max(1, mp.cpu_count() - 1)
+    with mp.Pool(processes=num_processes) as pool:
+        for filepath in tqdm(pool.imap_unordered(process_config, configs_to_process), total=len(configs_to_process)):
+            if filepath:
+                completed_configs.add(os.path.basename(filepath))
+                save_progress(completed_configs)
             
-            # Initialize autoencoder with the shape of the first batch
-            with h5py.File(h5_files[0], 'r') as f:
-                first_step = f['data']['0']
-                first_agent = first_step[list(first_step.keys())[0]]
-                input_shape = first_agent['full_state'].shape
+            # Check overall memory usage
+            mem_usage = psutil.virtual_memory().percent
+            if mem_usage > 90:
+                logging.warning(f"High overall memory usage detected: {mem_usage}%. Pausing for 60 seconds.")
+                time.sleep(60)  # Give system time to free up memory
+    
+    print("All configurations processed. Starting autoencoder training...")
 
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            autoencoder = EnvironmentAutoencoder(input_shape, device)
-            start_epoch = load_training_state(autoencoder)
+    h5_files = [os.path.join(H5_FOLDER, filename) for filename in completed_configs]
+    
+    # Initialize autoencoder with the shape of the first batch
+    with h5py.File(h5_files[0], 'r') as f:
+        first_step = f['data']['0']
+        first_agent = first_step[list(first_step.keys())[0]]
+        input_shape = first_agent['full_state'].shape
 
-            train_autoencoder(autoencoder, h5_files, start_epoch=start_epoch)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    autoencoder = EnvironmentAutoencoder(input_shape, device)
+    start_epoch = load_training_state(autoencoder)
 
-    except Exception as e:
-        print(f"An error occurred: {e}")
-    finally:
-        profiler.disable()
-        save_profile_data(profiler, 'final_profile.prof')
-        print("Profile data saved. To view the results, run: snakeviz final_profile.prof")
+    train_autoencoder(autoencoder, h5_files, start_epoch=start_epoch)
 
 if __name__ == "__main__":
     main()

@@ -4,3 +4,7 @@ MARLlib/
 TA_autoencoder/collected_data/
 TA_autoencoder/npy2hdf5.py
 TA_autoencoder/h5_data_log_creator.py
+autoencoder_training.log
+memory_profile.png
+memory_profile.prof
+memory_profile.txt
