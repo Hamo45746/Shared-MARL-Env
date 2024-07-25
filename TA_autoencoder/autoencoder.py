@@ -7,24 +7,43 @@ import numpy as np
 class LayerAutoencoder(nn.Module):
     def __init__(self, input_shape):
         super(LayerAutoencoder, self).__init__()
-        self.input_shape = input_shape  # (X, Y)
-
+        self.input_shape = input_shape  # (X, Y) # Should be 276x155 for 0.18 scale map we are currently using
+        
+        # Calculate intermediate sizes
+        # use to reduce in the fully connected linear layers - Start with 4x reduction *TEST*
+        flattened_size = 256 * (input_shape[0] // 16) * (input_shape[1] // 16)
+        intermediate_size1 = flattened_size // 4
+        intermediate_size2 = intermediate_size1 // 4
+        
         # Encoder
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),  # In: 1xXxY, Out: 32x(X/2)x(Y/2)
             nn.LeakyReLU(0.2),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # Out: 64x(X/4)x(Y/4)
             nn.LeakyReLU(0.2),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # Out: 128x(X/8)x(Y/8)
             nn.LeakyReLU(0.2),
-            nn.Flatten(),
-            nn.Linear(128 * (input_shape[0] // 8) * (input_shape[1] // 8), 256)
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # Out: 256x(X/16)x(Y/16)
+            nn.LeakyReLU(0.2),
+            nn.Flatten(),  # Out: 256 * (X/16) * (Y/16)
+            nn.Linear(flattened_size, intermediate_size1),
+            nn.LeakyReLU(0.2),
+            nn.Linear(intermediate_size1, intermediate_size2),
+            nn.LeakyReLU(0.2),
+            nn.Linear(intermediate_size2, 256)
         )
 
         # Decoder
         self.decoder = nn.Sequential(
-            nn.Linear(256, 128 * (input_shape[0] // 8) * (input_shape[1] // 8)),
-            nn.Unflatten(1, (128, input_shape[0] // 8, input_shape[1] // 8)),
+            nn.Linear(256, intermediate_size2),
+            nn.LeakyReLU(0.2),
+            nn.Linear(intermediate_size2, intermediate_size1),
+            nn.LeakyReLU(0.2),
+            nn.Linear(intermediate_size1, flattened_size),
+            nn.LeakyReLU(0.2),
+            nn.Unflatten(1, (256, input_shape[0] // 16, input_shape[1] // 16)),
+            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.LeakyReLU(0.2),
             nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.LeakyReLU(0.2),
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
@@ -46,9 +65,17 @@ class EnvironmentAutoencoder:
         print(f"Autoencoder using device: {self.device}")
         self.input_shape = input_shape  # (4, X, Y)
         self.autoencoders = nn.ModuleList([LayerAutoencoder((input_shape[1], input_shape[2])).to(device) for _ in range(input_shape[0])])
-        self.optimizers = [optim.Adam(ae.parameters(), lr=0.001) for ae in self.autoencoders]
+        self.optimizers = [optim.Adam(ae.parameters(), lr=0.001) for ae in self.autoencoders] # TODO: Test different learning rates
         self.criterion = nn.MSELoss()
-        self.scalers = [amp.GradScaler() for _ in range(input_shape[0])]
+        self.amp_scalers = [amp.GradScaler() for _ in range(input_shape[0])]
+        
+        # Define scalers for each layer
+        self.scalers = [lambda x: x]  # For binary layer (assumed to be the first layer)
+        self.scalers.extend([lambda x: (x + 20) / 20 for _ in range(input_shape[0] - 1)])  # For negative layers
+        
+        # Define inverse scalers for each layer
+        self.inverse_scalers = [lambda x: x]  # For binary layer
+        self.inverse_scalers.extend([lambda x: x * 20 - 20 for _ in range(input_shape[0] - 1)])  # For negative layers
 
     def train(self, dataloader):
         for ae in self.autoencoders:
@@ -59,15 +86,15 @@ class EnvironmentAutoencoder:
             loss = 0
             for i, ae in enumerate(self.autoencoders):
                 self.optimizers[i].zero_grad()
-                layer_input = batch[f'layer_{i}'].to(self.device)
+                layer_input = self.scalers[i](batch[f'layer_{i}']).to(self.device)
                 
                 with amp.autocast():
                     outputs = ae(layer_input)
                     layer_loss = self.criterion(outputs, layer_input)
                 
-                self.scalers[i].scale(layer_loss).backward()
-                self.scalers[i].step(self.optimizers[i])
-                self.scalers[i].update()
+                self.amp_scalers[i].scale(layer_loss).backward()
+                self.amp_scalers[i].step(self.optimizers[i])
+                self.amp_scalers[i].update()
                 
                 loss += layer_loss.item()
             
@@ -77,7 +104,8 @@ class EnvironmentAutoencoder:
 
     def encode_state(self, state):
         with torch.no_grad():
-            state_tensor = torch.FloatTensor(state).unsqueeze(1).to(self.device)  # Add channel dimension
+            scaled_state = [self.scalers[i](state[i]) for i in range(len(state))]
+            state_tensor = torch.FloatTensor(scaled_state).unsqueeze(1).to(self.device)  # Add channel dimension
             encoded_layers = []
             for i, ae in enumerate(self.autoencoders):
                 ae.eval()
@@ -85,6 +113,17 @@ class EnvironmentAutoencoder:
                 encoded_layer = ae.encode(layer_input)
                 encoded_layers.append(encoded_layer.cpu().numpy().squeeze())
         return np.array(encoded_layers)
+
+    def decode_state(self, encoded_state):
+        with torch.no_grad():
+            decoded_layers = []
+            for i, ae in enumerate(self.autoencoders):
+                ae.eval()
+                encoded_layer = torch.FloatTensor(encoded_state[i]).unsqueeze(0).unsqueeze(0).to(self.device)
+                decoded_layer = ae.decoder(encoded_layer)
+                decoded_layer = self.inverse_scalers[i](decoded_layer.cpu().numpy().squeeze())
+                decoded_layers.append(decoded_layer)
+        return np.array(decoded_layers)
 
     def save(self, path):
         torch.save({

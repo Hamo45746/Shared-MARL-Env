@@ -37,12 +37,12 @@ class DiscreteAgent(BaseAgent):
         self.current_pos = np.zeros(2, dtype=np.int32)  # x and y position
         self.last_pos = np.zeros(2, dtype=np.int32)
         self.temp_pos = np.zeros(2, dtype=np.int32)
-        self.map_matrix = map_matrix
         self.terminal = False
         self._obs_range = obs_range # Initialise the local observation state
-        self.X, self.Y = self.map_matrix.shape
+        self.X, self.Y = map_matrix.shape
         self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-20)
-        self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20, dtype=np.float32)
+        self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20, dtype=np.float16)
+        self.local_state[0] = map_matrix
         self.path = []
         
         # Ensure the action space is compatible with MARLlib
@@ -55,7 +55,7 @@ class DiscreteAgent(BaseAgent):
 
     @property
     def observation_space(self):
-        return spaces.Box(low=-20, high=1, shape=self._obs_shape, dtype=np.float32)
+        return spaces.Box(low=-20, high=1, shape=self._obs_shape, dtype=np.float16)
 
     # @property
     # def action_space(self):
@@ -120,7 +120,7 @@ class DiscreteAgent(BaseAgent):
     
     def inbuilding(self, x, y):
         # if self.observation_state[0, x - self.current_pos[0], y - self.current_pos[1]] == 0: # Maybe incorrect?
-        if self.map_matrix[x, y] == 0:
+        if self.local_state[0][x, y] == 0:
             return True
         return False
 

@@ -61,7 +61,7 @@ class AgentLayer:
 
     def get_state_matrix(self):
         """Returns a matrix representing the positions of all allies."""
-        return self.layer_state[:]
+        return self.layer_state
     
     def update(self):
         # Decay previous positions
@@ -119,7 +119,7 @@ class TargetLayer:
     def get_state_matrix(self):
         """Returns a matrix representing the positions of all allies."""
         # self.update()
-        return self.layer_state[:]
+        return self.layer_state
 
 
 class JammerLayer:
@@ -160,4 +160,4 @@ class JammerLayer:
     def get_state_matrix(self):
         """Returns a matrix representing the positions of active jammers."""
         self.update_layer_state()
-        return self.layer_state[:]
+        return self.layer_state

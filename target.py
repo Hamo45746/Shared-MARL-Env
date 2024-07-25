@@ -72,4 +72,4 @@ class Target(DiscreteAgent):
             return 4  # Stay (in case current_pos == next_pos)
 
     def inbuilding(self, x, y):
-        return self.map_matrix[x, y] == 0
+        return self.local_state[0][x, y] == 0

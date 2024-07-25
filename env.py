@@ -39,7 +39,7 @@ class Environment(gym.core.Env):
 
         # Load and process the map
         self.map_matrix = self.load_map()
-        self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.float32)
+        self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.float16)
         self.global_state[0] = self.map_matrix
         
         # Initialise agents, targets, and jammers
@@ -107,17 +107,17 @@ class Environment(gym.core.Env):
         elif self.agent_type == 'task_allocation':
             self.action_space = spaces.Discrete((2 * self.agents[0].max_distance + 1) ** 2)
         else:
-            self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
+            self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float16)
 
 
     def define_observation_space(self):
         if self.agent_type == 'task_allocation':
             self.observation_space = spaces.Dict({
-                'local_obs': spaces.Box(low=-20, high=1, shape=(self.D, self.obs_range, self.obs_range), dtype=np.float32),
-                'full_state': spaces.Box(low=-20, high=1, shape=(self.D, self.X, self.Y), dtype=np.float32)
+                'local_obs': spaces.Box(low=-20, high=1, shape=(self.D, self.obs_range, self.obs_range), dtype=np.float16),
+                'full_state': spaces.Box(low=-20, high=1, shape=(self.D, self.X, self.Y), dtype=np.float16)
             })
         else:
-            self.observation_space = spaces.Box(low=-20, high=1, shape=(self.D, self.obs_range, self.obs_range), dtype=np.float32)
+            self.observation_space = spaces.Box(low=-20, high=1, shape=(self.D, self.obs_range, self.obs_range), dtype=np.float16)
 
 
     def reset(self, seed=None):
@@ -616,7 +616,7 @@ class Environment(gym.core.Env):
 
     def collect_obs_by_idx(self, agent_layer, agent_idx):
         # Initialise the observation array for all layers, ensuring no information loss
-        obs = np.full((self.global_state.shape[0], self.obs_range, self.obs_range), fill_value=-20, dtype=np.float32)
+        obs = np.full((self.global_state.shape[0], self.obs_range, self.obs_range), fill_value=-20, dtype=np.float16)
         # Get the current position of the agent
         xp, yp = agent_layer.get_position(agent_idx)
         # Calculate bounds for the observation
@@ -849,6 +849,7 @@ class Environment(gym.core.Env):
         collected_data = []
         
         observations = self.reset()  # Reset the environment and get initial observations
+        print(self.global_state.shape)
         collected_data.append(observations)
         
         while step_count < max_steps:
@@ -860,7 +861,6 @@ class Environment(gym.core.Env):
             
             # Collect the observations
             collected_data.append(observations)
-            
             step_count += 1
             
             if terminated:

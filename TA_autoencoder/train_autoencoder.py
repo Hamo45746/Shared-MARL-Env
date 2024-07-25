@@ -98,6 +98,7 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
                 
                 if mem_usage > 90:
                     logging.warning(f"High memory usage detected: {mem_usage}%")
+                    break
             
             if done:
                 break

@@ -33,8 +33,8 @@ class TaskAllocationAgent(DiscreteAgent):
     @property
     def observation_space(self):
         return spaces.Dict({
-            'local_obs': spaces.Box(low=-20, high=1, shape=self._obs_shape, dtype=np.float32),
-            'full_state': spaces.Box(low=-20, high=1, shape=(self.n_layers, self.X, self.Y), dtype=np.float32)
+            'local_obs': spaces.Box(low=-20, high=1, shape=self._obs_shape, dtype=np.float16),
+            'full_state': spaces.Box(low=-20, high=1, shape=(self.n_layers, self.X, self.Y), dtype=np.float16)
         })
 
     def get_observation(self):
@@ -109,7 +109,7 @@ class TaskAllocationAgent(DiscreteAgent):
         return action
 
     def inbuilding(self, x, y):
-        return self.map_matrix[x, y] == 0
+        return self.local_state[0][x, y] == 0
 
     def reset(self):
         super().reset()
