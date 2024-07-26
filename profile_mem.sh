@@ -1,18 +1,21 @@
 #!/bin/bash
 
 # Run memray to profile memory usage
-memray run --native TA_autoencoder/memory_profile_autoencoder.py
+python TA_autoencoder/memory_profile_autoencoder.py
 
-# Generate a flamegraph of memory allocation
-memray flamegraph memray-results/*.bin -o memory_profile_flame.html
-
-# Generate a table of memory usage
-memray table memray-results/*.bin -o memory_profile_table.txt
-
-# Generate a summary of memory usage
-memray summary memray-results/*.bin -o memory_profile_summary.txt
-
-# Run the memory_profiler for line-by-line analysis
-# python -m memory_profiler TA_autoencoder/memory_profile_autoencoder.py > memory_profile.txt 2>&1
-
-echo "Memory profiling complete. Check memory_profile.png for visualization and memory_profile.txt for line-by-line analysis."
+# After interruption, generate memray visualizations
+# Use a wildcard to match the generated .bin file(s)
+for file in *.bin; do
+    if [ -f "$file" ]; then
+        base_name=$(basename "$file" .bin)
+        
+        echo "Generating flamegraph for $file"
+        memray flamegraph "$file" -o "${base_name}_flame.html"
+        
+        echo "Generating table for $file"
+        memray table "$file" -o "${base_name}_table.txt"
+        
+        echo "Generating summary for $file"
+        memray summary "$file" -o "${base_name}_summary.txt"
+    fi
+done

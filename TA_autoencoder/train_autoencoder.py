@@ -13,6 +13,8 @@ import time
 import gc
 import signal
 # from memory_profiler import profile
+import functools
+from memray import Tracker
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -21,8 +23,8 @@ from env import Environment
 from autoencoder import EnvironmentAutoencoder
 
 # Constants
-H5_FOLDER = '/Volumes/T7 Shield/METR4911/Mem_profiling_test'
-# H5_FOLDER = '/media/rppl/T7 Shield/METR4911/Mem_profiling_test'
+# H5_FOLDER = '/Volumes/T7 Shield/METR4911/Mem_profiling_test'
+H5_FOLDER = '/media/rppl/T7 Shield/METR4911/Mem_profiling_test'
 H5_PROGRESS_FILE = 'h5_collection_progress.txt'
 AUTOENCODER_FILE = 'trained_autoencoder.pth'
 TRAINING_STATE_FILE = 'training_state.pth'
@@ -58,6 +60,13 @@ class FlattenedMultiAgentH5Dataset(Dataset):
             full_state = agent_data['full_state'][()]
 
         return {f'layer_{i}': torch.FloatTensor(full_state[i]).unsqueeze(0) for i in range(full_state.shape[0])}
+
+def profile(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        with Tracker(f'{func.__name__}.bin'):
+            return func(*args, **kwargs)
+    return wrapper
 
 def cleanup_resources():
     global global_pool
@@ -129,7 +138,7 @@ def is_dataset_complete(filepath, steps_per_episode):
         logging.error(f"Error checking dataset completeness for {filepath}: {str(e)}")
         return False
 
-# @profile
+@profile
 def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
     env = Environment(config_path)
     env.config.update(config)
