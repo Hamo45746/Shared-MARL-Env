@@ -5,6 +5,7 @@ import signal
 from memory_profiler import profile
 import train_autoencoder
 import multiprocessing as mp
+import gc
 
 def terminate_process_and_children(pid):
     try:
@@ -28,16 +29,31 @@ def terminate_process_and_children(pid):
         pass
 
 def cleanup_resources():
-    # Terminate all child processes
-    for child in mp.active_children():
+    # Terminate all active child processes
+    active_children = mp.active_children()
+    for child in active_children:
         child.terminate()
         child.join(timeout=1)
-    
-    # Force cleanup of any remaining resources
-    mp.util.cleanup_remaining_resources()
-    
+
+    # Ensure all child processes are terminated
+    for child in active_children:
+        if child.is_alive():
+            os.kill(child.pid, 9)  # Force kill if still alive
+
+    # Clean up any remaining multiprocessing resources
+    mp.current_process().close()
+
     # Terminate any remaining processes
     terminate_process_and_children(os.getpid())
+    # Clear any shared memory
+    try:
+        import resource
+        resource.RLIMIT_NOFILE
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
+    except (ImportError, AttributeError):
+        pass
+    gc.collect()
 
 def signal_handler(signum, frame):
     print("Interrupted. Cleaning up resources...")

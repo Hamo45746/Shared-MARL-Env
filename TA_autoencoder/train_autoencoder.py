@@ -65,11 +65,52 @@ def cleanup_resources():
         global_pool.close()
         global_pool.join()
     
-    for child in mp.active_children():
+    active_children = mp.active_children
+    for child in active_children:
         child.terminate()
         child.join(timeout=1)
+        
+    # Ensure all child processes are terminated
+    for child in active_children:
+        if child.is_alive():
+            os.kill(child.pid, 9)  # Force kill if still alive
+
+    # Clean up any remaining multiprocessing resources
+    mp.current_process().close()
+
+    # Use psutil to find and terminate any remaining child processes
+    current_process = psutil.Process()
+    children = current_process.children(recursive=True)
+    for child in children:
+        try:
+            child.terminate()
+        except psutil.NoSuchProcess:
+            pass
+    gone, alive = psutil.wait_procs(children, timeout=3)
+    for p in alive:
+        try:
+            p.kill()
+        except psutil.NoSuchProcess:
+            pass
+        
+    gc.collect()
     
-    mp.util.cleanup_remaining_resources()
+    if 'torch' in sys.modules:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    # Clear any shared memory
+    try:
+        import resource
+        resource.RLIMIT_NOFILE
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
+    except (ImportError, AttributeError):
+        pass
+
+    # Explicitly run garbage collection
+    gc.collect()
 
 def signal_handler(signum, frame):
     print("Interrupted. Cleaning up resources...")
