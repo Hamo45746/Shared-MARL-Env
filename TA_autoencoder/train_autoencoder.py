@@ -20,11 +20,12 @@ from env import Environment
 from autoencoder import EnvironmentAutoencoder
 
 # Constants
-# H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
-H5_FOLDER = '/Volumes/T7 Shield/METR4911/Mem_profiling_test'
+# H5_FOLDER = '/Volumes/T7 Shield/METR4911/Mem_profiling_test'
+H5_FOLDER = '/media/rppl/T7 Shield/METR4911/Mem_profiling_test'
 H5_PROGRESS_FILE = 'h5_collection_progress.txt'
 AUTOENCODER_FILE = 'trained_autoencoder.pth'
 TRAINING_STATE_FILE = 'training_state.pth'
+STEPS_PER_EPISODE = 100
 
 logging.basicConfig(filename='autoencoder_training.log', level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
@@ -59,6 +60,14 @@ def load_config(config_path):
     with open(config_path, 'r') as file:
         return yaml.safe_load(file)
 
+def is_dataset_complete(filepath, steps_per_episode):
+    try:
+        with h5py.File(filepath, 'r') as hf:
+            return 'data' in hf and len(hf['data']) == steps_per_episode
+    except Exception as e:
+        logging.error(f"Error checking dataset completeness for {filepath}: {str(e)}")
+        return False
+
 @profile
 def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
     env = Environment(config_path)
@@ -72,14 +81,35 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
     filename = f"data_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
     filepath = os.path.join(h5_folder, filename)
 
+    # Check if file exists and determine the last completed step
+    start_step = 0
     if os.path.exists(filepath):
-        logging.info(f"File already exists: {filepath}")
-        return filepath
+        with h5py.File(filepath, 'r') as hf:
+            if 'data' in hf:
+                existing_steps = [int(step) for step in hf['data'].keys()]
+                if existing_steps:
+                    start_step = max(existing_steps) + 1
+                    logging.info(f"Resuming data collection for {filename} from step {start_step}")
+                    
+                    # If all steps are completed, return the filepath
+                    if start_step >= steps_per_episode:
+                        logging.info(f"All steps already collected for {filename}")
+                        return filepath
 
-    with h5py.File(filepath, 'w') as hf:
-        dataset = hf.create_group('data', track_order=True)
+    # Open the file in append mode if it exists, otherwise create a new file
+    with h5py.File(filepath, 'a') as hf:
+        if 'data' not in hf:
+            dataset = hf.create_group('data', track_order=True)
+        else:
+            dataset = hf['data']
         
-        for step in tqdm(range(steps_per_episode), desc=f"Collecting data for {filename}"):
+        # Set the environment to the correct state if resuming
+        if start_step > 0:
+            for _ in range(start_step):
+                action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(env.agents)}
+                env.step(action_dict)
+
+        for step in tqdm(range(start_step, steps_per_episode), desc=f"Collecting data for {filename}", initial=start_step, total=steps_per_episode):
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(env.agents)}
             observations, rewards, done, info = env.step(action_dict)
             
@@ -90,8 +120,12 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
             step_group = dataset.create_group(str(step), track_order=True)
             for agent_id, obs in observations.items():
                 agent_group = step_group.create_group(str(agent_id), track_order=True)
-                agent_group.create_dataset('full_state', data=obs['full_state'], compression="gzip", compression_opts=9)
-                agent_group.create_dataset('local_obs', data=obs['local_obs'], compression="gzip", compression_opts=9)
+                
+                # Use compression for datasets
+                agent_group.create_dataset('full_state', data=obs['full_state'], 
+                                           compression="gzip", compression_opts=9)
+                agent_group.create_dataset('local_obs', data=obs['local_obs'], 
+                                           compression="gzip", compression_opts=9)
             
             if step % 10 == 0:
                 hf.flush()
@@ -110,13 +144,15 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
     return filepath
 
 def process_config(args):
+    config, config_path, h5_folder, steps_per_episode = args
     try:
-        config, config_path, h5_folder = args
-        result = collect_data_for_config(config, config_path, steps_per_episode=100, h5_folder=h5_folder)
-        gc.collect()
-        return result
+        filepath = collect_data_for_config(config, config_path, steps_per_episode, h5_folder)
+        if is_dataset_complete(filepath, steps_per_episode):
+            return filepath
+        else:
+            return None
     except Exception as e:
-        logging.error(f"Error processing config {args[0]}: {str(e)}")
+        logging.error(f"Error processing config {config}: {str(e)}")
         return None
 
 def load_progress():
@@ -127,11 +163,9 @@ def load_progress():
     return set()
 
 def save_progress(completed_configs):
-    filepath = os.path.join(H5_FOLDER, H5_PROGRESS_FILE)
-    with h5py.File(filepath, 'r') as hf:
-        if 'data' in hf and len(hf['data']) == 100:
-            with open(os.path.join(H5_FOLDER, H5_PROGRESS_FILE), 'a') as f:
-                f.write(f"{os.path.basename(filepath)}\n")
+    with open(os.path.join(H5_FOLDER, H5_PROGRESS_FILE), 'w') as f:
+        for config in completed_configs:
+            f.write(f"{config}\n")
 
 def save_training_state(autoencoder, epoch):
     state = {
@@ -201,17 +235,18 @@ def main():
         for num_jammers in num_jammers_range
     ]
     
-    configs_to_process = [
-        (config, config_path, H5_FOLDER)
-        for config in configs
-        if f"data_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5" not in completed_configs
-    ]
+    configs_to_process = []
+    for config in configs:
+        filename = f"data_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
+        filepath = os.path.join(H5_FOLDER, filename)
+        if not is_dataset_complete(filepath, STEPS_PER_EPISODE):
+            configs_to_process.append((config, config_path, H5_FOLDER, STEPS_PER_EPISODE))
     
     # Use all but 1 of the available CPU cores for data collection
     num_processes = max(1, mp.cpu_count() - 1)
     with mp.Pool(processes=num_processes) as pool:
         for filepath in tqdm(pool.imap_unordered(process_config, configs_to_process), total=len(configs_to_process)):
-            if filepath:
+            if filepath and is_dataset_complete(filepath, STEPS_PER_EPISODE):
                 completed_configs.add(os.path.basename(filepath))
                 save_progress(completed_configs)
             

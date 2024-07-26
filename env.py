@@ -98,7 +98,8 @@ class Environment(gym.core.Env):
         self.num_jammers = self.config['n_jammers']
         self.jammers = jammer_utils.create_jammers(self.num_jammers, self.map_matrix, self.np_random, self.config['jamming_radius'])
         self.jammer_layer = JammerLayer(self.X, self.Y, self.jammers)
-        self.jammed_positions = set()
+        self.jammed_areas = np.zeros((self.X, self.Y), dtype=bool)
+        self.jammed_positions = set()  # Keep this for backward compatibility
 
 
     def define_action_space(self):
@@ -197,13 +198,13 @@ class Environment(gym.core.Env):
 
             # Update jammed areas
             self.jammer_layer.activate_jammers(self.current_step)
-            self.update_jammed_areas()
+            # self.update_jammed_areas()
             # Update global state
             self.update_global_state()
             
             # Check for jammer destruction
             self.check_jammer_destruction()
-            # self.render()
+            self.render()
             self.current_step += 1
 
         # Calculate rewards
@@ -762,10 +763,8 @@ class Environment(gym.core.Env):
         - bool: True if communication is blocked, False otherwise.
         """
         x, y = self.agent_layer.agents[agent_id].current_position()
-        x_int = int(x)
-        y_int = int(y)
-        agent_pos = x_int, y_int
-        return tuple(agent_pos) in self.jammed_positions
+        x_int, y_int = int(x), int(y)
+        return self.jammed_areas[x_int, y_int]
     
     
     # JAMMING FUNCTIONS #
@@ -787,20 +786,18 @@ class Environment(gym.core.Env):
         self.jammer_layer.set_position(jammer_index, *new_position)
         self.update_jammed_areas()
 
-
+        
     def update_jammed_areas(self):
         """
         Recalculate the jammed areas based on the current state of all jammers.
         Stores the jammed grid positions in a cache. This function should be called any time a 
         jammers position, activation, and destruction status changes.
         """
-        if self.jammed_positions is not None:
-            self.jammed_positions.clear()
-        #for jammer in self.jammer_layer.agents:
+        self.jammed_areas.fill(False)
+        self.jammed_positions.clear()
         for jammer in self.jammer_layer.jammers:
             if jammer.is_active() and not jammer.get_destroyed():
-                jammed_area = self.calculate_jammed_area(jammer.current_position(), jammer.radius)
-                self.jammed_positions.update(jammed_area)
+                self.calculate_jammed_area(jammer.current_position(), jammer.radius)
 
 
     def calculate_jammed_area(self, position, radius):
@@ -815,23 +812,14 @@ class Environment(gym.core.Env):
         - set of tuples: Set of (x, y) coordinates representing the jammed area.
         """
         center_x, center_y = position
-        jammed_area = set()
-
-        # Determine the grid bounds of the jammed area
-        x_lower_bound = max(center_x - radius, 0)
-        x_upper_bound = min(center_x + radius, self.X - 1)
-        y_lower_bound = max(center_y - radius, 0)
-        y_upper_bound = min(center_y + radius, self.Y - 1)
-
-        # Iterate over the range defined by the radius around the jammer's position
-        for x in range(x_lower_bound, x_upper_bound + 1):
-            for y in range(y_lower_bound, y_upper_bound + 1):
-                # Calculate the distance from the center to ensure it's within the circle defined by the radius
-                distance = np.sqrt((center_x - x) ** 2 + (center_y - y) ** 2)
-                if distance <= radius:
-                    jammed_area.add((x, y))
-
-        return jammed_area
+        x, y = np.ogrid[:self.X, :self.Y]
+        mask = (x - center_x)**2 + (y - center_y)**2 <= radius**2
+        self.jammed_areas |= mask
+        
+        # Update jammed_positions set for backward compatibility
+        jammed_indices = np.where(mask)
+        for x, y in zip(jammed_indices[0], jammed_indices[1]):
+            self.jammed_positions.add((int(x), int(y)))
 
     # def _seed(self, seed=None):
     #     self.np_random, seed_ = seeding.np_random(seed)
