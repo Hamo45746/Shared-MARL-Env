@@ -204,7 +204,7 @@ class Environment(gym.core.Env):
             
             # Check for jammer destruction
             self.check_jammer_destruction()
-            self.render()
+            # self.render()
             self.current_step += 1
 
         # Calculate rewards
