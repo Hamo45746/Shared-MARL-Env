@@ -12,7 +12,7 @@ import psutil
 import time
 import gc
 import signal
-from memory_profiler import profile
+# from memory_profiler import profile
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -129,7 +129,7 @@ def is_dataset_complete(filepath, steps_per_episode):
         logging.error(f"Error checking dataset completeness for {filepath}: {str(e)}")
         return False
 
-@profile
+# @profile
 def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
     env = Environment(config_path)
     env.config.update(config)
@@ -276,7 +276,7 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32, star
     autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
     logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
 
-@profile
+# @profile
 def main():
     global global_pool
     

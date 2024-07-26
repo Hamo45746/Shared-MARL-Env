@@ -1,10 +1,16 @@
 #!/bin/bash
 
-# Run the memory profiler and generate a profile file
-python -m cProfile -o memory_profile.prof TA_autoencoder/memory_profile_autoencoder.py
+# Run memray to profile memory usage
+memray run --native TA_autoencoder/memory_profile_autoencoder.py
 
-# Generate a PNG visualization from the profile
-gprof2dot -f pstats memory_profile.prof | dot -Tpng -o memory_profile.png
+# Generate a flamegraph of memory allocation
+memray flamegraph memray-results/*.bin -o memory_profile_flame.html
+
+# Generate a table of memory usage
+memray table memray-results/*.bin -o memory_profile_table.txt
+
+# Generate a summary of memory usage
+memray summary memray-results/*.bin -o memory_profile_summary.txt
 
 # Run the memory_profiler for line-by-line analysis
 # python -m memory_profiler TA_autoencoder/memory_profile_autoencoder.py > memory_profile.txt 2>&1
