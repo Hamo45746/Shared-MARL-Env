@@ -11,6 +11,7 @@ import logging
 import psutil
 import time
 import gc
+import signal
 from memory_profiler import profile
 
 # Add the parent directory to the Python path
@@ -29,6 +30,8 @@ STEPS_PER_EPISODE = 100
 
 logging.basicConfig(filename='autoencoder_training.log', level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
+
+global_pool = None
 
 class FlattenedMultiAgentH5Dataset(Dataset):
     def __init__(self, h5_files):
@@ -55,6 +58,23 @@ class FlattenedMultiAgentH5Dataset(Dataset):
             full_state = agent_data['full_state'][()]
 
         return {f'layer_{i}': torch.FloatTensor(full_state[i]).unsqueeze(0) for i in range(full_state.shape[0])}
+
+def cleanup_resources():
+    global global_pool
+    if global_pool:
+        global_pool.close()
+        global_pool.join()
+    
+    for child in mp.active_children():
+        child.terminate()
+        child.join(timeout=1)
+    
+    mp.util.cleanup_remaining_resources()
+
+def signal_handler(signum, frame):
+    print("Interrupted. Cleaning up resources...")
+    cleanup_resources()
+    sys.exit(1)
 
 def load_config(config_path):
     with open(config_path, 'r') as file:
@@ -144,8 +164,8 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
     return filepath
 
 def process_config(args):
-    config, config_path, h5_folder, steps_per_episode = args
     try:
+        config, config_path, h5_folder, steps_per_episode = args
         filepath = collect_data_for_config(config, config_path, steps_per_episode, h5_folder)
         if is_dataset_complete(filepath, steps_per_episode):
             return filepath
@@ -217,6 +237,8 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32, star
 
 @profile
 def main():
+    global global_pool
+    
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
     original_config = load_config(config_path)
     
@@ -245,6 +267,7 @@ def main():
     # Use all but 1 of the available CPU cores for data collection
     num_processes = max(1, mp.cpu_count() - 1)
     with mp.Pool(processes=num_processes) as pool:
+        global_pool = pool
         for filepath in tqdm(pool.imap_unordered(process_config, configs_to_process), total=len(configs_to_process)):
             if filepath and is_dataset_complete(filepath, STEPS_PER_EPISODE):
                 completed_configs.add(os.path.basename(filepath))
@@ -255,6 +278,8 @@ def main():
             if mem_usage > 90:
                 logging.warning(f"High overall memory usage detected: {mem_usage}%. Pausing for 60 seconds.")
                 time.sleep(60)  # Give system time to free up memory
+    
+    global_pool = None  # Reset the global pool after it's closed
     
     print("All configurations processed. Starting autoencoder training...")
 
@@ -273,4 +298,16 @@ def main():
     train_autoencoder(autoencoder, h5_files, start_epoch=start_epoch)
 
 if __name__ == "__main__":
-    main()
+    # Set up the signal handler
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    try:
+        mp.set_start_method('spawn', force=True)
+        main()
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        print("Cleaning up...")
+        cleanup_resources()
+        print("All resources cleaned up")
