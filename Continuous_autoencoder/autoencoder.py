@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.cuda.amp as amp
 
 class ConvAutoencoder(nn.Module):
     def __init__(self, input_channels, input_shape, encoded_dim=32):
