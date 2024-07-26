@@ -26,11 +26,16 @@ def policy_mapping_fn(agent_id, episode, worker, **kwargs):
 
 # Update the policies in the config
 num_agents = 5  # Example, adjust based on your environment
-obs_shape = (5, 17, 17)
+obs_shape = (256), #NEED TO ADJUST TO ENCODED OBSERVATION SPACE
 action_space = spaces.Box(low=-1.0, high=1.0, shape=(num_agents * 2,), dtype=np.float32)
+obs_space = spaces.Dict({
+    "encoded_map": spaces.Box(low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32),
+    "velocity": spaces.Box(low=-10.0, high=10.0, shape=(2,), dtype=np.float32),
+    "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32)
+})
 config["multiagent"]["policies"] = {
     "policy_0": (None, 
-                 spaces.Dict({agent_id: spaces.Box(low=-20, high=1, shape=obs_shape, dtype=np.float32) for agent_id in range(num_agents)}),
+                 obs_space,
                  action_space, {})
 }
 config["multiagent"]["policy_mapping_fn"] = policy_mapping_fn

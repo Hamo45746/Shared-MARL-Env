@@ -7,6 +7,7 @@ import jammer_utils
 import target_utils
 import heapq
 import pygame
+import torch
 from skimage.transform import resize
 from layer import AgentLayer, JammerLayer, TargetLayer
 from gymnasium.utils import seeding
@@ -15,7 +16,7 @@ from Continuous_controller.reward import calculate_continuous_reward
 from gymnasium import spaces
 from path_processor import PathProcessor
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from Continuous_autoencoder.autoencoder import EnvironmentAutoencoder
+from Continuous_autoencoder.autoencoder import EnvironmentAutoencoder, ConvAutoencoder
 
 class Environment(MultiAgentEnv):
     def __init__(self, config_path, render_mode="human"):
@@ -35,8 +36,13 @@ class Environment(MultiAgentEnv):
         self._seed(self.seed_value)
 
         #for autoencoding the observation space
-        self.autoencoder = EnvironmentAutoencoder((5, self.obs_range, self.obs_range))
-        self.autoencoder.load('outputs/trained_autoencoder.pth')
+        # self.autoencoders = []
+        # for i in range(4):
+        #     autoencoder = ConvAutoencoder(1, (self.obs_range, self.obs_range))
+        #     state_dict = torch.load(f'outputs/trained_autoencoder_layer_{i}.pth')
+        #     autoencoder.encoder.load_state_dict({k.replace("encoder.", ""): v for k, v in state_dict.items() if "encoder." in k})
+        #     autoencoder.encoder.eval()
+        #     self.autoencoders.append(autoencoder)
 
         self.map_matrix = self.load_map()
         # Global state includes layers for map, agents, targets, and jammers
@@ -112,8 +118,10 @@ class Environment(MultiAgentEnv):
     def define_observation_space(self):
         if self.agent_type == 'continuous':
             self.observation_space = spaces.Dict({
-                agent_id: spaces.Box(low=-20, high=1, shape=(5, self.obs_range, self.obs_range), dtype=np.float32)
-                for agent_id in range(self.num_agents)})
+                "map": spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32),
+                "velocity": spaces.Box(low=-10.0, high=10.0, shape=(2,), dtype=np.float32),
+                "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32)
+        })
         elif self.agent_type == "discrete":
             self.observation_space = spaces.Dict({
                 agent_id: spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32)
@@ -123,6 +131,16 @@ class Environment(MultiAgentEnv):
                 'local_obs': spaces.Box(low=-20, high=1, shape=(self.D, self.obs_range, self.obs_range), dtype=np.float32),
                 'full_state': spaces.Box(low=-20, high=1, shape=(self.D, self.X, self.Y), dtype=np.float32)
             })
+
+    def encode_observation(self, observation):
+        encoded_layers = []
+        for i in range(4):
+            observation_tensor = torch.tensor(observation[i], dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # Add batch and channel dimensions
+            with torch.no_grad():
+                encoded_layer = self.autoencoders[i].encoder(observation_tensor)
+            encoded_layers.append(encoded_layer.squeeze().numpy())
+        return np.concatenate(encoded_layers, axis=0)
+    
 
     def reset(self, seed= None, options: dict = None):
         """ Reset the environment for a new episode"""
@@ -168,12 +186,23 @@ class Environment(MultiAgentEnv):
         self.current_step = 0
 
         observations = {}
+        encoded_observations = {}
         #observations = np.zeros(self.observation_space.shape, dtype=np.float32)
         for agent_id in range(self.num_agents):
             obs = self.safely_observe(agent_id)
             self.agents[agent_id].set_observation_state(obs)
-            observations[agent_id] = obs
-
+            #encoded_map = self.encode_observation(obs['map'])
+            observations[agent_id] = {
+                "map": obs['map'],
+                "velocity": obs['velocity'],
+                "goal": obs['goal']
+            }
+            # encoded_observations[agent_id] = {
+            #     "map": encoded_map,
+            #     "velocity": obs['velocity'],
+            #     "goal": obs['goal']
+            # }
+            
         return observations, info
     
 
@@ -193,10 +222,6 @@ class Environment(MultiAgentEnv):
             start = tuple(self.agent_layer.get_position(agent_id))
             goal = agent.action_to_waypoint(action)  # Use the agent's method to convert action to waypoint
             self.current_waypoints[agent_id] = goal
-            # print(f"\nAgent {agent_id}:")
-            # print(f"  Current position: {start}")
-            # print(f"  Goal position: {goal}")
-            
             new_path = self.path_processor.get_path(start, goal)
             self.agent_paths[agent_id] = new_path
             
@@ -259,7 +284,6 @@ class Environment(MultiAgentEnv):
         # Update agent positions and layer state based on the provided actions
         for agent_id, action in actions_dict.items():
             agent = self.agents[agent_id]
-
             #if there is a goal provided from task allocation 
             if self.use_task_allocation and agent_id in self.task_goals:
                 agent.set_goal_area(self.task_goals[agent_id])
@@ -269,7 +293,7 @@ class Environment(MultiAgentEnv):
             angle_diff = desired_direction - current_direction
             angle_diff = np.arctan2(np.sin(angle_diff), np.cos(angle_diff))  
 
-            # Enforce the angle change constraint
+            # Check the angle change constraint
             if np.abs(angle_diff) > np.deg2rad(75):
                 # Flag the angle change for reward penalty
                 agent.change_angle = True
@@ -300,6 +324,14 @@ class Environment(MultiAgentEnv):
 
         # Collect final local states and calculate rewards
         local_states, rewards = self.collect_local_states_and_rewards()
+
+        # encoded_observations = {}
+        # for agent_id, obs in observations.items():
+        #     encoded_observations[agent_id] = {
+        #         "encoded_map": self.encode_observation(obs['map']),
+        #         "velocity": obs['velocity'],
+        #         "goal": obs['goal']
+        #         }
         
         self.current_step += 1
         
@@ -324,14 +356,15 @@ class Environment(MultiAgentEnv):
         # for agent_id, encoded in encoded_obs.items():
         #     decoded_obs[agent_id] = self.autoencoder.decode_state(encoded)
         #     print(f"Agent {agent_id}: {decoded_obs[agent_id]}")
-            
+        
+        # If i'm collecting observations I have to return observations. Once the auto encoder is trained I can return encoded observation
         return observations, rewards, terminated, truncated, info
+    
 
     def update_observations(self): #Alex had this one
         observations = {}
         for agent_id in range(self.num_agents):
             obs = self.safely_observe(agent_id)
-            # print("This should come first agent id", agent_id, obs)
             self.agent_layer.agents[agent_id].set_observation_state(obs)
             observations[agent_id] = obs
         return observations
@@ -341,7 +374,12 @@ class Environment(MultiAgentEnv):
         rewards = {}
         for agent_id in range(self.num_agents):
             agent = self.agent_layer.agents[agent_id]
-            local_states[agent_id] = agent.get_state()  # This returns the local_state
+            #local_states[agent_id] = agent.get_state()  # This returns the local_state
+            local_states[agent_id] = {
+                "map": agent.get_observation_state()["map"],
+                "velocity": agent.velocity,
+                "goal": agent.goal_area if self.use_task_allocation else np.zeros((2,))
+            }
             
             if self.agent_type == "discrete":
                 reward = DiscreteAgentController.calculate_reward(agent)
@@ -649,28 +687,26 @@ class Environment(MultiAgentEnv):
     def safely_observe(self, agent_id):
         obs = self.collect_obs(self.agent_layer, agent_id)
         obs = obs.transpose((0,2,1))
-        obs = np.clip(obs, self.observation_space[agent_id].low, self.observation_space[agent_id].high)
-        return obs
+        #obs = np.clip(obs, self.observation_space[agent_id].low, self.observation_space[agent_id].high)
+        obs = np.clip(obs, self.observation_space["map"].low, self.observation_space["map"].high)
+        velocity = self.agents[agent_id].velocity
+        goal_info = self.agents[agent_id].goal_area if self.use_task_allocation else np.zeros((2,))
+        return {"map": obs, "velocity": velocity, "goal": goal_info}
 
     def collect_obs(self, agent_layer, agent_id):
         return self.collect_obs_by_idx(agent_layer, agent_id)
 
     def collect_obs_by_idx(self, agent_layer, agent_idx):
         # Initialize the observation array based on the agent type
-        if self.agent_type == 'continuous':
-            obs = np.full((self.global_state.shape[0] + 1, self.obs_range, self.obs_range), fill_value=-20, dtype=np.float32)
-        else:
-            obs = np.full((self.global_state.shape[0], self.obs_range, self.obs_range), fill_value=-20, dtype=np.float32)
-
+        obs = np.full((self.global_state.shape[0], self.obs_range, self.obs_range), fill_value=-20, dtype=np.float32)
         # Get the current position of the agent
         xp, yp = agent_layer.get_position(agent_idx)
-        # Get the current velocity of the agent
-        if self.agent_type == 'continuous':
-            vx, vy = self.agents[agent_idx].velocity
+        # # Get the current velocity of the agent
+        # if self.agent_type == 'continuous':
+        #     vx, vy = self.agents[agent_idx].velocity
         
         # Calculate bounds for the observation
         xlo, xhi, ylo, yhi, xolo, xohi, yolo, yohi = self.obs_clip(xp, yp)
-        
         xlo1 = int(xlo)
         xhi1 = int(xhi)
         ylo1 = int(ylo)
@@ -695,12 +731,12 @@ class Environment(MultiAgentEnv):
             obs_padded = np.pad(obs_slice, pad_width[1:], mode='constant', constant_values=-21)
             obs[layer, :obs_padded.shape[0], :obs_padded.shape[1]] = obs_padded
         
-        if self.agent_type == 'continuous':
-            # Add the velocity and position to the observation
-            velocity_layer = np.full((self.obs_range, self.obs_range), fill_value=-20, dtype=np.float32)
-            velocity_layer[0, 0] = vx
-            velocity_layer[0, 1] = vy
-            obs[self.global_state.shape[0]] = velocity_layer
+        # if self.agent_type == 'continuous':
+        #     # Add the velocity and position to the observation
+        #     velocity_layer = np.full((self.obs_range, self.obs_range), fill_value=-20, dtype=np.float32)
+        #     velocity_layer[0, 0] = vx
+        #     velocity_layer[0, 1] = vy
+        #     obs[self.global_state.shape[0]] = velocity_layer
 
         return obs  
     
@@ -852,7 +888,7 @@ class Environment(MultiAgentEnv):
         np.random.seed(seed)
         random.seed(seed)
 
-    def run_simulation(self, max_steps=200):
+    def run_simulation(self, max_steps=40):
         running = True
         step_count = 0
         collected_data = []
@@ -866,10 +902,8 @@ class Environment(MultiAgentEnv):
             # Generate new actions for all agents in every step
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(self.agents)}
             observations, rewards, terminated, truncated, self.info = self.step(action_dict)
-
             collected_data.append(observations)
             #self.render()  
-
             step_count += 1
 
             if terminated or truncated:
@@ -877,7 +911,6 @@ class Environment(MultiAgentEnv):
 
         #pygame.image.save(self.screen, "outputs/environment_snapshot.png")
         self.reset()
-
         pygame.quit()
 
         return collected_data

@@ -3,7 +3,7 @@ from gymnasium import spaces
 from base_agent import BaseAgent
 
 class ContinuousAgent(BaseAgent):
-    def __init__(self, xs, ys, map_matrix, randomiser, obs_range=3, n_layers=5, seed=10, flatten=False):
+    def __init__(self, xs, ys, map_matrix, randomiser, obs_range=3, n_layers=4, seed=10, flatten=False):
         self.random_state = randomiser
         self.xs = xs
         self.ys = ys
@@ -15,7 +15,11 @@ class ContinuousAgent(BaseAgent):
         self.terminal = False
         self._obs_range = obs_range
         self.X, self.Y = self.map_matrix.shape
-        self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-20)
+        self.observation_state = {
+            "map": np.full((n_layers, obs_range, obs_range), fill_value=-20),
+            "velocity": np.zeros(2, dtype=np.float32),
+            "goal": np.zeros(2, dtype=np.float32)
+        }
         self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20)
         self._obs_shape = (n_layers, obs_range, obs_range)  # Update observation shape to include velocity and position
         self.observed_areas = set()
@@ -28,8 +32,11 @@ class ContinuousAgent(BaseAgent):
 
     @property
     def observation_space(self):
-        return spaces.Box(low=-20, high=1, shape=self._obs_shape, dtype=np.float32)
-
+        return spaces.Dict({
+            "map": spaces.Box(low=-20, high=1, shape=self._obs_shape, dtype=np.float32),
+            "velocity": spaces.Box(low=-10.0, high=10.0, shape=(2,), dtype=np.float32),
+            "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32),
+        })
     @property
     def action_space(self):
         return spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
@@ -93,7 +100,9 @@ class ContinuousAgent(BaseAgent):
     def update_local_state(self, observed_state, observer_position):
         observer_x, observer_y = observer_position
         obs_half_range = self._obs_range // 2
-        for layer in range(observed_state.shape[0]):
+        observed_map = observed_state["map"]
+
+        for layer in range(observed_map.shape[0]):
             for dx in range(-obs_half_range, obs_half_range + 1):
                 for dy in range(-obs_half_range, obs_half_range + 1):
                     global_x = observer_x + dx
@@ -104,9 +113,9 @@ class ContinuousAgent(BaseAgent):
                     obs_y = obs_half_range + dy
                     if self.inbounds(global_x, global_y):
                         if layer == 0:
-                            self.local_state[layer, global_x1, global_y1] = observed_state[layer, obs_x, obs_y]
+                            self.local_state[layer, global_x1, global_y1] = observed_map[layer, obs_x, obs_y]
                         else:
-                            if observed_state[layer, obs_x, obs_y] == 0:
+                            if observed_map[layer, obs_x, obs_y] == 0:
                                 self.local_state[layer, global_x1, global_y1] = 0
                             elif self.local_state[layer, global_x1, global_y1] > -20:
                                 self.local_state[layer, global_x1, global_y1] -= 1
@@ -129,10 +138,10 @@ class ContinuousAgent(BaseAgent):
 
     def gains_information(self):
         new_information_count = 0
-        total_cells = self.observation_state.shape[1] * self.observation_state.shape[2]
+        total_cells = self.observation_state["map"].shape[1] * self.observation_state["map"].shape[2]
 
-        for x in range(self.observation_state.shape[1]):
-            for y in range(self.observation_state.shape[2]):
+        for x in range(self.observation_state["map"].shape[1]):
+            for y in range(self.observation_state["map"].shape[2]):
                 pos = (int(self.current_pos[0] - self._obs_range // 2 + x), int(self.current_pos[1] - self._obs_range // 2 + y))
                 if pos not in self.observed_areas:
                     self.observed_areas.add(pos)

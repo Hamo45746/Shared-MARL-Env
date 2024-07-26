@@ -17,16 +17,17 @@ def collect_data_for_config(config, config_path, steps_per_episode):
     env.initialise_targets()
     env.initialise_jammers()
     env.update_global_state()
-    
-    data = []
+
+    data = {"map_view": [], "agent": [], "target": [], "jammer": []}
     episode_data = env.run_simulation(max_steps=steps_per_episode)
     for step_data in episode_data:
         for obs in step_data.values():
-            if isinstance(obs, dict) and 'full_state' in obs:
-                data.append(obs['full_state'])
-            else:
-                data.append(obs)
-    return np.array(data)
+            if isinstance(obs, dict) and 'map' in obs:
+                data["map_view"].append(obs['map'][0])  # 'map' is the first layer
+                data["agent"].append(obs['map'][1])  # 'agent' is the second layer
+                data["target"].append(obs['map'][2])  # 'target' is the third layer
+                data["jammer"].append(obs['map'][3])  #'jammer' is the fourth layer
+    return {key: np.array(value) for key, value in data.items()}
 
 def generate_random_configs(base_config, num_configs):
     configs = []
@@ -42,17 +43,19 @@ def main():
     config_path = 'config.yaml'  # Update this to your config file path
     base_config = load_config(config_path)
     
-    num_configs = 50  # Number of different settings you want to generate data for
-    steps_per_episode = 700  # Number of steps per episode
-    all_data = []
+    num_configs = 25 # Number of different settings you want to generate data for
+    steps_per_episode = 150  # Number of steps per episode
+    all_data_layers = {key: [] for key in ["map_view", "agent", "target", "jammer"]}
 
     random_configs = generate_random_configs(base_config, num_configs)
     for config in random_configs:
-        data = collect_data_for_config(config, config_path, steps_per_episode)
-        all_data.append(data)
+        data_layers = collect_data_for_config(config, config_path, steps_per_episode)
+        for key in all_data_layers.keys():
+            all_data_layers[key].append(data_layers[key])
 
-    all_data = np.concatenate(all_data, axis=0)
-    np.save('outputs/combined_data.npy', all_data)
+    for key in all_data_layers.keys():
+        all_data_layers[key] = np.concatenate(all_data_layers[key], axis=0)
+        np.save(f'outputs/combined_data_{key}.npy', all_data_layers[key])
 
 if __name__ == "__main__":
     main()

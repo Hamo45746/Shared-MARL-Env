@@ -24,19 +24,32 @@ multiagent:
   policies:
     policy_0:
       - None
-      - type: dict
-        content:
-          agent_id: box
-          low: -20
-          high: 1
-          shape: [4, 17, 17]
-          dtype: np.float32
-      - type: box
-        low: -1.0
-        high: 1.0
-        shape: [10]
-        dtype: np.float32
+      - Dict
+      - {
+          "encoded_map": {
+            "type": "box",
+            "low": -inf,
+            "high": inf,
+            "shape": [256]
+          },
+          "velocity": {
+            "type": "box",
+            "low": -10.0,
+            "high": 10.0,
+            "shape": [2]
+          },
+          "goal": {
+            "type": "box",
+            "low": -2000,
+            "high": 2000,
+            "shape": [2]
+          }
+        }
+      - {
+          "type": "box",
+          "low": -1.0,
+          "high": 1.0,
+          "shape": [2]
+        }
       - {}
-  policy_mapping_fn:
-    type: function
-    function: policy_mapping_fn
+  policy_mapping_fn: policy_mapping_fn
