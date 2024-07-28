@@ -14,7 +14,7 @@ import gc
 import signal
 import fcntl
 from memray import Tracker
-import functools
+from functools import wraps
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,7 +23,6 @@ from env import Environment
 from autoencoder import EnvironmentAutoencoder
 
 # Constants
-# H5_FOLDER = '/Volumes/T7 Shield/METR4911/Mem_profiling_test'
 H5_FOLDER = '/media/rppl/T7 Shield/METR4911/Mem_profiling_test'
 H5_PROGRESS_FILE = 'h5_collection_progress.txt'
 AUTOENCODER_FILE = 'trained_autoencoder.pth'
@@ -62,7 +61,7 @@ class FlattenedMultiAgentH5Dataset(Dataset):
         return {f'layer_{i}': torch.FloatTensor(full_state[i]).unsqueeze(0) for i in range(full_state.shape[0])}
 
 def profile(func):
-    @functools.wraps(func)
+    @wraps(func)
     def wrapper(*args, **kwargs):
         with Tracker(f'{func.__name__}.bin'):
             return func(*args, **kwargs)
@@ -83,6 +82,9 @@ def cleanup_resources():
     for child in active_children:
         if child.is_alive():
             os.kill(child.pid, 9)  # Force kill if still alive
+
+    # Clean up any remaining multiprocessing resources
+    mp.current_process().close()
 
     # Use psutil to find and terminate any remaining child processes
     current_process = psutil.Process()
@@ -116,12 +118,26 @@ def cleanup_resources():
         pass
 
     # Explicitly run garbage collection
-    # Clean up any remaining multiprocessing resources
-    mp.current_process().close()
     gc.collect()
+
+def terminate_process_and_children(pid):
+    try:
+        parent = psutil.Process(pid)
+        children = parent.children(recursive=True)
+        for child in children:
+            child.terminate()
+        gone, still_alive = psutil.wait_procs(children, timeout=5)
+        for p in still_alive:
+            p.kill()
+    except psutil.NoSuchProcess:
+        pass
 
 def signal_handler(signum, frame):
     print("Interrupted. Cleaning up resources...")
+    current_process = psutil.Process()
+    children = current_process.children(recursive=True)
+    for child in children:
+        terminate_process_and_children(child.pid)
     cleanup_resources()
     sys.exit(1)
 
@@ -173,7 +189,6 @@ def save_progress(completed_configs):
     finally:
         release_lock(lock_fd)
 
-@profile
 def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
     env = Environment(config_path)
     env.config.update(config)
@@ -248,7 +263,8 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
 def process_config(args):
     try:
         config, config_path, h5_folder, steps_per_episode = args
-        filepath = collect_data_for_config(config, config_path, steps_per_episode, h5_folder)
+        with Tracker('collect_data_for_config.bin'):
+            filepath = collect_data_for_config(config, config_path, steps_per_episode, h5_folder)
         if is_dataset_complete(filepath, steps_per_episode):
             progress = load_progress()
             progress.add(os.path.basename(filepath))
@@ -278,6 +294,7 @@ def load_training_state(autoencoder):
         return state['epoch']
     return 0
 
+@profile
 def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32, start_epoch=0):
     dataset = FlattenedMultiAgentH5Dataset(h5_files)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
@@ -308,7 +325,7 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32, star
     autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
     logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
 
-# @profile
+@profile
 def main():
     global global_pool
     
@@ -316,9 +333,9 @@ def main():
     original_config = load_config(config_path)
     
     # Set up ranges for randomization
-    seed_range = range(1, 7)
-    num_agents_range = range(1, 8)
-    num_targets_range = range(1, 8)
+    seed_range = range(1,11)
+    num_agents_range = range(1, 6)
+    num_targets_range = range(1, 6)
     num_jammers_range = range(0, 4)
     
     configs = [
@@ -346,7 +363,13 @@ def main():
     num_processes = max(1, mp.cpu_count() - 1)
     with mp.Pool(processes=num_processes) as pool:
         global_pool = pool
-        results = list(tqdm(pool.imap_unordered(process_config, configs_to_process), total=len(configs_to_process)))
+        try:
+            results = list(tqdm(pool.imap_unordered(process_config, configs_to_process), total=len(configs_to_process)))
+        except KeyboardInterrupt:
+            print("KeyboardInterrupt detected. Terminating pool...")
+            pool.terminate()
+            pool.join()
+            raise
     
     global_pool = None  # Reset the global pool after it's closed
     
@@ -372,7 +395,7 @@ def main():
     else:
         print(f"Not all configurations are complete. {len(completed_configs)}/{total_configs} configurations are ready.")
         print("Please run the script again to process the remaining configurations.")
-        
+
 if __name__ == "__main__":
     # Set up the signal handler
     signal.signal(signal.SIGINT, signal_handler)
@@ -380,7 +403,12 @@ if __name__ == "__main__":
 
     try:
         mp.set_start_method('spawn', force=True)
+        
+        print("Memray profiling is enabled")
+        
         main()
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt caught in main. Exiting...")
     except Exception as e:
         print(f"An error occurred: {e}")
     finally:
