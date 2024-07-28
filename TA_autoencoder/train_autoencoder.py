@@ -14,7 +14,6 @@ import time
 import gc
 import signal
 import fcntl
-from memray import Tracker
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,7 +22,6 @@ from env import Environment
 from autoencoder import EnvironmentAutoencoder
 
 # Constants
-# H5_FOLDER = '/Volumes/T7 Shield/METR4911/Mem_profiling_test'
 H5_FOLDER = '/media/rppl/T7 Shield/METR4911/Mem_profiling_test'
 H5_PROGRESS_FILE = 'h5_collection_progress.txt'
 AUTOENCODER_FILE = 'trained_autoencoder.pth'
@@ -175,7 +173,6 @@ def load_progress():
                 filepath = os.path.join(H5_FOLDER, filename)
                 if is_dataset_complete(filepath, STEPS_PER_EPISODE) and filename not in progress:
                     progress.add(filename)
-                    # print(f"Found completed file not in progress list: {filename}")
         
         # Update the progress file
         with open(progress_file, 'w') as f:
@@ -357,6 +354,7 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=8, start
     autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
     logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
     
+    
 def main():
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
     original_config = load_config(config_path)
@@ -430,8 +428,7 @@ if __name__ == "__main__":
     original_sigint_handler = signal.signal(signal.SIGINT, signal_handler)
     
     try:
-        with Tracker("comprehensive_profile.bin"):
-            main()
+        main()
     except Exception as e:
         print(f"An error occurred: {e}")
     finally:
