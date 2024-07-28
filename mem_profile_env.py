@@ -9,7 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from env import Environment
 
 def profile_environment():
-    config_path = 'path/to/your/config.yaml'  # Update this path
+    config_path = 'config.yaml'
     env = Environment(config_path)
     
     # Run a simulation
