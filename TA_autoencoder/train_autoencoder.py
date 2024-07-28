@@ -6,6 +6,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 import yaml
 import multiprocessing as mp
+from multiprocessing import Pool
 from tqdm import tqdm
 import logging
 import psutil
@@ -14,7 +15,6 @@ import gc
 import signal
 import fcntl
 from memray import Tracker
-import functools
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,7 +23,6 @@ from env import Environment
 from autoencoder import EnvironmentAutoencoder
 
 # Constants
-# H5_FOLDER = '/Volumes/T7 Shield/METR4911/Mem_profiling_test'
 H5_FOLDER = '/media/rppl/T7 Shield/METR4911/Mem_profiling_test'
 H5_PROGRESS_FILE = 'h5_collection_progress.txt'
 AUTOENCODER_FILE = 'trained_autoencoder.pth'
@@ -33,7 +32,8 @@ STEPS_PER_EPISODE = 100
 logging.basicConfig(filename='autoencoder_training.log', level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
-global_pool = None
+# Global flag to indicate interruption
+interrupt_flag = mp.Value('i', 0)
 
 class FlattenedMultiAgentH5Dataset(Dataset):
     def __init__(self, h5_files):
@@ -61,30 +61,23 @@ class FlattenedMultiAgentH5Dataset(Dataset):
 
         return {f'layer_{i}': torch.FloatTensor(full_state[i]).unsqueeze(0) for i in range(full_state.shape[0])}
 
-def profile(func):
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        with Tracker(f'{func.__name__}.bin'):
-            return func(*args, **kwargs)
-    return wrapper
+def init_worker():
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+def signal_handler(signum, frame):
+    print("Interrupt received, stopping processes...")
+    interrupt_flag.value = 1
 
 def cleanup_resources():
-    global global_pool
-    if global_pool:
-        global_pool.close()
-        global_pool.join()
-    
     active_children = mp.active_children()
     for child in active_children:
         child.terminate()
         child.join(timeout=1)
-        
-    # Ensure all child processes are terminated
+
     for child in active_children:
         if child.is_alive():
             os.kill(child.pid, 9)  # Force kill if still alive
 
-    # Use psutil to find and terminate any remaining child processes
     current_process = psutil.Process()
     children = current_process.children(recursive=True)
     for child in children:
@@ -106,7 +99,6 @@ def cleanup_resources():
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    # Clear any shared memory
     try:
         import resource
         resource.RLIMIT_NOFILE
@@ -115,15 +107,8 @@ def cleanup_resources():
     except (ImportError, AttributeError):
         pass
 
-    # Explicitly run garbage collection
-    # Clean up any remaining multiprocessing resources
     mp.current_process().close()
     gc.collect()
-
-def signal_handler(signum, frame):
-    print("Interrupted. Cleaning up resources...")
-    cleanup_resources()
-    sys.exit(1)
 
 def load_config(config_path):
     with open(config_path, 'r') as file:
@@ -173,7 +158,6 @@ def save_progress(completed_configs):
     finally:
         release_lock(lock_fd)
 
-@profile
 def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
     env = Environment(config_path)
     env.config.update(config)
@@ -183,7 +167,6 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
     filename = f"data_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
     filepath = os.path.join(h5_folder, filename)
 
-    # Check if file exists and determine the last completed step
     start_step = 0
     if os.path.exists(filepath):
         with h5py.File(filepath, 'r') as hf:
@@ -193,25 +176,26 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
                     start_step = max(existing_steps) + 1
                     logging.info(f"Resuming data collection for {filename} from step {start_step}")
                     
-                    # If all steps are completed, return the filepath
                     if start_step >= steps_per_episode:
                         logging.info(f"All steps already collected for {filename}")
                         return filepath
 
-    # Open the file in append mode if it exists, otherwise create a new file
     with h5py.File(filepath, 'a') as hf:
         if 'data' not in hf:
             dataset = hf.create_group('data', track_order=True)
         else:
             dataset = hf['data']
         
-        # Set the environment to the correct state if resuming
         if start_step > 0:
             for _ in range(start_step):
                 action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(env.agents)}
                 env.step(action_dict)
 
         for step in tqdm(range(start_step, steps_per_episode), desc=f"Collecting data for {filename}", initial=start_step, total=steps_per_episode):
+            if interrupt_flag.value:
+                print(f"Interrupting process for config: {config}")
+                return None
+
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(env.agents)}
             observations, rewards, done, info = env.step(action_dict)
             
@@ -223,7 +207,6 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
             for agent_id, obs in observations.items():
                 agent_group = step_group.create_group(str(agent_id), track_order=True)
                 
-                # Use compression for datasets
                 agent_group.create_dataset('full_state', data=obs['full_state'], 
                                            compression="gzip", compression_opts=9)
                 agent_group.create_dataset('local_obs', data=obs['local_obs'], 
@@ -244,6 +227,14 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
 
     logging.info(f"Data collection complete. File saved: {filepath}")
     return filepath
+
+def process_config_wrapper(args):
+    try:
+        if interrupt_flag.value:
+            return None
+        return process_config(args)
+    except KeyboardInterrupt:
+        return None
 
 def process_config(args):
     try:
@@ -293,13 +284,12 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32, star
             if (epoch + 1) % 10 == 0:
                 autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_epoch_{epoch+1}.pth"))
             
-            # Monitor system resources
             mem_percent = psutil.virtual_memory().percent
             logging.info(f"Memory usage: {mem_percent}%")
             
             if mem_percent > 90:
                 logging.warning("High memory usage detected. Pausing for 60 seconds.")
-                time.sleep(60)  # Give system time to free up memory
+                time.sleep(60)
 
         except Exception as e:
             logging.error(f"Error during training: {str(e)}")
@@ -307,15 +297,11 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32, star
 
     autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
     logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
-
-# @profile
-def main():
-    global global_pool
     
+def main():
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
     original_config = load_config(config_path)
     
-    # Set up ranges for randomization
     seed_range = range(1, 7)
     num_agents_range = range(1, 8)
     num_targets_range = range(1, 8)
@@ -342,13 +328,19 @@ def main():
     
     print(f"Configurations to process: {len(configs_to_process)}")
     
-    # Use all but 1 of the available CPU cores for data collection
     num_processes = max(1, mp.cpu_count() - 1)
-    with mp.Pool(processes=num_processes) as pool:
-        global_pool = pool
-        results = list(tqdm(pool.imap_unordered(process_config, configs_to_process), total=len(configs_to_process)))
-    
-    global_pool = None  # Reset the global pool after it's closed
+    with Pool(processes=num_processes, initializer=init_worker) as pool:
+        try:
+            results = list(tqdm(
+                pool.imap_unordered(process_config_wrapper, configs_to_process),
+                total=len(configs_to_process),
+                disable=interrupt_flag.value
+            ))
+        except KeyboardInterrupt:
+            print("Caught KeyboardInterrupt, terminating workers")
+        finally:
+            pool.terminate()
+            pool.join()
     
     completed_configs = load_progress()
     print(f"Final completed configurations: {len(completed_configs)}/{total_configs}")
@@ -358,7 +350,6 @@ def main():
 
         h5_files = [os.path.join(H5_FOLDER, filename) for filename in completed_configs]
         
-        # Initialize autoencoder with the shape of the first batch
         with h5py.File(h5_files[0], 'r') as f:
             first_step = f['data']['0']
             first_agent = first_step[list(first_step.keys())[0]]
@@ -372,18 +363,17 @@ def main():
     else:
         print(f"Not all configurations are complete. {len(completed_configs)}/{total_configs} configurations are ready.")
         print("Please run the script again to process the remaining configurations.")
-        
-if __name__ == "__main__":
-    # Set up the signal handler
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
 
+if __name__ == "__main__":
+    original_sigint_handler = signal.signal(signal.SIGINT, signal_handler)
+    
     try:
-        mp.set_start_method('spawn', force=True)
-        main()
+        with Tracker("comprehensive_profile.bin"):
+            main()
     except Exception as e:
         print(f"An error occurred: {e}")
     finally:
         print("Cleaning up...")
         cleanup_resources()
         print("All resources cleaned up")
+        signal.signal(signal.SIGINT, original_sigint_handler)
