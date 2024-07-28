@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Run memray to profile memory usage
-python TA_autoencoder/memory_profile_autoencoder.py
+# Run the Python script
+# The script will run until you interrupt it with Ctrl+C
+MEMRAY_FOLLOW_FORK=1 python TA_autoencoder/memory_profile_autoencoder.py
 
 # After interruption, generate memray visualizations
 # Use a wildcard to match the generated .bin file(s)
@@ -17,5 +18,10 @@ for file in *.bin; do
         
         echo "Generating summary for $file"
         memray summary "$file" -o "${base_name}_summary.txt"
+
+        echo "Generating tree view for $file"
+        memray tree "$file" -o "${base_name}_tree.txt"
     fi
 done
+
+echo "Profiling complete. Check the generated HTML and TXT files for analysis."
