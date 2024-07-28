@@ -148,10 +148,32 @@ def load_progress():
     lock_file = f"{progress_file}.lock"
     lock_fd = acquire_lock(lock_file)
     try:
+        progress = set()
         if os.path.exists(progress_file):
             with open(progress_file, 'r') as f:
-                return set(f.read().splitlines())
-        return set()
+                file_list = f.read().splitlines()
+            
+            for filename in file_list:
+                filepath = os.path.join(H5_FOLDER, filename)
+                if os.path.exists(filepath) and is_dataset_complete(filepath, STEPS_PER_EPISODE):
+                    progress.add(filename)
+                else:
+                    print(f"Warning: File in progress list is missing or incomplete: {filename}")
+        
+        # Check for any completed files not in the progress file
+        for filename in os.listdir(H5_FOLDER):
+            if filename.endswith('.h5'):
+                filepath = os.path.join(H5_FOLDER, filename)
+                if is_dataset_complete(filepath, STEPS_PER_EPISODE) and filename not in progress:
+                    progress.add(filename)
+                    print(f"Found completed file not in progress list: {filename}")
+        
+        # Update the progress file
+        with open(progress_file, 'w') as f:
+            for filename in progress:
+                f.write(f"{filename}\n")
+        
+        return progress
     finally:
         release_lock(lock_fd)
 
