@@ -23,6 +23,7 @@ from env import Environment
 from autoencoder import EnvironmentAutoencoder
 
 # Constants
+# H5_FOLDER = '/Volumes/T7 Shield/METR4911/Mem_profiling_test'
 H5_FOLDER = '/media/rppl/T7 Shield/METR4911/Mem_profiling_test'
 H5_PROGRESS_FILE = 'h5_collection_progress.txt'
 AUTOENCODER_FILE = 'trained_autoencoder.pth'
