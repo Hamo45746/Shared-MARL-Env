@@ -60,14 +60,15 @@ class LayerAutoencoder(nn.Module):
         return self.encoder(x)
 
 class EnvironmentAutoencoder:
-    def __init__(self, input_shape, device):
+    def __init__(self, input_shape, device, accumulation_steps=4):
         self.device = device
         print(f"Autoencoder using device: {self.device}")
         self.input_shape = input_shape  # (4, X, Y)
         self.autoencoders = nn.ModuleList([LayerAutoencoder((input_shape[1], input_shape[2])).to(device) for _ in range(input_shape[0])])
         self.optimizers = [optim.Adam(ae.parameters(), lr=0.001) for ae in self.autoencoders]
         self.criterion = nn.MSELoss()
-        self.amp_scalers = [amp.GradScaler() for _ in range(input_shape[0])]
+        self.scaler = amp.GradScaler()
+        self.accumulation_steps = accumulation_steps
         
         # Define scalers for each layer
         self.scalers = [lambda x: x]  # For binary layer (assumed to be the first layer)
@@ -77,57 +78,28 @@ class EnvironmentAutoencoder:
         self.inverse_scalers = [lambda x: x]  # For binary layer
         self.inverse_scalers.extend([lambda x: x * 20 - 20 for _ in range(input_shape[0] - 1)])  # For negative layers
 
-    def train(self, dataloader):
-        for ae in self.autoencoders:
-            ae.train()
-        
-        total_loss = 0
-        num_batches = 0
-        for batch in dataloader:
-            loss = 0
-            for i, ae in enumerate(self.autoencoders):
-                self.optimizers[i].zero_grad()
-                layer_input = self.scalers[i](batch[f'layer_{i}']).to(self.device)
-                
-                with amp.autocast():
-                    outputs = ae(layer_input.unsqueeze(1))  # Add channel dimension
-                    layer_loss = self.criterion(outputs, layer_input.unsqueeze(1))
-                
-                self.amp_scalers[i].scale(layer_loss).backward()
-                self.amp_scalers[i].step(self.optimizers[i])
-                self.amp_scalers[i].update()
-                
-                loss += layer_loss.item()
-            
-            total_loss += loss / len(self.autoencoders)
-            num_batches += 1
-            
-            # Free up memory
-            del batch
-            torch.cuda.empty_cache()
-        
-        return total_loss / num_batches
-    
     def train_step(self, batch):
         for ae in self.autoencoders:
             ae.train()
         
-        loss = 0
+        total_loss = 0
         for i, ae in enumerate(self.autoencoders):
-            self.optimizers[i].zero_grad()
             layer_input = self.scalers[i](batch[f'layer_{i}']).to(self.device)
             
             with amp.autocast():
                 outputs = ae(layer_input.unsqueeze(1))  # Add channel dimension
                 layer_loss = self.criterion(outputs, layer_input.unsqueeze(1))
+                layer_loss = layer_loss / self.accumulation_steps
             
-            self.amp_scalers[i].scale(layer_loss).backward()
-            self.amp_scalers[i].step(self.optimizers[i])
-            self.amp_scalers[i].update()
+            self.scaler.scale(layer_loss).backward()
+            total_loss += layer_loss.item() * self.accumulation_steps
             
-            loss += layer_loss.item()
+            if (i + 1) % self.accumulation_steps == 0 or i == len(self.autoencoders) - 1:
+                self.scaler.step(self.optimizers[i])
+                self.scaler.update()
+                self.optimizers[i].zero_grad()
         
-        return loss / len(self.autoencoders)
+        return total_loss / len(self.autoencoders)
 
     def encode_state(self, state):
         with torch.no_grad():

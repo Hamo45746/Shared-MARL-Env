@@ -308,11 +308,11 @@ def load_training_state(autoencoder):
         return state['epoch']
     return 0
 
-def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32, start_epoch=0):
+def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=8, start_epoch=0, accumulation_steps=4):
     dataset = FlattenedMultiAgentH5Dataset(h5_files)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
 
-    print(f"Training with batch size: {batch_size}")
+    print(f"Training with batch size: {batch_size}, accumulation steps: {accumulation_steps}")
     print(f"Total number of batches per epoch: {len(dataloader)}")
 
     for epoch in range(start_epoch, num_epochs):
@@ -320,15 +320,21 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32, star
             total_loss = 0
             num_batches = 0
             for batch in tqdm(dataloader, desc=f"Epoch {epoch+1}/{num_epochs}"):
-                loss = autoencoder.train_step(batch)
-                total_loss += loss
-                num_batches += 1
+                # Process each layer separately
+                for layer in range(autoencoder.input_shape[0]):
+                    layer_batch = {f'layer_{layer}': batch[f'layer_{layer}']}
+                    loss = autoencoder.train_step(layer_batch)
+                    total_loss += loss
+                    num_batches += 1
 
-                # Free up memory
+                    # Free up memory
+                    del layer_batch
+                    torch.cuda.empty_cache()
+
                 del batch
                 torch.cuda.empty_cache()
 
-            avg_loss = total_loss / num_batches
+            avg_loss = total_loss / (num_batches * autoencoder.input_shape[0])
             print(f"Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
             logging.info(f"Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
             
