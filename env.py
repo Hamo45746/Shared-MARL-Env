@@ -123,6 +123,7 @@ class Environment(gym.core.Env):
 
 
     def reset(self, seed=None):
+        gc.collect()
         super().reset(seed=seed)
         if seed is not None:
             self.seed_value = seed

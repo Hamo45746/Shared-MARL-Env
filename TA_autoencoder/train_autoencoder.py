@@ -12,9 +12,9 @@ import psutil
 import time
 import gc
 import signal
-# from memory_profiler import profile
-import functools
+import fcntl
 from memray import Tracker
+import functools
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,7 +23,6 @@ from env import Environment
 from autoencoder import EnvironmentAutoencoder
 
 # Constants
-# H5_FOLDER = '/Volumes/T7 Shield/METR4911/Mem_profiling_test'
 H5_FOLDER = '/media/rppl/T7 Shield/METR4911/Mem_profiling_test'
 H5_PROGRESS_FILE = 'h5_collection_progress.txt'
 AUTOENCODER_FILE = 'trained_autoencoder.pth'
@@ -74,7 +73,7 @@ def cleanup_resources():
         global_pool.close()
         global_pool.join()
     
-    active_children = mp.active_children
+    active_children = mp.active_children()
     for child in active_children:
         child.terminate()
         child.join(timeout=1)
@@ -138,15 +137,48 @@ def is_dataset_complete(filepath, steps_per_episode):
         logging.error(f"Error checking dataset completeness for {filepath}: {str(e)}")
         return False
 
+def acquire_lock(lock_file):
+    while True:
+        try:
+            lock_fd = open(lock_file, 'w')
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return lock_fd
+        except IOError:
+            time.sleep(0.1)
+
+def release_lock(lock_fd):
+    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+    lock_fd.close()
+
+def load_progress():
+    progress_file = os.path.join(H5_FOLDER, H5_PROGRESS_FILE)
+    lock_file = f"{progress_file}.lock"
+    lock_fd = acquire_lock(lock_file)
+    try:
+        if os.path.exists(progress_file):
+            with open(progress_file, 'r') as f:
+                return set(f.read().splitlines())
+        return set()
+    finally:
+        release_lock(lock_fd)
+
+def save_progress(completed_configs):
+    progress_file = os.path.join(H5_FOLDER, H5_PROGRESS_FILE)
+    lock_file = f"{progress_file}.lock"
+    lock_fd = acquire_lock(lock_file)
+    try:
+        with open(progress_file, 'w') as f:
+            for config in completed_configs:
+                f.write(f"{config}\n")
+    finally:
+        release_lock(lock_fd)
+
 @profile
 def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
     env = Environment(config_path)
     env.config.update(config)
     env.num_agents = config['n_agents']
-    env.initialise_agents()
-    env.initialise_targets()
-    env.initialise_jammers()
-    env.update_global_state()
+    env.reset()
 
     filename = f"data_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
     filepath = os.path.join(h5_folder, filename)
@@ -218,24 +250,15 @@ def process_config(args):
         config, config_path, h5_folder, steps_per_episode = args
         filepath = collect_data_for_config(config, config_path, steps_per_episode, h5_folder)
         if is_dataset_complete(filepath, steps_per_episode):
+            progress = load_progress()
+            progress.add(os.path.basename(filepath))
+            save_progress(progress)
             return filepath
         else:
             return None
     except Exception as e:
         logging.error(f"Error processing config {config}: {str(e)}")
         return None
-
-def load_progress():
-    progress_file = os.path.join(H5_FOLDER, H5_PROGRESS_FILE)
-    if os.path.exists(progress_file):
-        with open(progress_file, 'r') as f:
-            return set(f.read().splitlines())
-    return set()
-
-def save_progress(completed_configs):
-    with open(os.path.join(H5_FOLDER, H5_PROGRESS_FILE), 'w') as f:
-        for config in completed_configs:
-            f.write(f"{config}\n")
 
 def save_training_state(autoencoder, epoch):
     state = {
@@ -285,7 +308,7 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32, star
     autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
     logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
 
-# @profile
+@profile
 def main():
     global global_pool
     
@@ -293,12 +316,11 @@ def main():
     original_config = load_config(config_path)
     
     # Set up ranges for randomization
-    seed_range = range(1,11)
-    num_agents_range = range(1, 6)
-    num_targets_range = range(1, 6)
+    seed_range = range(1, 7)
+    num_agents_range = range(1, 8)
+    num_targets_range = range(1, 8)
     num_jammers_range = range(0, 4)
     
-    completed_configs = load_progress()
     configs = [
         {'seed': seed, 'n_agents': num_agents, 'n_targets': num_targets, 'n_jammers': num_jammers}
         for seed in seed_range
@@ -307,6 +329,10 @@ def main():
         for num_jammers in num_jammers_range
     ]
     
+    total_configs = len(configs)
+    initial_completed = len(load_progress())
+    print(f"Initial completed configurations: {initial_completed}/{total_configs}")
+    
     configs_to_process = []
     for config in configs:
         filename = f"data_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
@@ -314,39 +340,39 @@ def main():
         if not is_dataset_complete(filepath, STEPS_PER_EPISODE):
             configs_to_process.append((config, config_path, H5_FOLDER, STEPS_PER_EPISODE))
     
+    print(f"Configurations to process: {len(configs_to_process)}")
+    
     # Use all but 1 of the available CPU cores for data collection
     num_processes = max(1, mp.cpu_count() - 1)
     with mp.Pool(processes=num_processes) as pool:
         global_pool = pool
-        for filepath in tqdm(pool.imap_unordered(process_config, configs_to_process), total=len(configs_to_process)):
-            if filepath and is_dataset_complete(filepath, STEPS_PER_EPISODE):
-                completed_configs.add(os.path.basename(filepath))
-                save_progress(completed_configs)
-            
-            # Check overall memory usage
-            mem_usage = psutil.virtual_memory().percent
-            if mem_usage > 90:
-                logging.warning(f"High overall memory usage detected: {mem_usage}%. Pausing for 60 seconds.")
-                time.sleep(60)  # Give system time to free up memory
+        results = list(tqdm(pool.imap_unordered(process_config, configs_to_process), total=len(configs_to_process)))
     
     global_pool = None  # Reset the global pool after it's closed
     
-    print("All configurations processed. Starting autoencoder training...")
-
-    h5_files = [os.path.join(H5_FOLDER, filename) for filename in completed_configs]
+    completed_configs = load_progress()
+    print(f"Final completed configurations: {len(completed_configs)}/{total_configs}")
     
-    # Initialize autoencoder with the shape of the first batch
-    with h5py.File(h5_files[0], 'r') as f:
-        first_step = f['data']['0']
-        first_agent = first_step[list(first_step.keys())[0]]
-        input_shape = first_agent['full_state'].shape
+    if len(completed_configs) == total_configs:
+        print("All configurations processed. Starting autoencoder training...")
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    autoencoder = EnvironmentAutoencoder(input_shape, device)
-    start_epoch = load_training_state(autoencoder)
+        h5_files = [os.path.join(H5_FOLDER, filename) for filename in completed_configs]
+        
+        # Initialize autoencoder with the shape of the first batch
+        with h5py.File(h5_files[0], 'r') as f:
+            first_step = f['data']['0']
+            first_agent = first_step[list(first_step.keys())[0]]
+            input_shape = first_agent['full_state'].shape
 
-    train_autoencoder(autoencoder, h5_files, start_epoch=start_epoch)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        autoencoder = EnvironmentAutoencoder(input_shape, device)
+        start_epoch = load_training_state(autoencoder)
 
+        train_autoencoder(autoencoder, h5_files, start_epoch=start_epoch)
+    else:
+        print(f"Not all configurations are complete. {len(completed_configs)}/{total_configs} configurations are ready.")
+        print("Please run the script again to process the remaining configurations.")
+        
 if __name__ == "__main__":
     # Set up the signal handler
     signal.signal(signal.SIGINT, signal_handler)
