@@ -324,6 +324,9 @@ def main():
     for config in configs:
         filename = f"data_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
         filepath = os.path.join(H5_FOLDER, filename)
+        if not os.path.exists(filepath):
+            configs_to_process.append((config, config_path, H5_FOLDER, STEPS_PER_EPISODE))
+            continue
         if not is_dataset_complete(filepath, STEPS_PER_EPISODE):
             configs_to_process.append((config, config_path, H5_FOLDER, STEPS_PER_EPISODE))
     
