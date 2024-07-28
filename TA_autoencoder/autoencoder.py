@@ -2,27 +2,26 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.cuda.amp as amp
+import torch.nn.functional as F
 import numpy as np
 
 class LayerAutoencoder(nn.Module):
     def __init__(self, input_shape):
         super(LayerAutoencoder, self).__init__()
-        self.input_shape = input_shape  # (X, Y)
-        
+        self.input_shape = input_shape  # (276, 155)
+
         # Calculate sizes dynamically
         self.conv1_out = (input_shape[0] // 2, input_shape[1] // 2)
         self.conv2_out = (self.conv1_out[0] // 2, self.conv1_out[1] // 2)
         self.conv3_out = (self.conv2_out[0] // 2, self.conv2_out[1] // 2)
         self.conv4_out = (self.conv3_out[0] // 2, self.conv3_out[1] // 2)
-        
         self.flattened_size = 256 * self.conv4_out[0] * self.conv4_out[1]
-        self.intermediate_size1 = self.flattened_size // 4
-        self.intermediate_size2 = self.intermediate_size1 // 4
-        
+
+        # Debugging:
         print(f"Input shape: {input_shape}")
+        print(f"Conv4 output shape: {self.conv4_out}")
         print(f"Flattened size: {self.flattened_size}")
-        print(f"Intermediate sizes: {self.intermediate_size1}, {self.intermediate_size2}")
-        
+
         # Encoder
         self.encoder = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),
@@ -34,20 +33,16 @@ class LayerAutoencoder(nn.Module):
             nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(0.2),
             nn.Flatten(),
-            nn.Linear(self.flattened_size, self.intermediate_size1),
+            nn.Linear(self.flattened_size, 512),
             nn.LeakyReLU(0.2),
-            nn.Linear(self.intermediate_size1, self.intermediate_size2),
-            nn.LeakyReLU(0.2),
-            nn.Linear(self.intermediate_size2, 256)
+            nn.Linear(512, 256)
         )
 
         # Decoder
         self.decoder = nn.Sequential(
-            nn.Linear(256, self.intermediate_size2),
+            nn.Linear(256, 512),
             nn.LeakyReLU(0.2),
-            nn.Linear(self.intermediate_size2, self.intermediate_size1),
-            nn.LeakyReLU(0.2),
-            nn.Linear(self.intermediate_size1, self.flattened_size),
+            nn.Linear(512, self.flattened_size),
             nn.LeakyReLU(0.2),
             nn.Unflatten(1, (256, self.conv4_out[0], self.conv4_out[1])),
             nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
@@ -77,15 +72,28 @@ class EnvironmentAutoencoder:
         self.input_shape = input_shape  # (4, X, Y)
         self.autoencoders = [LayerAutoencoder((input_shape[1], input_shape[2])) for _ in range(input_shape[0])]
         self.optimizers = [optim.Adam(ae.parameters(), lr=0.001) for ae in self.autoencoders]
-        self.criterion = nn.MSELoss()
         self.scaler = amp.GradScaler()
         self.accumulation_steps = accumulation_steps
         
-        self.scalers = [lambda x: x]  # For binary layer (assumed to be the first layer)
+        self.scalers = [lambda x: x]  # For binary layer (should be the first layer)
         self.scalers.extend([lambda x: (x + 20) / 20 for _ in range(input_shape[0] - 1)])  # For negative layers
         
         self.inverse_scalers = [lambda x: x]  # For binary layer
         self.inverse_scalers.extend([lambda x: x * 20 - 20 for _ in range(input_shape[0] - 1)])  # For negative layers
+
+    def custom_loss(self, recon_x, x, layer):
+        if layer == 0:  # Binary case (0/1)
+            return F.binary_cross_entropy_with_logits(recon_x, x, reduction='mean')
+        else:  # -20 to 0 case
+            # Rescale x back to -20 to 0 range for loss calculation
+            x_rescaled = self.inverse_scalers[layer](x)
+            recon_x_rescaled = self.inverse_scalers[layer](recon_x)
+            
+            # Weighted MSE loss
+            weights = torch.exp(x_rescaled / 20)  # More weight to values closer to 0
+            mse_loss = torch.mean(weights * (recon_x_rescaled - x_rescaled)**2)
+            
+            return mse_loss
 
     def train_step(self, batch, layer):
         ae = self.autoencoders[layer].to(self.device)
@@ -98,7 +106,7 @@ class EnvironmentAutoencoder:
         
         with amp.autocast():
             outputs = ae(layer_input.unsqueeze(1))  # Add channel dimension
-            loss = self.criterion(outputs, layer_input.unsqueeze(1))
+            loss = self.custom_loss(outputs, layer_input.unsqueeze(1), layer)
             loss = loss / self.accumulation_steps
         
         self.scaler.scale(loss).backward()
