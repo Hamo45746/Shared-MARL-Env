@@ -39,28 +39,37 @@ interrupt_flag = mp.Value('i', 0)
 class FlattenedMultiAgentH5Dataset(Dataset):
     def __init__(self, h5_files):
         self.h5_files = h5_files
-        self.data_index = self._index_data()
-
-    def _index_data(self):
-        index = []
+        self.file_indices = []
+        self.cumulative_lengths = [0]
+        
         for file_idx, h5_file in enumerate(self.h5_files):
             with h5py.File(h5_file, 'r') as f:
-                for step_idx in f['data']:
-                    step_data = f['data'][step_idx]
-                    for agent_id in step_data:
-                        index.append((file_idx, step_idx, agent_id))
-        return index
+                length = sum(len(step) for step in f['data'].values())
+            self.file_indices.extend([file_idx] * length)
+            self.cumulative_lengths.append(self.cumulative_lengths[-1] + length)
+        
+        self.total_length = self.cumulative_lengths[-1]
 
     def __len__(self):
-        return len(self.data_index)
+        return self.total_length
 
     def __getitem__(self, idx):
-        file_idx, step_idx, agent_id = self.data_index[idx]
+        file_idx = self.file_indices[idx]
+        local_idx = idx - self.cumulative_lengths[file_idx]
+        
         with h5py.File(self.h5_files[file_idx], 'r') as f:
-            agent_data = f['data'][step_idx][agent_id]
-            full_state = agent_data['full_state'][()]
-
-        return {f'layer_{i}': torch.FloatTensor(full_state[i]).unsqueeze(0) for i in range(full_state.shape[0])}
+            data = f['data']
+            cumulative_step_length = 0
+            for step_idx, step_data in data.items():
+                step_length = len(step_data)
+                if local_idx < cumulative_step_length + step_length:
+                    agent_idx = local_idx - cumulative_step_length
+                    agent_id = list(step_data.keys())[agent_idx]
+                    full_state = step_data[agent_id]['full_state'][()]
+                    return {f'layer_{i}': torch.FloatTensor(full_state[i]) for i in range(full_state.shape[0])}
+                cumulative_step_length += step_length
+        
+        raise IndexError(f"Index {idx} is out of bounds")
 
 def init_worker():
     signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -166,7 +175,7 @@ def load_progress():
                 filepath = os.path.join(H5_FOLDER, filename)
                 if is_dataset_complete(filepath, STEPS_PER_EPISODE) and filename not in progress:
                     progress.add(filename)
-                    print(f"Found completed file not in progress list: {filename}")
+                    # print(f"Found completed file not in progress list: {filename}")
         
         # Update the progress file
         with open(progress_file, 'w') as f:
@@ -303,11 +312,25 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32, star
     dataset = FlattenedMultiAgentH5Dataset(h5_files)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
 
+    print(f"Training with batch size: {batch_size}")
+    print(f"Total number of batches per epoch: {len(dataloader)}")
+
     for epoch in range(start_epoch, num_epochs):
         try:
-            loss = autoencoder.train(dataloader)
-            print(f"Epoch {epoch+1}/{num_epochs} completed. Average Loss: {loss:.4f}")
-            logging.info(f"Epoch {epoch+1}/{num_epochs} completed. Average Loss: {loss:.4f}")
+            total_loss = 0
+            num_batches = 0
+            for batch in tqdm(dataloader, desc=f"Epoch {epoch+1}/{num_epochs}"):
+                loss = autoencoder.train_step(batch)
+                total_loss += loss
+                num_batches += 1
+
+                # Free up memory
+                del batch
+                torch.cuda.empty_cache()
+
+            avg_loss = total_loss / num_batches
+            print(f"Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
+            logging.info(f"Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
             
             save_training_state(autoencoder, epoch + 1)
             
