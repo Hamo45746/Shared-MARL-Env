@@ -5,23 +5,15 @@ import torch.cuda.amp as amp
 import torch.nn.functional as F
 import numpy as np
 
+def ceildiv(a, b):
+    return -(a // -b)
+
 class LayerAutoencoder(nn.Module):
     def __init__(self, input_shape):
         super(LayerAutoencoder, self).__init__()
         self.input_shape = input_shape  # (276, 155)
-
-        # Calculate sizes dynamically
-        self.conv1_out = (input_shape[0] // 2, input_shape[1] // 2)
-        self.conv2_out = (self.conv1_out[0] // 2, self.conv1_out[1] // 2)
-        self.conv3_out = (self.conv2_out[0] // 2, self.conv2_out[1] // 2)
-        self.conv4_out = (self.conv3_out[0] // 2, self.conv3_out[1] // 2)
-        self.flattened_size = 256 * self.conv4_out[0] * self.conv4_out[1]
-
-        # Debugging:
-        print(f"Input shape: {input_shape}")
-        print(f"Conv4 output shape: {self.conv4_out}")
-        print(f"Flattened size: {self.flattened_size}")
-
+        linearXIn = ceildiv(ceildiv(ceildiv(ceildiv(input_shape[0], 2), 2), 2), 2) # needs to match stride each layer
+        linearYIn = ceildiv(ceildiv(ceildiv(ceildiv(input_shape[1], 2), 2), 2), 2)
         # Encoder
         self.encoder = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),
@@ -33,7 +25,7 @@ class LayerAutoencoder(nn.Module):
             nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(0.2),
             nn.Flatten(),
-            nn.Linear(self.flattened_size, 512),
+            nn.Linear(256 * linearXIn * linearYIn, 512),
             nn.LeakyReLU(0.2),
             nn.Linear(512, 256)
         )
@@ -42,9 +34,9 @@ class LayerAutoencoder(nn.Module):
         self.decoder = nn.Sequential(
             nn.Linear(256, 512),
             nn.LeakyReLU(0.2),
-            nn.Linear(512, self.flattened_size),
+            nn.Linear(512, 256 * linearXIn * linearYIn),
             nn.LeakyReLU(0.2),
-            nn.Unflatten(1, (256, self.conv4_out[0], self.conv4_out[1])),
+            nn.Unflatten(1, (256, linearXIn, linearYIn)),
             nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.LeakyReLU(0.2),
             nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
