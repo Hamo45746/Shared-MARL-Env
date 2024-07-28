@@ -22,7 +22,7 @@ from env import Environment
 from autoencoder import EnvironmentAutoencoder
 
 # Constants
-H5_FOLDER = '/media/rppl/T7 Shield/METR4911/Mem_profiling_test'
+H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
 H5_PROGRESS_FILE = 'h5_collection_progress.txt'
 AUTOENCODER_FILE = 'trained_autoencoder.pth'
 TRAINING_STATE_FILE = 'training_state.pth'
@@ -312,15 +312,17 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=8, start
     print(f"Training with batch size: {batch_size}, accumulation steps: {accumulation_steps}")
     print(f"Total number of batches per epoch: {len(dataloader)}")
 
-    for epoch in range(start_epoch, num_epochs):
-        try:
-            total_loss = 0
-            num_batches = 0
-            for batch in tqdm(dataloader, desc=f"Epoch {epoch+1}/{num_epochs}"):
-                # Process each layer separately
-                for layer in range(autoencoder.input_shape[0]):
+    for layer in range(autoencoder.input_shape[0]):
+        print(f"Training autoencoder for layer {layer}")
+        
+        for epoch in range(start_epoch, num_epochs):
+            try:
+                total_loss = 0
+                num_batches = 0
+                
+                for batch in tqdm(dataloader, desc=f"Layer {layer}, Epoch {epoch+1}/{num_epochs}"):
                     layer_batch = {f'layer_{layer}': batch[f'layer_{layer}']}
-                    loss = autoencoder.train_step(layer_batch)
+                    loss = autoencoder.train_step(layer_batch, layer)
                     total_loss += loss
                     num_batches += 1
 
@@ -328,28 +330,28 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=8, start
                     del layer_batch
                     torch.cuda.empty_cache()
 
-                del batch
-                torch.cuda.empty_cache()
+                avg_loss = total_loss / num_batches
+                print(f"Layer {layer}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
+                logging.info(f"Layer {layer}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
 
-            avg_loss = total_loss / (num_batches * autoencoder.input_shape[0])
-            print(f"Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
-            logging.info(f"Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
-            
-            save_training_state(autoencoder, epoch + 1)
-            
-            if (epoch + 1) % 10 == 0:
-                autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_epoch_{epoch+1}.pth"))
-            
-            mem_percent = psutil.virtual_memory().percent
-            logging.info(f"Memory usage: {mem_percent}%")
-            
-            if mem_percent > 90:
-                logging.warning("High memory usage detected. Pausing for 60 seconds.")
-                time.sleep(60)
+                save_training_state(autoencoder, layer, epoch + 1)
 
-        except Exception as e:
-            logging.error(f"Error during training: {str(e)}")
-            raise
+                if (epoch + 1) % 10 == 0:
+                    autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_layer_{layer}_epoch_{epoch+1}.pth"))
+
+                mem_percent = psutil.virtual_memory().percent
+                logging.info(f"Memory usage: {mem_percent}%")
+
+                if mem_percent > 90:
+                    logging.warning("High memory usage detected. Pausing for 60 seconds.")
+                    time.sleep(60)
+
+            except Exception as e:
+                logging.error(f"Error during training layer {layer}, epoch {epoch+1}: {str(e)}")
+                raise
+
+        # After finishing all epochs for a layer, move the autoencoder back to CPU
+        autoencoder.move_to_cpu(layer)
 
     autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
     logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
