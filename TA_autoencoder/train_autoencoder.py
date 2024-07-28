@@ -118,7 +118,14 @@ def load_config(config_path):
 def is_dataset_complete(filepath, steps_per_episode):
     try:
         with h5py.File(filepath, 'r') as hf:
-            return 'data' in hf and len(hf['data']) == steps_per_episode
+            if 'data' not in hf:
+                logging.warning(f"'data' group missing in {filepath}")
+                return False
+            actual_steps = len(hf['data'])
+            if actual_steps != steps_per_episode:
+                logging.warning(f"Incomplete dataset in {filepath}: {actual_steps}/{steps_per_episode} steps")
+                return False
+            return True
     except Exception as e:
         logging.error(f"Error checking dataset completeness for {filepath}: {str(e)}")
         return False
