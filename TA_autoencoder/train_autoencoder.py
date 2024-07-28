@@ -23,6 +23,7 @@ from env import Environment
 from autoencoder import EnvironmentAutoencoder
 
 # Constants
+# H5_FOLDER = '/Volumes/T7 Shield/METR4911/Mem_profiling_test'
 H5_FOLDER = '/media/rppl/T7 Shield/METR4911/Mem_profiling_test'
 H5_PROGRESS_FILE = 'h5_collection_progress.txt'
 AUTOENCODER_FILE = 'trained_autoencoder.pth'
@@ -83,9 +84,6 @@ def cleanup_resources():
         if child.is_alive():
             os.kill(child.pid, 9)  # Force kill if still alive
 
-    # Clean up any remaining multiprocessing resources
-    mp.current_process().close()
-
     # Use psutil to find and terminate any remaining child processes
     current_process = psutil.Process()
     children = current_process.children(recursive=True)
@@ -118,6 +116,8 @@ def cleanup_resources():
         pass
 
     # Explicitly run garbage collection
+    # Clean up any remaining multiprocessing resources
+    mp.current_process().close()
     gc.collect()
 
 def signal_handler(signum, frame):
@@ -308,7 +308,7 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32, star
     autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
     logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
 
-@profile
+# @profile
 def main():
     global global_pool
     
