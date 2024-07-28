@@ -7,41 +7,49 @@ import numpy as np
 class LayerAutoencoder(nn.Module):
     def __init__(self, input_shape):
         super(LayerAutoencoder, self).__init__()
-        self.input_shape = input_shape  # (X, Y) # Should be 276x155 for 0.18 scale map we are currently using
+        self.input_shape = input_shape  # (X, Y)
         
-        # Calculate intermediate sizes
-        # use to reduce in the fully connected linear layers - Start with 4x reduction *TEST*
-        flattened_size = 256 * (input_shape[0] // 16) * (input_shape[1] // 16)
-        intermediate_size1 = flattened_size // 4
-        intermediate_size2 = intermediate_size1 // 4
+        # Calculate sizes dynamically
+        self.conv1_out = (input_shape[0] // 2, input_shape[1] // 2)
+        self.conv2_out = (self.conv1_out[0] // 2, self.conv1_out[1] // 2)
+        self.conv3_out = (self.conv2_out[0] // 2, self.conv2_out[1] // 2)
+        self.conv4_out = (self.conv3_out[0] // 2, self.conv3_out[1] // 2)
+        
+        self.flattened_size = 256 * self.conv4_out[0] * self.conv4_out[1]
+        self.intermediate_size1 = self.flattened_size // 4
+        self.intermediate_size2 = self.intermediate_size1 // 4
+        
+        print(f"Input shape: {input_shape}")
+        print(f"Flattened size: {self.flattened_size}")
+        print(f"Intermediate sizes: {self.intermediate_size1}, {self.intermediate_size2}")
         
         # Encoder
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),  # In: 1xXxY, Out: 32x(X/2)x(Y/2)
+            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # Out: 64x(X/4)x(Y/4)
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # Out: 128x(X/8)x(Y/8)
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # Out: 256x(X/16)x(Y/16)
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(0.2),
-            nn.Flatten(),  # Out: 256 * (X/16) * (Y/16)
-            nn.Linear(flattened_size, intermediate_size1),
+            nn.Flatten(),
+            nn.Linear(self.flattened_size, self.intermediate_size1),
             nn.LeakyReLU(0.2),
-            nn.Linear(intermediate_size1, intermediate_size2),
+            nn.Linear(self.intermediate_size1, self.intermediate_size2),
             nn.LeakyReLU(0.2),
-            nn.Linear(intermediate_size2, 256)
+            nn.Linear(self.intermediate_size2, 256)
         )
 
         # Decoder
         self.decoder = nn.Sequential(
-            nn.Linear(256, intermediate_size2),
+            nn.Linear(256, self.intermediate_size2),
             nn.LeakyReLU(0.2),
-            nn.Linear(intermediate_size2, intermediate_size1),
+            nn.Linear(self.intermediate_size2, self.intermediate_size1),
             nn.LeakyReLU(0.2),
-            nn.Linear(intermediate_size1, flattened_size),
+            nn.Linear(self.intermediate_size1, self.flattened_size),
             nn.LeakyReLU(0.2),
-            nn.Unflatten(1, (256, input_shape[0] // 16, input_shape[1] // 16)),
+            nn.Unflatten(1, (256, self.conv4_out[0], self.conv4_out[1])),
             nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.LeakyReLU(0.2),
             nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
@@ -52,8 +60,11 @@ class LayerAutoencoder(nn.Module):
         )
 
     def forward(self, x):
+        print(f"Input shape: {x.shape}")
         encoded = self.encoder(x)
+        print(f"Encoded shape: {encoded.shape}")
         decoded = self.decoder(encoded)
+        print(f"Decoded shape: {decoded.shape}")
         return decoded
 
     def encode(self, x):
@@ -82,6 +93,8 @@ class EnvironmentAutoencoder:
         ae.train()
 
         layer_input = self.scalers[layer](batch[f'layer_{layer}']).to(self.device)
+        
+        print(f"Layer {layer} input shape: {layer_input.shape}")
         
         with amp.autocast():
             outputs = ae(layer_input.unsqueeze(1))  # Add channel dimension
