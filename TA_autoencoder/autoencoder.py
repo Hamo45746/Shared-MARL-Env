@@ -56,7 +56,7 @@ class LayerAutoencoder(nn.Module):
         return self.encoder(x)
 
 class EnvironmentAutoencoder:
-    def __init__(self, input_shape, device, accumulation_steps=4):
+    def __init__(self, input_shape, device):
         self.device = device
         print(f"Autoencoder using device: {self.device}")
         self.input_shape = input_shape  # (4, X, Y)
@@ -70,7 +70,6 @@ class EnvironmentAutoencoder:
         
         self.optimizers = [optim.Adam(ae.parameters(), lr=0.001) for ae in self.autoencoders]
         self.scaler = amp.GradScaler()
-        self.accumulation_steps = accumulation_steps
         
         self.scalers = [
             lambda x: x,  # For binary layer (layer 0)
@@ -86,7 +85,7 @@ class EnvironmentAutoencoder:
 
     def custom_loss(self, recon_x, x, layer):
         if layer == 0:  # Binary case (0/1)
-            return F.binary_cross_entropy_with_logits(recon_x, x, reduction='mean')
+            return F.mse_loss(recon_x, x, reduction='mean')
         else:  # -20 to 0 case
             # Rescale x back to -20 to 0 range for loss calculation
             x_rescaled = self.inverse_scalers[layer](x)
@@ -105,21 +104,42 @@ class EnvironmentAutoencoder:
 
         layer_input = self.scalers[layer](batch[f'layer_{layer}']).to(self.device)
         
-        # print(f"Layer {layer} input shape: {layer_input.shape}")
-        
         with amp.autocast():
             outputs = ae(layer_input.unsqueeze(1))  # Add channel dimension
             loss = self.custom_loss(outputs, layer_input.unsqueeze(1), layer)
-            loss = loss / self.accumulation_steps
         
+        # Compute gradients
         self.scaler.scale(loss).backward()
         
-        if (layer + 1) % self.accumulation_steps == 0:
-            self.scaler.step(optimizer)
-            self.scaler.update()
-            optimizer.zero_grad()
+        # Unscale gradients for logging
+        self.scaler.unscale_(optimizer)
         
-        return loss.item() * self.accumulation_steps
+        # Compute gradient norm
+        total_norm = 0
+        for p in ae.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.data.norm(2)
+                total_norm += param_norm.item() ** 2
+        gradient_norm = total_norm ** 0.5
+        
+        # Clip gradients
+        torch.nn.utils.clip_grad_norm_(ae.parameters(), max_norm=1.0)
+        
+        # Update weights
+        self.scaler.step(optimizer)
+        self.scaler.update()
+        
+        # Compute weight update norm
+        with torch.no_grad():
+            total_update_norm = 0
+            for p in ae.parameters():
+                if p.grad is not None:
+                    total_update_norm += (p.grad * optimizer.param_groups[0]['lr']).norm(2).item() ** 2
+            weight_update_norm = total_update_norm ** 0.5
+        
+        optimizer.zero_grad()
+        
+        return loss.item(), gradient_norm, weight_update_norm
 
     def move_to_cpu(self, layer):
         self.autoencoders[layer] = self.autoencoders[layer].to('cpu')

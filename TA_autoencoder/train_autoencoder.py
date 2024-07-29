@@ -15,6 +15,7 @@ import gc
 import signal
 import fcntl
 import matplotlib.pyplot as plt
+from torch.utils.tensorboard import SummaryWriter
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -371,15 +372,18 @@ def visualise_autoencoder_progress_table(autoencoder, h5_folder, epoch, output_f
 
     print(f"Visualisations for epoch {epoch} saved in {output_folder}")
 
-def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=8, accumulation_steps=4):
+def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32):
     dataset = FlattenedMultiAgentH5Dataset(h5_files)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
 
-    print(f"Training with batch size: {batch_size}, accumulation steps: {accumulation_steps}")
+    print(f"Training with batch size: {batch_size}")
     print(f"Total number of batches per epoch: {len(dataloader)}")
 
     output_folder = os.path.join(H5_FOLDER, 'training_visualisations')
     os.makedirs(output_folder, exist_ok=True)
+
+    # Initialize TensorBoard writer
+    writer = SummaryWriter(log_dir=os.path.join(H5_FOLDER, 'tensorboard_logs'))
 
     for ae_index in range(3):  # We now have 3 autoencoders
         print(f"Training autoencoder {ae_index}")
@@ -399,9 +403,14 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=8, accum
                     else:
                         layer_batch = {f'layer_{ae_index}': batch[f'layer_{ae_index}']}
                     
-                    loss = autoencoder.train_step(layer_batch, ae_index)
+                    loss, gradient_norm, weight_update_norm = autoencoder.train_step(layer_batch, ae_index)
                     total_loss += loss
                     num_batches += 1
+
+                    # Log additional metrics
+                    writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + num_batches)
+                    writer.add_scalar(f'Autoencoder_{ae_index}/Gradient_Norm', gradient_norm, epoch * len(dataloader) + num_batches)
+                    writer.add_scalar(f'Autoencoder_{ae_index}/Weight_Update_Norm', weight_update_norm, epoch * len(dataloader) + num_batches)
 
                     # Free up memory
                     del layer_batch
@@ -410,6 +419,9 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=8, accum
                 avg_loss = total_loss / num_batches
                 print(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
                 logging.info(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
+
+                # Log epoch-level metrics
+                writer.add_scalar(f'Autoencoder_{ae_index}/Epoch_Loss', avg_loss, epoch)
 
                 save_training_state(autoencoder, ae_index, epoch + 1)
 
@@ -432,6 +444,7 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=8, accum
         # After finishing all epochs for an autoencoder, move it back to CPU
         autoencoder.move_to_cpu(ae_index)
 
+    writer.close()
     autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
     logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
     
