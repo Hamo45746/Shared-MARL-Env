@@ -75,7 +75,7 @@ def init_worker():
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 def signal_handler(signum, frame):
-    # print("Interrupt received, stopping processes...")
+    print("Interrupt received, stopping processes...")
     interrupt_flag.value = 1
 
 def cleanup_resources():
@@ -385,71 +385,105 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32):
     # Initialize TensorBoard writer
     writer = SummaryWriter(log_dir=os.path.join(H5_FOLDER, 'tensorboard_logs'))
 
-    for ae_index in range(3):  # We now have 3 autoencoders
-        print(f"Training autoencoder {ae_index}")
-        
-        start_epoch = load_training_state(autoencoder, ae_index)
-        
-        for epoch in range(start_epoch, num_epochs):
-            try:
-                total_loss = 0
-                num_batches = 0
-                
-                for batch in tqdm(dataloader, desc=f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs}"):
-                    if ae_index == 1:  # For the shared autoencoder (layers 1 and 2)
-                        layer_batch = {
-                            f'layer_{ae_index}': torch.cat([batch[f'layer_1'], batch[f'layer_2']], dim=0)
-                        }
-                    else:
-                        layer_batch = {f'layer_{ae_index}': batch[f'layer_{ae_index}']}
+    try:
+        for ae_index in range(3):  # We now have 3 autoencoders
+            print(f"Training autoencoder {ae_index}")
+            
+            start_epoch = load_training_state(autoencoder, ae_index)
+            
+            for epoch in range(start_epoch, num_epochs):
+                if interrupt_flag.value:
+                    print(f"Interrupt detected. Saving progress for autoencoder {ae_index}...")
+                    save_training_state(autoencoder, ae_index, epoch)
+                    writer.flush()  # Ensure all pending events are flushed to disk
+                    return
+
+                try:
+                    total_loss = 0
+                    num_batches = 0
+                    nan_batches = 0
                     
-                    loss, gradient_norm, weight_update_norm = autoencoder.train_step(layer_batch, ae_index)
-                    total_loss += loss
-                    num_batches += 1
+                    for batch in tqdm(dataloader, desc=f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs}"):
+                        if interrupt_flag.value:
+                            raise KeyboardInterrupt  # Raise to break out of the loop
 
-                    # Log additional metrics
-                    writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + num_batches)
-                    writer.add_scalar(f'Autoencoder_{ae_index}/Gradient_Norm', gradient_norm, epoch * len(dataloader) + num_batches)
-                    writer.add_scalar(f'Autoencoder_{ae_index}/Weight_Update_Norm', weight_update_norm, epoch * len(dataloader) + num_batches)
+                        if ae_index == 1:  # For the shared autoencoder (layers 1 and 2)
+                            layer_batch = {
+                                f'layer_{ae_index}': torch.cat([batch[f'layer_1'], batch[f'layer_2']], dim=0)
+                            }
+                        else:
+                            layer_batch = {f'layer_{ae_index}': batch[f'layer_{ae_index}']}
+                        
+                        loss, gradient_norm, weight_update_norm = autoencoder.train_step(layer_batch, ae_index)
+                        
+                        if loss is None:  # nan loss detected
+                            nan_batches += 1
+                            continue
+                        
+                        total_loss += loss
+                        num_batches += 1
 
-                    # Free up memory
-                    del layer_batch
-                    torch.cuda.empty_cache()
+                        # Log additional metrics
+                        writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + num_batches)
+                        writer.add_scalar(f'Autoencoder_{ae_index}/Gradient_Norm', gradient_norm, epoch * len(dataloader) + num_batches)
+                        writer.add_scalar(f'Autoencoder_{ae_index}/Weight_Update_Norm', weight_update_norm, epoch * len(dataloader) + num_batches)
 
-                avg_loss = total_loss / num_batches
-                print(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
-                logging.info(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
+                        # Free up memory
+                        del layer_batch
+                        torch.cuda.empty_cache()
 
-                # Log epoch-level metrics
-                writer.add_scalar(f'Autoencoder_{ae_index}/Epoch_Loss', avg_loss, epoch)
+                    if num_batches > 0:
+                        avg_loss = total_loss / num_batches
+                        print(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
+                        print(f"NaN losses in {nan_batches} out of {num_batches + nan_batches} batches")
+                        logging.info(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
+                        logging.info(f"NaN losses in {nan_batches} out of {num_batches + nan_batches} batches")
 
-                save_training_state(autoencoder, ae_index, epoch + 1)
+                        # Log epoch-level metrics
+                        writer.add_scalar(f'Autoencoder_{ae_index}/Epoch_Loss', avg_loss, epoch)
+                        writer.add_scalar(f'Autoencoder_{ae_index}/NaN_Batches', nan_batches, epoch)
+                    else:
+                        print(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} failed. All batches resulted in NaN loss.")
+                        logging.warning(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} failed. All batches resulted in NaN loss.")
 
-                if (epoch + 1) % 10 == 0:
-                    autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_epoch_{epoch+1}.pth"))
-                    # Generate and save visualizations
-                    visualise_autoencoder_progress_table(autoencoder, H5_FOLDER, epoch + 1, output_folder)
+                    save_training_state(autoencoder, ae_index, epoch + 1)
 
-                mem_percent = psutil.virtual_memory().percent
-                logging.info(f"Memory usage: {mem_percent}%")
+                    if (epoch + 1) % 10 == 0:
+                        autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_epoch_{epoch+1}.pth"))
+                        # Generate and save visualizations
+                        visualise_autoencoder_progress_table(autoencoder, H5_FOLDER, epoch + 1, output_folder)
 
-                if mem_percent > 90:
-                    logging.warning("High memory usage detected. Pausing for 60 seconds.")
-                    time.sleep(60)
+                    mem_percent = psutil.virtual_memory().percent
+                    logging.info(f"Memory usage: {mem_percent}%")
 
-            except Exception as e:
-                logging.error(f"Error during training autoencoder {ae_index}, epoch {epoch+1}: {str(e)}")
-                raise
+                    if mem_percent > 90:
+                        logging.warning("High memory usage detected. Pausing for 60 seconds.")
+                        time.sleep(60)
 
-        # After finishing all epochs for an autoencoder, move it back to CPU
-        autoencoder.move_to_cpu(ae_index)
+                except KeyboardInterrupt:
+                    print(f"Interrupt detected. Saving progress for autoencoder {ae_index}...")
+                    save_training_state(autoencoder, ae_index, epoch)
+                    writer.flush()  # Ensure all pending events are flushed to disk
+                    return
 
-    writer.close()
-    autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
-    logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
+                except Exception as e:
+                    logging.error(f"Error during training autoencoder {ae_index}, epoch {epoch+1}: {str(e)}")
+                    raise
+
+            # After finishing all epochs for an autoencoder, move it back to CPU
+            autoencoder.move_to_cpu(ae_index)
+
+    finally:
+        writer.close()
+        autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
+        logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
     
     
 def main():
+    # Set up signal handler
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
     original_config = load_config(config_path)
     
@@ -516,15 +550,15 @@ def main():
     else:
         print(f"Not all configurations are complete. {len(completed_configs)}/{total_configs} configurations are ready.")
         print("Please run the script again to process the remaining configurations.")
-if __name__ == "__main__":
-    original_sigint_handler = signal.signal(signal.SIGINT, signal_handler)
     
+if __name__ == "__main__":
     try:
         main()
+    except KeyboardInterrupt:
+        print("Keyboard interrupt received. Cleaning up...")
     except Exception as e:
         print(f"An error occurred: {e}")
     finally:
         print("Cleaning up...")
         cleanup_resources()
         print("All resources cleaned up")
-        signal.signal(signal.SIGINT, original_sigint_handler)

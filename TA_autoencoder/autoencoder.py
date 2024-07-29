@@ -45,6 +45,13 @@ class LayerAutoencoder(nn.Module):
             nn.LeakyReLU(0.2),
             nn.ConvTranspose2d(32, 1, kernel_size=3, stride=2, padding=1)
         )
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)):
+            nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+            if module.bias is not None:
+                nn.init.constant_(module.bias, 0)
 
     def forward(self, x):
         encoded = self.encoder(x)
@@ -68,7 +75,7 @@ class EnvironmentAutoencoder:
             LayerAutoencoder((input_shape[1], input_shape[2]))   # For layer 3
         ]
         
-        self.optimizers = [optim.Adam(ae.parameters(), lr=0.001) for ae in self.autoencoders]
+        self.optimizers = [optim.Adam(ae.parameters(), lr=0.0001) for ae in self.autoencoders]
         self.scaler = amp.GradScaler()
         
         self.scalers = [
@@ -87,12 +94,11 @@ class EnvironmentAutoencoder:
         if layer == 0:  # Binary case (0/1)
             return F.mse_loss(recon_x, x, reduction='mean')
         else:  # -20 to 0 case
-            # Rescale x back to -20 to 0 range for loss calculation
             x_rescaled = self.inverse_scalers[layer](x)
             recon_x_rescaled = self.inverse_scalers[layer](recon_x)
             
-            # Weighted MSE loss
-            weights = torch.exp(x_rescaled / 20)  # More weight to values closer to 0
+            # Add a small epsilon to avoid division by zero
+            weights = torch.exp(x_rescaled / 20) + 1e-8
             mse_loss = torch.mean(weights * (recon_x_rescaled - x_rescaled)**2)
             
             return mse_loss
@@ -107,23 +113,22 @@ class EnvironmentAutoencoder:
         with amp.autocast():
             outputs = ae(layer_input.unsqueeze(1))  # Add channel dimension
             loss = self.custom_loss(outputs, layer_input.unsqueeze(1), layer)
-        
+
+            # Check for nan loss
+            if torch.isnan(loss):
+                print(f"NaN loss detected in layer {layer}")
+                print(f"Input min: {layer_input.min()}, max: {layer_input.max()}")
+                print(f"Output min: {outputs.min()}, max: {outputs.max()}")
+                return None, None, None
+
         # Compute gradients
         self.scaler.scale(loss).backward()
         
-        # Unscale gradients for logging
+        # Unscale gradients for logging and clipping
         self.scaler.unscale_(optimizer)
         
         # Compute gradient norm
-        total_norm = 0
-        for p in ae.parameters():
-            if p.grad is not None:
-                param_norm = p.grad.data.norm(2)
-                total_norm += param_norm.item() ** 2
-        gradient_norm = total_norm ** 0.5
-        
-        # Clip gradients
-        torch.nn.utils.clip_grad_norm_(ae.parameters(), max_norm=1.0)
+        total_norm = torch.nn.utils.clip_grad_norm_(ae.parameters(), max_norm=1.0)
         
         # Update weights
         self.scaler.step(optimizer)
@@ -131,15 +136,13 @@ class EnvironmentAutoencoder:
         
         # Compute weight update norm
         with torch.no_grad():
-            total_update_norm = 0
+            total_update_norm = sum((p.data - p.old_data).norm(2).item() ** 2 for p in ae.parameters() if hasattr(p, 'old_data')) ** 0.5
             for p in ae.parameters():
-                if p.grad is not None:
-                    total_update_norm += (p.grad * optimizer.param_groups[0]['lr']).norm(2).item() ** 2
-            weight_update_norm = total_update_norm ** 0.5
+                p.old_data = p.data.clone()
         
         optimizer.zero_grad()
         
-        return loss.item(), gradient_norm, weight_update_norm
+        return loss.item(), total_norm.item(), total_update_norm
 
     def move_to_cpu(self, layer):
         self.autoencoders[layer] = self.autoencoders[layer].to('cpu')
