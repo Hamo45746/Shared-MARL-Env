@@ -287,42 +287,50 @@ def process_config(args):
         logging.error(f"Error processing config {config}: {str(e)}")
         return None
 
-def save_training_state(autoencoder, epoch):
+def save_training_state(autoencoder, layer, epoch):
     state = {
         'model_state_dicts': [ae.state_dict() for ae in autoencoder.autoencoders],
         'optimizer_state_dicts': [opt.state_dict() for opt in autoencoder.optimizers],
+        'layer': layer,
         'epoch': epoch
     }
-    torch.save(state, os.path.join(H5_FOLDER, TRAINING_STATE_FILE))
+    torch.save(state, os.path.join(H5_FOLDER, f"training_state_layer_{layer}.pth"))
 
-def load_training_state(autoencoder):
-    state_path = os.path.join(H5_FOLDER, TRAINING_STATE_FILE)
+def load_training_state(autoencoder, layer):
+    state_path = os.path.join(H5_FOLDER, f"training_state_layer_{layer}.pth")
     if os.path.exists(state_path):
         state = torch.load(state_path, map_location=autoencoder.device)
-        for i, ae in enumerate(autoencoder.autoencoders):
-            ae.load_state_dict(state['model_state_dicts'][i])
-            autoencoder.optimizers[i].load_state_dict(state['optimizer_state_dicts'][i])
+        autoencoder.autoencoders[layer].load_state_dict(state['model_state_dicts'][layer])
+        autoencoder.optimizers[layer].load_state_dict(state['optimizer_state_dicts'][layer])
         return state['epoch']
     return 0
 
-def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=8, start_epoch=0, accumulation_steps=4):
+def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=8, accumulation_steps=4):
     dataset = FlattenedMultiAgentH5Dataset(h5_files)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
 
     print(f"Training with batch size: {batch_size}, accumulation steps: {accumulation_steps}")
     print(f"Total number of batches per epoch: {len(dataloader)}")
 
-    for layer in range(autoencoder.input_shape[0]):
-        print(f"Training autoencoder for layer {layer}")
+    for ae_index in range(3):  # We now have 3 autoencoders
+        print(f"Training autoencoder {ae_index}")
+        
+        start_epoch = load_training_state(autoencoder, ae_index)
         
         for epoch in range(start_epoch, num_epochs):
             try:
                 total_loss = 0
                 num_batches = 0
                 
-                for batch in tqdm(dataloader, desc=f"Layer {layer}, Epoch {epoch+1}/{num_epochs}"):
-                    layer_batch = {f'layer_{layer}': batch[f'layer_{layer}']}
-                    loss = autoencoder.train_step(layer_batch, layer)
+                for batch in tqdm(dataloader, desc=f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs}"):
+                    if ae_index == 1:  # For the shared autoencoder (layers 1 and 2)
+                        layer_batch = {
+                            f'layer_{ae_index}': torch.cat([batch[f'layer_1'], batch[f'layer_2']], dim=0)
+                        }
+                    else:
+                        layer_batch = {f'layer_{ae_index}': batch[f'layer_{ae_index}']}
+                    
+                    loss = autoencoder.train_step(layer_batch, ae_index)
                     total_loss += loss
                     num_batches += 1
 
@@ -331,13 +339,13 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=8, start
                     torch.cuda.empty_cache()
 
                 avg_loss = total_loss / num_batches
-                print(f"Layer {layer}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
-                logging.info(f"Layer {layer}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
+                print(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
+                logging.info(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
 
-                save_training_state(autoencoder, layer, epoch + 1)
+                save_training_state(autoencoder, ae_index, epoch + 1)
 
                 if (epoch + 1) % 10 == 0:
-                    autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_layer_{layer}_epoch_{epoch+1}.pth"))
+                    autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_epoch_{epoch+1}.pth"))
 
                 mem_percent = psutil.virtual_memory().percent
                 logging.info(f"Memory usage: {mem_percent}%")
@@ -347,11 +355,11 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=8, start
                     time.sleep(60)
 
             except Exception as e:
-                logging.error(f"Error during training layer {layer}, epoch {epoch+1}: {str(e)}")
+                logging.error(f"Error during training autoencoder {ae_index}, epoch {epoch+1}: {str(e)}")
                 raise
 
-        # After finishing all epochs for a layer, move the autoencoder back to CPU
-        autoencoder.move_to_cpu(layer)
+        # After finishing all epochs for an autoencoder, move it back to CPU
+        autoencoder.move_to_cpu(ae_index)
 
     autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
     logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
@@ -419,13 +427,11 @@ def main():
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         autoencoder = EnvironmentAutoencoder(input_shape, device)
-        start_epoch = load_training_state(autoencoder)
 
-        train_autoencoder(autoencoder, h5_files, start_epoch=start_epoch)
+        train_autoencoder(autoencoder, h5_files)
     else:
         print(f"Not all configurations are complete. {len(completed_configs)}/{total_configs} configurations are ready.")
         print("Please run the script again to process the remaining configurations.")
-
 if __name__ == "__main__":
     original_sigint_handler = signal.signal(signal.SIGINT, signal_handler)
     

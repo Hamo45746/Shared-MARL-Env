@@ -47,11 +47,8 @@ class LayerAutoencoder(nn.Module):
         )
 
     def forward(self, x):
-        print(f"Input shape: {x.shape}")
         encoded = self.encoder(x)
-        print(f"Encoded shape: {encoded.shape}")
         decoded = self.decoder(encoded)
-        print(f"Decoded shape: {decoded.shape}")
         decoded = F.interpolate(decoded, size=self.input_shape, mode='bilinear', align_corners=False)
         return decoded
 
@@ -63,16 +60,29 @@ class EnvironmentAutoencoder:
         self.device = device
         print(f"Autoencoder using device: {self.device}")
         self.input_shape = input_shape  # (4, X, Y)
-        self.autoencoders = [LayerAutoencoder((input_shape[1], input_shape[2])) for _ in range(input_shape[0])]
+        
+        # Create 3 autoencoders
+        self.autoencoders = [
+            LayerAutoencoder((input_shape[1], input_shape[2])),  # For layer 0
+            LayerAutoencoder((input_shape[1], input_shape[2])),  # For layers 1 and 2
+            LayerAutoencoder((input_shape[1], input_shape[2]))   # For layer 3
+        ]
+        
         self.optimizers = [optim.Adam(ae.parameters(), lr=0.001) for ae in self.autoencoders]
         self.scaler = amp.GradScaler()
         self.accumulation_steps = accumulation_steps
         
-        self.scalers = [lambda x: x]  # For binary layer (should be the first layer)
-        self.scalers.extend([lambda x: (x + 20) / 20 for _ in range(input_shape[0] - 1)])  # For negative layers
+        self.scalers = [
+            lambda x: x,  # For binary layer (layer 0)
+            lambda x: (x + 20) / 20,  # For negative layers (layers 1 and 2)
+            lambda x: (x + 20) / 20   # For negative layer (layer 3)
+        ]
         
-        self.inverse_scalers = [lambda x: x]  # For binary layer
-        self.inverse_scalers.extend([lambda x: x * 20 - 20 for _ in range(input_shape[0] - 1)])  # For negative layers
+        self.inverse_scalers = [
+            lambda x: x,  # For binary layer (layer 0)
+            lambda x: x * 20 - 20,  # For negative layers (layers 1 and 2)
+            lambda x: x * 20 - 20   # For negative layer (layer 3)
+        ]
 
     def custom_loss(self, recon_x, x, layer):
         if layer == 0:  # Binary case (0/1)
@@ -95,7 +105,7 @@ class EnvironmentAutoencoder:
 
         layer_input = self.scalers[layer](batch[f'layer_{layer}']).to(self.device)
         
-        print(f"Layer {layer} input shape: {layer_input.shape}")
+        # print(f"Layer {layer} input shape: {layer_input.shape}")
         
         with amp.autocast():
             outputs = ae(layer_input.unsqueeze(1))  # Add channel dimension
@@ -117,10 +127,12 @@ class EnvironmentAutoencoder:
 
     def encode_state(self, state):
         with torch.no_grad():
-            scaled_state = [self.scalers[i](state[i]) for i in range(len(state))]
+            scaled_state = [self.scalers[min(i, 2)](state[i]) for i in range(len(state))]
             state_tensor = torch.FloatTensor(scaled_state).unsqueeze(1)  # Add channel dimension
             encoded_layers = []
-            for i, ae in enumerate(self.autoencoders):
+            for i in range(4):  # We still have 4 layers in the state
+                ae_index = min(i, 2)  # Use the same autoencoder for layers 1 and 2
+                ae = self.autoencoders[ae_index]
                 ae.eval()
                 ae.to(self.device)
                 layer_input = state_tensor[i].unsqueeze(0).to(self.device)  # Add batch dimension and move to GPU
@@ -133,12 +145,14 @@ class EnvironmentAutoencoder:
     def decode_state(self, encoded_state):
         with torch.no_grad():
             decoded_layers = []
-            for i, ae in enumerate(self.autoencoders):
+            for i in range(4):  # We still have 4 layers in the state
+                ae_index = min(i, 2)  # Use the same autoencoder for layers 1 and 2
+                ae = self.autoencoders[ae_index]
                 ae.eval()
                 ae.to(self.device)
                 encoded_layer = torch.FloatTensor(encoded_state[i]).unsqueeze(0).unsqueeze(0).to(self.device)
                 decoded_layer = ae.decoder(encoded_layer)
-                decoded_layer = self.inverse_scalers[i](decoded_layer.cpu().numpy().squeeze())
+                decoded_layer = self.inverse_scalers[ae_index](decoded_layer.cpu().numpy().squeeze())
                 decoded_layers.append(decoded_layer)
                 ae.to('cpu')
                 torch.cuda.empty_cache()
