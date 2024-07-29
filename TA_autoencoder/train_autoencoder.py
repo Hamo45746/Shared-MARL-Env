@@ -14,6 +14,7 @@ import time
 import gc
 import signal
 import fcntl
+import matplotlib.pyplot as plt
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -73,7 +74,7 @@ def init_worker():
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 def signal_handler(signum, frame):
-    print("Interrupt received, stopping processes...")
+    # print("Interrupt received, stopping processes...")
     interrupt_flag.value = 1
 
 def cleanup_resources():
@@ -305,12 +306,80 @@ def load_training_state(autoencoder, layer):
         return state['epoch']
     return 0
 
+def visualise_autoencoder_progress_table(autoencoder, h5_folder, epoch, output_folder):
+    # Find a suitable H5 file (with high number of targets and agents)
+    suitable_file = None
+    for filename in os.listdir(h5_folder):
+        if filename.endswith('.h5') and 'a7_' in filename and 't7_' in filename:
+            suitable_file = os.path.join(h5_folder, filename)
+            break
+    
+    if not suitable_file:
+        print("No suitable H5 file found.")
+        return
+
+    # Load data from the H5 file
+    with h5py.File(suitable_file, 'r') as f:
+        first_step = f['data']['0']
+        first_agent = first_step[list(first_step.keys())[0]]
+        full_state = first_agent['full_state'][()]
+
+    # Create output folder if it doesn't exist
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Visualise each layer
+    for layer in range(4):
+        fig, axes = plt.subplots(1, 3, figsize=(20, 10))
+        fig.suptitle(f'Layer {layer} - Epoch {epoch}')
+
+        # Input
+        axes[0].axis('tight')
+        axes[0].axis('off')
+        input_table = axes[0].table(cellText=full_state[layer].round(2), loc='center', cellLoc='center')
+        axes[0].set_title('Input')
+
+        # Encode
+        ae_index = min(layer, 2)  # Use the same autoencoder for layers 1 and 2
+        encoded = autoencoder.encode_state(full_state)[layer]
+        axes[1].axis('tight')
+        axes[1].axis('off')
+        encoded_table = axes[1].table(cellText=encoded.reshape(-1, 1).round(2), loc='center', cellLoc='center')
+        axes[1].set_title('Encoded (256 values)')
+
+        # Output
+        decoded = autoencoder.decode_state(autoencoder.encode_state(full_state))[layer]
+        axes[2].axis('tight')
+        axes[2].axis('off')
+        output_table = axes[2].table(cellText=decoded.round(2), loc='center', cellLoc='center')
+        axes[2].set_title('Output')
+
+        # Adjust table styles
+        for table in [input_table, output_table]:
+            table.auto_set_font_size(False)
+            table.set_fontsize(8)
+            table.scale(1, 1.5)
+
+        # Adjust encoded table style
+        encoded_table.auto_set_font_size(False)
+        encoded_table.set_fontsize(6)
+        encoded_table.scale(0.5, 1)
+
+        # Save the figure
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_folder, f'layer_{layer}_epoch_{epoch}.png'), dpi=300, bbox_inches='tight')
+        plt.close(fig)
+
+    print(f"Visualisations for epoch {epoch} saved in {output_folder}")
+
 def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=8, accumulation_steps=4):
     dataset = FlattenedMultiAgentH5Dataset(h5_files)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
 
     print(f"Training with batch size: {batch_size}, accumulation steps: {accumulation_steps}")
     print(f"Total number of batches per epoch: {len(dataloader)}")
+
+    output_folder = os.path.join(H5_FOLDER, 'training_visualisations')
+    os.makedirs(output_folder, exist_ok=True)
 
     for ae_index in range(3):  # We now have 3 autoencoders
         print(f"Training autoencoder {ae_index}")
@@ -346,6 +415,8 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=8, accum
 
                 if (epoch + 1) % 10 == 0:
                     autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_epoch_{epoch+1}.pth"))
+                    # Generate and save visualizations
+                    visualise_autoencoder_progress_table(autoencoder, H5_FOLDER, epoch + 1, output_folder)
 
                 mem_percent = psutil.virtual_memory().percent
                 logging.info(f"Memory usage: {mem_percent}%")
