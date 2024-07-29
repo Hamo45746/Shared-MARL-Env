@@ -12,8 +12,8 @@ class LayerAutoencoder(nn.Module):
     def __init__(self, input_shape):
         super(LayerAutoencoder, self).__init__()
         self.input_shape = input_shape  # (276, 155)
-        linearXIn = ceildiv(ceildiv(ceildiv(ceildiv(input_shape[0], 2), 2), 2), 2) # needs to match stride each layer
-        linearYIn = ceildiv(ceildiv(ceildiv(ceildiv(input_shape[1], 2), 2), 2), 2)
+        self.linearXIn = ceildiv(ceildiv(ceildiv(ceildiv(input_shape[0], 2), 2), 2), 2) # needs to match stride each layer
+        self.linearYIn = ceildiv(ceildiv(ceildiv(ceildiv(input_shape[1], 2), 2), 2), 2)
         # Encoder
         self.encoder = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),
@@ -25,7 +25,7 @@ class LayerAutoencoder(nn.Module):
             nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(0.2),
             nn.Flatten(),
-            nn.Linear(256 * linearXIn * linearYIn, 512),
+            nn.Linear(256 * self.linearXIn * self.linearYIn, 512),
             nn.LeakyReLU(0.2),
             nn.Linear(512, 256)
         )
@@ -34,16 +34,16 @@ class LayerAutoencoder(nn.Module):
         self.decoder = nn.Sequential(
             nn.Linear(256, 512),
             nn.LeakyReLU(0.2),
-            nn.Linear(512, 256 * linearXIn * linearYIn),
+            nn.Linear(512, 256 * self.linearXIn * self.linearYIn),
             nn.LeakyReLU(0.2),
-            nn.Unflatten(1, (256, linearXIn, linearYIn)),
-            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.Unflatten(1, (256, self.linearXIn, self.linearYIn)),
+            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(32, 1, kernel_size=3, stride=2, padding=1, output_padding=1)
+            nn.ConvTranspose2d(32, 1, kernel_size=3, stride=2, padding=1)
         )
 
     def forward(self, x):
@@ -52,6 +52,7 @@ class LayerAutoencoder(nn.Module):
         print(f"Encoded shape: {encoded.shape}")
         decoded = self.decoder(encoded)
         print(f"Decoded shape: {decoded.shape}")
+        decoded = F.interpolate(decoded, size=self.input_shape, mode='bilinear', align_corners=False)
         return decoded
 
     def encode(self, x):
