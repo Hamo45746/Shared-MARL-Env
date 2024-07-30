@@ -310,8 +310,8 @@ def load_training_state(autoencoder, layer):
 def visualise_autoencoder_progress_table(autoencoder, h5_folder, epoch, output_folder):
     # Find a suitable H5 file (with high number of targets and agents)
     suitable_file = None
-    for filename in os.listdir(h5_folder):
-        if filename.endswith('.h5') and 'a7_' in filename and 't7_' in filename:
+    for filename in os.listdir(h5_folder): # Should get the same data file everytime - not smart way to do it though
+        if filename.endswith('.h5') and 'a7' in filename and 't7' in filename:
             suitable_file = os.path.join(h5_folder, filename)
             break
     
@@ -407,10 +407,10 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32):
                         if interrupt_flag.value:
                             raise KeyboardInterrupt  # Raise to break out of the loop
 
-                        if ae_index == 1:  # For the shared autoencoder (layers 1 and 2)
+                        if ae_index == 1:  # For the shared autoencoder (layers 1 and 2) - effectively doubles batch size
                             layer_batch = {
                                 f'layer_{ae_index}': torch.cat([batch[f'layer_1'], batch[f'layer_2']], dim=0)
-                            }
+                            } 
                         else:
                             layer_batch = {f'layer_{ae_index}': batch[f'layer_{ae_index}']}
                         
