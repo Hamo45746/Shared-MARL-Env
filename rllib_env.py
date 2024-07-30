@@ -35,14 +35,13 @@ class Environment(MultiAgentEnv):
         self.use_task_allocation = self.config.get('use_task_allocation_with_continuous', False)
         self._seed(self.seed_value)
 
-        #for autoencoding the observation space
-        # self.autoencoders = []
-        # for i in range(4):
-        #     autoencoder = ConvAutoencoder(1, (self.obs_range, self.obs_range))
-        #     state_dict = torch.load(f'outputs/trained_autoencoder_layer_{i}.pth')
-        #     autoencoder.encoder.load_state_dict({k.replace("encoder.", ""): v for k, v in state_dict.items() if "encoder." in k})
-        #     autoencoder.encoder.eval()
-        #     self.autoencoders.append(autoencoder)
+        # Initialize autoencoders for all layers
+        self.autoencoder = EnvironmentAutoencoder((self.obs_range, self.obs_range), encoded_dim=32)
+
+        for layer in ["map_view", "agent", "target", "jammer"]:
+            self.autoencoder.add_layer(layer, (self.obs_range, self.obs_range), encoded_dim=32)
+            self.autoencoder.load(f'outputs/trained_autoencoder_{layer}.pth', layer)
+            self.autoencoder.autoencoders[layer].eval()
 
         self.map_matrix = self.load_map()
         # Global state includes layers for map, agents, targets, and jammers
@@ -132,14 +131,26 @@ class Environment(MultiAgentEnv):
                 'full_state': spaces.Box(low=-20, high=1, shape=(self.D, self.X, self.Y), dtype=np.float32)
             })
 
-    def encode_observation(self, observation):
-        encoded_layers = []
-        for i in range(4):
-            observation_tensor = torch.tensor(observation[i], dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # Add batch and channel dimensions
-            with torch.no_grad():
-                encoded_layer = self.autoencoders[i].encoder(observation_tensor)
-            encoded_layers.append(encoded_layer.squeeze().numpy())
-        return np.concatenate(encoded_layers, axis=0)
+    # def encode_observation(self, observation):
+    #     encoded_layers = []
+    #     for i, layer in enumerate(["map_view", "agent", "target", "jammer"]):
+    #         layer_data = observation[i]
+    #         min_val, max_val = layer_data.min(), layer_data.max()
+    #         self.autoencoder.original_min[layer] = min_val
+    #         self.autoencoder.original_max[layer] = max_val
+    #         layer_data_normalized = (layer_data - min_val) / (max_val - min_val) * 2 - 1
+    #         encoded_layer = self.autoencoder.encode_state({layer: layer_data_normalized})
+    #         encoded_layers.append(encoded_layer[layer])
+    #     return np.concatenate(encoded_layers, axis=0)
+
+    # def decode_observation(self, encoded_observation):
+    #     decoded_layers = []
+    #     for i, layer in enumerate(["map_view", "agent", "target", "jammer"]):
+    #         encoded_layer = encoded_observation[i]
+    #         decoded_layer = self.autoencoder.decode_state({layer: encoded_layer})
+    #         decoded_layer_denormalized = (decoded_layer[layer] + 1) / 2 * (self.autoencoder.original_max[layer] - self.autoencoder.original_min[layer]) + self.autoencoder.original_min[layer]
+    #         decoded_layers.append(decoded_layer_denormalized)
+    #     return np.stack(decoded_layers, axis=0)
     
 
     def reset(self, seed= None, options: dict = None):
@@ -187,7 +198,6 @@ class Environment(MultiAgentEnv):
 
         observations = {}
         encoded_observations = {}
-        #observations = np.zeros(self.observation_space.shape, dtype=np.float32)
         for agent_id in range(self.num_agents):
             obs = self.safely_observe(agent_id)
             self.agents[agent_id].set_observation_state(obs)
@@ -325,13 +335,19 @@ class Environment(MultiAgentEnv):
         # Collect final local states and calculate rewards
         local_states, rewards = self.collect_local_states_and_rewards()
 
-        # encoded_observations = {}
-        # for agent_id, obs in observations.items():
-        #     encoded_observations[agent_id] = {
-        #         "encoded_map": self.encode_observation(obs['map']),
-        #         "velocity": obs['velocity'],
-        #         "goal": obs['goal']
-        #         }
+        encoded_observations = {}
+        for agent_id, obs in observations.items():
+            # Split the 'map' observation into individual layers and encode them
+            map_layers = [obs['map'][i] for i in range(4)]
+            encoded_map = []
+            for i, layer in enumerate(["map_view", "agent", "target", "jammer"]):
+                encoded_layer = self.autoencoder.encode_state({layer: map_layers[i]})
+                encoded_map.append(encoded_layer[layer]['encoded'])
+            encoded_observations[agent_id] = {
+                "encoded_map": np.stack(encoded_map),
+                "velocity": obs['velocity'],
+                "goal": obs['goal']
+            }
         
         self.current_step += 1
         
@@ -341,21 +357,21 @@ class Environment(MultiAgentEnv):
 
         np.set_printoptions(threshold=2000, suppress=True, precision=1, linewidth=2000)
     
-        # print("Raw Observations")
-        # for agent_id, obs in observations.items():
-        #     print(f"Agent {agent_id}: {obs}")
+        print("Raw Observations")
+        for agent_id, obs in observations.items():
+            print(f"Agent {agent_id}: {obs}")
 
-        # # print("Encoded Observations")
-        # encoded_obs = {}
-        # for agent_id, obs in observations.items():
-        #     encoded_obs[agent_id] = self.autoencoder.encode_state(obs)
-        #     # print(f"Agent {agent_id}: {encoded_obs[agent_id]}")
+        print("Encoded Observations")
+        encoded_obs = {}
+        for agent_id, obs in encoded_observations.items():
+            encoded_obs[agent_id] = obs["encoded_map"]
+            print(f"Agent {agent_id}: {encoded_obs[agent_id]}")
         
-        # print("Decoded Observations")
-        # decoded_obs = {}
-        # for agent_id, encoded in encoded_obs.items():
-        #     decoded_obs[agent_id] = self.autoencoder.decode_state(encoded)
-        #     print(f"Agent {agent_id}: {decoded_obs[agent_id]}")
+        print("Decoded Observations")
+        decoded_obs = {}
+        for agent_id, encoded in encoded_obs.items():
+            decoded_obs[agent_id] = self.autoencoder.decode_state({layer: {'encoded': encoded[i]} for i, layer in enumerate(["map_view", "agent", "target", "jammer"])})
+            print(f"Agent {agent_id}: {decoded_obs[agent_id]}")
         
         # If i'm collecting observations I have to return observations. Once the auto encoder is trained I can return encoded observation
         return observations, rewards, terminated, truncated, info
@@ -888,7 +904,7 @@ class Environment(MultiAgentEnv):
         np.random.seed(seed)
         random.seed(seed)
 
-    def run_simulation(self, max_steps=40):
+    def run_simulation(self, max_steps=5):
         running = True
         step_count = 0
         collected_data = []
@@ -903,13 +919,13 @@ class Environment(MultiAgentEnv):
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(self.agents)}
             observations, rewards, terminated, truncated, self.info = self.step(action_dict)
             collected_data.append(observations)
-            #self.render()  
+            self.render()  
             step_count += 1
 
             if terminated or truncated:
                 break
 
-        #pygame.image.save(self.screen, "outputs/environment_snapshot.png")
+        pygame.image.save(self.screen, "outputs/environment_snapshot.png")
         self.reset()
         pygame.quit()
 

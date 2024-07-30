@@ -34,8 +34,8 @@ def generate_random_configs(base_config, num_configs):
     for _ in range(num_configs):
         config = base_config.copy()
         config['seed'] = np.random.randint(0, 100)
-        config['n_targets'] = np.random.randint(5, 11)  # Random number of targets > 5
-        config['n_jammers'] = np.random.randint(3, 8)  # Random number of jammers > 3
+        config['n_targets'] = np.random.randint(75, 95)  # Random number of targets > 5
+        config['n_jammers'] = np.random.randint(75, 95)  # Random number of jammers > 3
         configs.append(config)
     return configs
 
@@ -43,10 +43,9 @@ def main():
     config_path = 'config.yaml'  # Update this to your config file path
     base_config = load_config(config_path)
     
-    num_configs = 25 # Number of different settings you want to generate data for
-    steps_per_episode = 150  # Number of steps per episode
+    num_configs = 1 # Number of different settings you want to generate data for
+    steps_per_episode = 300  # Number of steps per episode
     all_data_layers = {key: [] for key in ["map_view", "agent", "target", "jammer"]}
-
     random_configs = generate_random_configs(base_config, num_configs)
     for config in random_configs:
         data_layers = collect_data_for_config(config, config_path, steps_per_episode)
