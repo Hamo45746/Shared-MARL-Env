@@ -34,8 +34,8 @@ def generate_random_configs(base_config, num_configs):
     for _ in range(num_configs):
         config = base_config.copy()
         config['seed'] = np.random.randint(0, 100)
-        config['n_targets'] = np.random.randint(75, 95)  # Random number of targets > 5
-        config['n_jammers'] = np.random.randint(75, 95)  # Random number of jammers > 3
+        config['n_targets'] = np.random.randint(85, 95)  # Random number of targets > 5
+        config['n_jammers'] = np.random.randint(100, 110)  # Random number of jammers > 3
         configs.append(config)
     return configs
 
