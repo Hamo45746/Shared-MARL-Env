@@ -104,7 +104,7 @@ class TaskAllocationAgent(DiscreteAgent):
             return self._action_space.sample()  # Return a random action if no valid actions
 
         action = self.randomiser.choice(valid_actions)
-        waypoint = self.action_to_waypoint(action)
+        # waypoint = self.action_to_waypoint(action)
         # print(f"TaskAllocationAgent get_next_action returned: {action}, waypoint: {waypoint}")
         return action
 

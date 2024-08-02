@@ -42,7 +42,11 @@ class AgentLayer:
         self.layer_state[nx, ny] = 0  # Refresh the new position to 0
 
     def set_position(self, agent_idx, x, y):
+        o_pos = self.agents[agent_idx].current_position()
         self.agents[agent_idx].set_position(x, y)
+        c_pos = np.zeros(2, dtype=np.int32)
+        c_pos[0], c_pos[1] = x, y
+        self.update_position(o_pos, c_pos)
 
     def get_position(self, agent_idx):
         """Returns the position of the given agent."""

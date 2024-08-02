@@ -206,7 +206,7 @@ class Environment(gym.core.Env):
             
             # Check for jammer destruction
             self.check_jammer_destruction()
-            # self.render()
+            self.render()
             self.current_step += 1
 
         # Calculate rewards
@@ -859,6 +859,6 @@ class Environment(gym.core.Env):
         return collected_data
 
 
-# config_path = 'config.yaml' 
-# env = Environment(config_path)
-# Environment.run_simulation(env, max_steps=100)
+config_path = 'config.yaml' 
+env = Environment(config_path)
+Environment.run_simulation(env, max_steps=2)
