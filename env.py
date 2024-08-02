@@ -1,6 +1,7 @@
 import gym # needed for MARLlib
 # import gymnasium as gym
 import numpy as np
+import sys
 import random
 import yaml
 import agent_utils
@@ -838,27 +839,44 @@ class Environment(gym.core.Env):
         step_count = 0
         collected_data = []
         
-        observations = self.reset()  # Reset the environment and get initial observations
-        print(self.global_state.shape)
+        observations = self.reset()
+        print("Initial global_state shape:", self.global_state.shape)
         collected_data.append(observations)
         
+        print("Initial full_state for each agent:")
+        for agent_id, agent in enumerate(self.agents):
+            print_full_state_summary(agent.get_state(), step_count, agent_id)
+        
         while step_count < max_steps:
-            # Generate new actions for all agents in every step
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(self.agents)}
             
-            # Update environment states with the action_dict
             observations, rewards, terminated, info = self.step(action_dict)
             
-            # Collect the observations
             collected_data.append(observations)
             step_count += 1
             
+            print(f"Step {step_count} completed")
+            print("Full_state for each agent after step:")
+            for agent_id, agent in enumerate(self.agents):
+                print_full_state_summary(agent.get_state(), step_count, agent_id)
+            
             if terminated:
                 break
-        gc.collect
+        gc.collect()
         return collected_data
 
+def print_full_state_summary(full_state, step, agent_id):
+    print(f"Full state summary for Agent {agent_id} at step {step}:")
+    for layer in range(full_state.shape[0]):
+        layer_data = full_state[layer]
+        print(f"  Layer {layer}:")
+        print(f"    Min: {np.min(layer_data):.2f}")
+        print(f"    Max: {np.max(layer_data):.2f}")
+        print(f"    Mean: {np.mean(layer_data):.2f}")
+        print(f"    Num non-negative: {np.sum(layer_data >= 0)}")
+        print(f"    Num -20: {np.sum(layer_data == -20)}")
+    sys.stdout.flush()
 
 config_path = 'config.yaml' 
 env = Environment(config_path)
-Environment.run_simulation(env, max_steps=2)
+Environment.run_simulation(env, max_steps=10)
