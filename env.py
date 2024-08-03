@@ -21,6 +21,7 @@ from Continuous_controller.reward import calculate_continuous_reward
 from gym import spaces
 # from gymnasium import spaces
 from path_processor_simple import PathProcessor
+import shutil
 
 
 class Environment(gym.core.Env):
@@ -166,14 +167,13 @@ class Environment(gym.core.Env):
         
     
     def task_allocation_step(self, actions_dict):
+        # First, compute paths for all agents based on their actions (waypoints)
         for agent_id, action in actions_dict.items():
             agent = self.agents[agent_id]
             start = tuple(self.agent_layer.get_position(agent_id))
-            goal = agent.action_to_waypoint(action)  # Use the agent's method to convert action to waypoint
+            goal = agent.action_to_waypoint(action)
             self.current_waypoints[agent_id] = goal
-            
-            new_path = self.path_processor.get_path(start, goal)
-            self.agent_paths[agent_id] = new_path
+            self.agent_paths[agent_id] = self.path_processor.get_path(start, goal)
 
         # Find the maximum path length
         max_path_length = max(len(path) for path in self.agent_paths.values())
@@ -181,12 +181,14 @@ class Environment(gym.core.Env):
         # Move agents and targets for max_path_length steps
         for step in range(max_path_length):
             # Move agents
-            for agent_id in actions_dict.keys():
-                if self.agent_paths[agent_id]:
-                    next_pos = self.agent_paths[agent_id].pop(0)
+            for agent_id, path in self.agent_paths.items():
+                if path:
+                    next_pos = path.pop(0)
                     self.agent_layer.set_position(agent_id, next_pos[0], next_pos[1])
-                    # self.agents[agent_id].reset_action_space()
-
+                    
+                    # Update agent's own trail after each movement
+                    self.agents[agent_id].update_own_trail()
+            
             # Move all targets
             for target in self.target_layer.targets:
                 action = target.get_next_action()
@@ -195,33 +197,30 @@ class Environment(gym.core.Env):
             self.target_layer.update()
             self.agent_layer.update()
             
-            # Update observations and communicate
-            self.update_observations()
+            # Update observations and share them
             self.share_and_update_observations()
 
             # Update jammed areas
             self.jammer_layer.activate_jammers(self.current_step)
-            # self.update_jammed_areas()
+            self.update_jammed_areas()
+            
             # Update global state
             self.update_global_state()
             
             # Check for jammer destruction
             self.check_jammer_destruction()
-            self.render()
+            
             self.current_step += 1
+            # self.render()
 
         # Calculate rewards
         rewards = self.collect_rewards()
-        observations = {}
-        for agent_id, agent in enumerate(self.agents):
-            observations[agent_id] = agent.get_observation()
-            
+        observations = {agent_id: agent.get_observation() for agent_id, agent in enumerate(self.agents)}
+        
         terminated = self.is_episode_done()
-        # truncated = self.is_episode_done()
         info = {}
 
-        # return local_states, rewards, terminated, truncated, info # For gymnasium
-        return observations, rewards, terminated, info # for gym and MARLlib
+        return observations, rewards, terminated, info
     
     def regular_step(self, actions_dict):
         # Update target positions and layer state
@@ -666,27 +665,34 @@ class Environment(gym.core.Env):
         xolo, yolo = abs(np.clip(xld, -self.obs_range // 2, 0)), abs(np.clip(yld, -self.obs_range // 2, 0))
         xohi, yohi = xolo + (xhi - xlo), yolo + (yhi - ylo)
         return xlo, xhi + 1, ylo, yhi + 1, xolo, xohi + 1, yolo, yohi + 1
-
-
+                        
     def share_and_update_observations(self):
         """
-        Updates each agent classes internal observation state and internal local (entire env) state.
-        Will merge current observations of agents within communication range into each agents local state.
-        This function should be run in the step function.
+        Updates each agent's full_state based on its own observations and those shared by other agents.
         """
-        for i, agent in enumerate(self.agent_layer.agents):
-            # safely_observe returns the current observation of agent i - but that should be called before this function
-            current_obs = agent.get_observation_state()
+        for i, agent in enumerate(self.agents):
+            current_obs = self.safely_observe(i)
             current_pos = agent.current_position()
-            # agent.set_observation_state(current_obs)
-            for j, other_agent in enumerate(self.agent_layer.agents):
+            
+            # Update the agent's full_state with its own observation
+            agent.update_full_state(current_obs, current_pos)
+
+            for j, other_agent in enumerate(self.agents):
                 if i != j:
                     other_pos = other_agent.current_position()
-                    agent_id = self.agent_name_mapping[agent]
-                    other_agent_id = self.agent_name_mapping[other_agent]
-                    if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(other_agent_id):
-                        other_agent.update_local_state(current_obs, current_pos)
-                        agent.communicated = True 
+                    if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(i) and not self.is_comm_blocked(j):
+                        # Share the current agent's observation with the other agent
+                        other_agent.update_full_state(current_obs, current_pos)
+                        
+                        # Also get the other agent's observation and update the current agent's full_state
+                        other_obs = self.safely_observe(j)
+                        agent.update_full_state(other_obs, other_pos)
+
+                        agent.communicated = True
+                        other_agent.communicated = True
+            
+            # Decay unobserved cells in the agent's full_state
+            agent.decay_full_state()
 
     # def share_and_update_observations(self):
     #     """
@@ -838,12 +844,16 @@ class Environment(gym.core.Env):
     def run_simulation(self, max_steps=100):
         step_count = 0
         collected_data = []
+        # Get the terminal size
+        terminal_size = shutil.get_terminal_size((80, 20))
+        
+        np.set_printoptions(threshold=np.inf)
         
         observations = self.reset()
-        print("Initial global_state shape:", self.global_state.shape)
+        # print("Initial global_state shape:", self.global_state.shape)
         collected_data.append(observations)
         
-        print("Initial full_state for each agent:")
+        # print("Initial full_state for each agent:")
         for agent_id, agent in enumerate(self.agents):
             print_full_state_summary(agent.get_state(), step_count, agent_id)
         
@@ -851,19 +861,76 @@ class Environment(gym.core.Env):
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(self.agents)}
             
             observations, rewards, terminated, info = self.step(action_dict)
-            
+            print(observations[0]['local_obs'])
             collected_data.append(observations)
             step_count += 1
             
             print(f"Step {step_count} completed")
             print("Full_state for each agent after step:")
-            for agent_id, agent in enumerate(self.agents):
-                print_full_state_summary(agent.get_state(), step_count, agent_id)
+            # for agent_id, agent in enumerate(self.agents):
+            #     print_full_state_summary(agent.get_state(), step_count, agent_id)
+            self.print_all_agents_full_state_regions()
+            # print_env_state_summary(step_count, self.global_state)
             
             if terminated:
                 break
         gc.collect()
         return collected_data
+    
+    def print_all_agents_full_state_regions(self, region_size=20):
+        """
+        Prints the full_state regions for all agents after each step.
+        """
+        print(f"\nStep {self.current_step} completed")
+        for agent_id, agent in enumerate(self.agents):
+            print(f"\nAgent {agent_id}:")
+            print_agent_full_state_region(agent, self.global_state, region_size)
+        print("\n" + "="*50 + "\n")  # Separator between steps
+    
+def print_agent_full_state_region(agent, global_state, region_size=20):
+    """
+    Prints a square region of the agent's full_state centered around the agent's current position.
+    
+    :param agent: The agent object
+    :param region_size: The size of the square region to print (default 20x20)
+    """
+    current_pos = agent.current_position()
+    half_size = region_size // 2
+    
+    x_start = max(0, current_pos[0] - half_size)
+    x_end = min(agent.xs, current_pos[0] + half_size)
+    y_start = max(0, current_pos[1] - half_size)
+    y_end = min(agent.ys, current_pos[1] + half_size)
+    
+    print(f"Agent at position [{current_pos[0]}, {current_pos[1]}]")
+    print(f"Printing {region_size}x{region_size} region of full_state:")
+    
+    # Get terminal width
+    terminal_width, _ = shutil.get_terminal_size()
+    
+    # for layer in range(1):
+    layer = 1
+    print(f"Layer {layer}:")
+    region = agent.local_state[layer, x_start:x_end, y_start:y_end]
+        
+        # Create a string representation of the region
+    region_str = np.array2string(region, 
+                                     formatter={'float': lambda x: f'{x:4.0f}'}, 
+                                     max_line_width=terminal_width,
+                                     threshold=np.inf,
+                                     separator=' ')
+    print(region_str)
+    print()
+    print("Corresponding global_state section:")
+    env_region = global_state[layer, x_start:x_end, y_start:y_end]
+    # Create a string representation of the region
+    region_str = np.array2string(env_region, 
+                                     formatter={'float': lambda x: f'{x:4.0f}'}, 
+                                     max_line_width=terminal_width,
+                                     threshold=np.inf,
+                                     separator=' ')
+    print(region_str)
+    print()
 
 def print_full_state_summary(full_state, step, agent_id):
     print(f"Full state summary for Agent {agent_id} at step {step}:")
@@ -876,7 +943,19 @@ def print_full_state_summary(full_state, step, agent_id):
         print(f"    Num non-negative: {np.sum(layer_data >= 0)}")
         print(f"    Num -20: {np.sum(layer_data == -20)}")
     sys.stdout.flush()
+    
+def print_env_state_summary(step, global_state):
+    print(f"Full state summary for Env at step {step}:")
+    for layer in range(global_state.shape[0]):
+        layer_data = global_state[layer]
+        print(f"  Layer {layer}:")
+        print(f"    Min: {np.min(layer_data):.2f}")
+        print(f"    Max: {np.max(layer_data):.2f}")
+        print(f"    Mean: {np.mean(layer_data):.2f}")
+        print(f"    Num non-negative: {np.sum(layer_data >= 0)}")
+        print(f"    Num -20: {np.sum(layer_data == -20)}")
+    sys.stdout.flush()
 
 config_path = 'config.yaml' 
 env = Environment(config_path)
-Environment.run_simulation(env, max_steps=10)
+Environment.run_simulation(env, max_steps=2)

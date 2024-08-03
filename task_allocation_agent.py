@@ -54,6 +54,9 @@ class TaskAllocationAgent(DiscreteAgent):
             discrete_action = self.determine_action(tuple(self.current_pos), next_pos)
             self.current_pos = super().step(discrete_action)
         
+        # After moving, update the agent's own trail
+        self.update_own_trail()
+        
         return self.current_pos
 
     def compute_path(self, start, goal):
@@ -115,3 +118,47 @@ class TaskAllocationAgent(DiscreteAgent):
         super().reset()
         self.path = []
         return self.get_observation()
+
+    def update_full_state(self, observed_state, observer_position):
+        observer_x, observer_y = observer_position
+        obs_half_range = self._obs_range // 2
+
+        for layer in range(1, observed_state.shape[0]):  # Start from layer 1, skip map layer
+            for dx in range(-obs_half_range, obs_half_range + 1):
+                for dy in range(-obs_half_range, obs_half_range + 1):
+                    global_x = observer_x + dx
+                    global_y = observer_y + dy
+                    obs_x = obs_half_range + dx
+                    obs_y = obs_half_range + dy
+                    
+                    if (self.inbounds(global_x, global_y) and
+                        0 <= obs_x < self._obs_range and
+                        0 <= obs_y < self._obs_range):
+                        observed_value = observed_state[layer, obs_x, obs_y]
+                        
+                        # Update the full_state directly
+                        if observed_value == 0:
+                            self.local_state[layer, global_x, global_y] = 0
+                        elif observed_value > self.local_state[layer, global_x, global_y]:
+                            self.local_state[layer, global_x, global_y] = observed_value
+
+    def decay_full_state(self):
+        for layer in range(1, self.local_state.shape[0]):  # Start from layer 1, skip map layer
+            # Create a mask for values to decay
+            decay_mask = (self.local_state[layer] < 0) & (self.local_state[layer] > -20)
+            
+            # Decay values
+            self.local_state[layer][decay_mask] -= 1
+            
+            # Ensure no values below -20
+            self.local_state[layer][self.local_state[layer] < -20] = -20
+
+    def update_own_trail(self):
+        current_pos = tuple(map(int, self.current_pos))
+        
+        # Set current position to 0
+        self.local_state[1, current_pos[0], current_pos[1]] = 0
+        
+        # Start new trail from the previous positions
+        trail_mask = (self.local_state[1] == 0) & (np.array(current_pos) != np.indices(self.local_state[1].shape))
+        self.local_state[1][trail_mask] = -1

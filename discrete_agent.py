@@ -42,7 +42,7 @@ class DiscreteAgent(BaseAgent):
         self.X, self.Y = map_matrix.shape
         self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-20)
         self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20, dtype=np.float16)
-        self.local_state[0] = map_matrix
+        self.local_state[0] = map_matrix # TODO: Assuption that we have a map - can be outdated?
         self.path = []
         
         # Ensure the action space is compatible with MARLlib
