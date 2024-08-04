@@ -104,9 +104,9 @@ class DiscreteAgent(BaseAgent):
         return self.observation_state
     
     def reset(self):
-        self.current_pos = np.zeros(2, dtype=np.int32)
-        self.last_pos = np.zeros(2, dtype=np.int32)
-        self.temp_pos = np.zeros(2, dtype=np.int32)
+        self.current_pos = np.zeros(2, dtype=np.int16)
+        self.last_pos = np.zeros(2, dtype=np.int16)
+        self.temp_pos = np.zeros(2, dtype=np.int16)
         self.path = []
         self.observation_state.fill(-20)
         self.local_state.fill(-20)

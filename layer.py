@@ -21,6 +21,7 @@ class AgentLayer:
         self.agents = agents
         self.nagents = len(agents)
         self.layer_state = np.full((xs, ys), -20)
+        # print("AgentLayer shape: ", self.layer_state.shape)
 
     def n_agents(self):
         return self.nagents
@@ -44,9 +45,9 @@ class AgentLayer:
     def set_position(self, agent_idx, x, y):
         o_pos = self.agents[agent_idx].current_position()
         self.agents[agent_idx].set_position(x, y)
-        c_pos = np.zeros(2, dtype=np.int32)
-        c_pos[0], c_pos[1] = x, y
-        self.update_position(o_pos, c_pos)
+        n_pos = np.zeros(2, dtype=np.int16)
+        n_pos[0], n_pos[1] = x, y
+        self.update_position(o_pos, n_pos)
 
     def get_position(self, agent_idx):
         """Returns the position of the given agent."""

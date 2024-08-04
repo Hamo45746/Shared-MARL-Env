@@ -18,16 +18,16 @@ map_path: 'city_image_1.npy'
 #map_path: 'city_image_3.npy'
 
 n_agents: 4
-n_targets: 2
+n_targets: 70
 n_jammers: 3
 jamming_radius: 20 #This is radius, in comparison to comms_range. That is why it is a smaller value then comms_range, but looks bigger relitivly.  
 
 seed: 1
 
 # Example locations
-#agent_positions:
-#- [17, 39]
-#  - [71, 17]
+agent_positions:
+ - [1, 17]
+ - [3, 17]
 #  - [23, 37]
 #  - [31, 13]
 #  - [61, 19]

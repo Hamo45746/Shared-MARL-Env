@@ -42,6 +42,14 @@ class Environment(gym.core.Env):
 
         # Load and process the map
         self.map_matrix = self.load_map()
+        # terminal_width, _ = shutil.get_terminal_size()
+        # np.set_printoptions(threshold=np.inf, max_line_width=terminal_width)
+        # region_str = np.array2string(self.map_matrix, 
+        #                              formatter={'float': lambda x: f'{x:4.0f}'}, 
+        #                              max_line_width=terminal_width,
+        #                              threshold=np.inf,
+        #                              separator='')
+        # print(region_str)
         self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.float16)
         self.global_state[0] = self.map_matrix
         
@@ -73,7 +81,7 @@ class Environment(gym.core.Env):
 
     def load_map(self):
         original_map = np.load(self.config['map_path'])[:, :, 0]
-        original_map = original_map.transpose()
+        original_map = original_map.transpose() # want to keep map as horizontal rectangle - do transposition in render instead
         original_x, original_y = original_map.shape
         self.X = int(original_x * self.map_scale)
         self.Y = int(original_y * self.map_scale)
@@ -180,14 +188,21 @@ class Environment(gym.core.Env):
 
         # Move agents and targets for max_path_length steps
         for step in range(max_path_length):
+            for agent in self.agents:
+                agent.decay_full_state()
             # Move agents
             for agent_id, path in self.agent_paths.items():
                 if path:
                     next_pos = path.pop(0)
+                    # if agent_id == 3:
+                    #     agent = self.agents[agent_id]
+                    #     action = agent.determine_action(agent.current_position(), next_pos)
+                        # print(f"Agent {agent_id} Current pos: {agent.current_position()}. Next pos: {next_pos}. Via action: {agent.motion_range[action]}")
                     self.agent_layer.set_position(agent_id, next_pos[0], next_pos[1])
                     
                     # Update agent's own trail after each movement
-                    self.agents[agent_id].update_own_trail()
+                    # self.agents[agent_id].update_own_trail()
+
             
             # Move all targets
             for target in self.target_layer.targets:
@@ -196,19 +211,24 @@ class Environment(gym.core.Env):
             
             self.target_layer.update()
             self.agent_layer.update()
-            
-            # Update observations and share them
-            self.share_and_update_observations()
 
             # Update jammed areas
             self.jammer_layer.activate_jammers(self.current_step)
             self.update_jammed_areas()
             
-            # Update global state
-            self.update_global_state()
-            
             # Check for jammer destruction
             self.check_jammer_destruction()
+            
+            # Update global state
+            self.update_global_state()
+            # for i, agent in enumerate(self.agents):
+            #     agent.decay_full_state()
+            # Update observations and share them
+            self.share_and_update_observations()
+            # print(self.agents[3].get_observation_state()[1])
+            
+            for i, agent in enumerate(self.agents):
+                print_agent_full_state_region(agent, self.global_state)
             
             self.current_step += 1
             # self.render()
@@ -604,8 +624,9 @@ class Environment(gym.core.Env):
     
     
     def safely_observe(self, agent_id):
+        # Use collect_obs to get the observation
         obs = self.collect_obs(self.agent_layer, agent_id)
-        obs = obs.transpose((0,2,1))
+        # Clip the observation to the specified range
         if self.agent_type == 'task_allocation':
             obs = np.clip(obs, self.observation_space['local_obs'].low, self.observation_space['local_obs'].high)
         else:
@@ -625,29 +646,19 @@ class Environment(gym.core.Env):
         # Calculate bounds for the observation
         xlo, xhi, ylo, yhi, xolo, xohi, yolo, yohi = self.obs_clip(xp, yp)
         
-        xlo1 = int(xlo)
-        xhi1 = int(xhi)
-        ylo1 = int(ylo)
-        yhi1 = int(yhi)
-        xolo = int(xolo)
-        xohi = int(xohi)
-        yolo = int(yolo)
-        yohi = int(yohi)
+        xlo1, xhi1, ylo1, yhi1 = int(xlo), int(xhi), int(ylo), int(yhi)
+        xolo, xohi, yolo, yohi = int(xolo), int(xohi), int(yolo), int(yohi)
         
         # Populate the observation array with data from all layers
         for layer in range(self.global_state.shape[0]):
             obs_slice = self.global_state[layer, xlo1:xhi1, ylo1:yhi1]
-            obs_shape = obs_slice.shape
-            if xolo != 0 and yohi == 17: 
-                pad_width = [(0,0), (self.obs_range-obs_shape[0], 0),(self.obs_range-obs_shape[1], 0)]
-            elif yolo !=0 and xolo == 0:
-                pad_width = [(0,0), (0, self.obs_range-obs_shape[0]),(self.obs_range-obs_shape[1], 0)]
-            elif xolo == 0 and yolo == 0:
-                pad_width = [(0,0), (0, self.obs_range-obs_shape[0]),(0, self.obs_range-obs_shape[1])]
-            elif yolo == 0 and xohi == 17:
-                pad_width = [(0,0), (self.obs_range-obs_shape[0], 0),(0, self.obs_range-obs_shape[1])]
-            obs_padded = np.pad(obs_slice, pad_width[1:], mode='constant', constant_values=-21)
-            obs[layer, :obs_padded.shape[0], :obs_padded.shape[1]] = obs_padded
+            
+            # Create a full-sized slice and place the obs_slice in the correct position
+            full_slice = np.full((self.obs_range, self.obs_range), fill_value=-20, dtype=np.float16)
+            full_slice[xolo:xohi, yolo:yohi] = obs_slice
+            
+            obs[layer] = full_slice
+
         return obs
 
 
@@ -667,32 +678,43 @@ class Environment(gym.core.Env):
         return xlo, xhi + 1, ylo, yhi + 1, xolo, xohi + 1, yolo, yohi + 1
                         
     def share_and_update_observations(self):
-        """
-        Updates each agent's full_state based on its own observations and those shared by other agents.
-        """
         for i, agent in enumerate(self.agents):
+            # agent.decay_full_state()
             current_obs = self.safely_observe(i)
             current_pos = agent.current_position()
-            
-            # Update the agent's full_state with its own observation
+            agent.set_observation_state(current_obs)
             agent.update_full_state(current_obs, current_pos)
-
+            
             for j, other_agent in enumerate(self.agents):
                 if i != j:
                     other_pos = other_agent.current_position()
                     if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(i) and not self.is_comm_blocked(j):
-                        # Share the current agent's observation with the other agent
+                        print(f"Agent {i} is communicating with Agent {j}")
                         other_agent.update_full_state(current_obs, current_pos)
-                        
-                        # Also get the other agent's observation and update the current agent's full_state
                         other_obs = self.safely_observe(j)
-                        agent.update_full_state(other_obs, other_pos)
+                        terminal_width, _ = shutil.get_terminal_size()
+                        np.set_printoptions(threshold=np.inf, linewidth=terminal_width)
+                        
+                        # Print the other agent's observation
+                        # print(f"Agent {j}'s observation:")
+                        # print(other_agent.get_observation_state()[1:2])
 
+                        # Print the section of the agent's local state before communication
+                        # print(f"Agent {i} local state at Agent {j}'s observation location before communication:")
+                        # self.print_local_state_section(agent, other_pos)
+                        
+                        agent.update_full_state(other_obs, other_pos)
+                        
+                        # Print the section of the agent's local state after communication
+                        # print(f"Agent {i} local state at Agent {j}'s observation location after communication:")
+                        # self.print_local_state_section(agent, other_pos)
+                        # print("---")
+                        
                         agent.communicated = True
                         other_agent.communicated = True
             
             # Decay unobserved cells in the agent's full_state
-            agent.decay_full_state()
+            # agent.decay_full_state()
 
     # def share_and_update_observations(self):
     #     """
@@ -706,36 +728,36 @@ class Environment(gym.core.Env):
     #     for i, agent in enumerate(self.agents):
     #         current_obs = agent.get_observation_state()
     #         current_pos = agent.current_position()
-    #         #print(f"Agent {i} local state before communication:")
+    #         # print(f"Agent {i} local state before communication:")
 
     #         for j, other_agent in enumerate(self.agents):
     #             if i != j:
     #                 other_pos = other_agent.current_position()
     #                 if self.within_comm_range(current_pos, other_pos):
     #                     if not self.is_comm_blocked(i):
-    #                         #print(f"Agent {i} is communicating with Agent {j}")
+    #                         print(f"Agent {i} is communicating with Agent {j}")
 
     #                         # Print the other agent's observation
-    #                         #print(f"Agent {j}'s observation:")
-    #                         #print(other_agent.get_observation_state())
+    #                         print(f"Agent {j}'s observation:")
+    #                         print(other_agent.get_observation_state())
 
     #                         # Print the section of the agent's local state before communication
-    #                         #print(f"Agent {i} local state at Agent {j}'s observation location before communication:")
-    #                         #self.print_local_state_section(agent, other_pos)
+    #                         print(f"Agent {i} local state at Agent {j}'s observation location before communication:")
+    #                         self.print_local_state_section(agent, other_pos)
 
     #                         other_agent.update_local_state(current_obs, current_pos)
     #                         agent.communicated = True 
 
     #                         # Print the section of the agent's local state after communication
-    #                         #print(f"Agent {i} local state at Agent {j}'s observation location after communication:")
-    #                         #self.print_local_state_section(agent, other_pos)
-    #                         #print("---")
-    #                     # else:
-    #                     #    print(f"Agent {i} is within a jammed area and cannot communicate with Agent {j}")
-    #                 #else:
-    #                     #print(f"Agent {i} is out of communication range with Agent {j}")
-    #                 #if self.is_comm_blocked(i):
-    #                     #print("comm is blocked")
+    #                         print(f"Agent {i} local state at Agent {j}'s observation location after communication:")
+    #                         self.print_local_state_section(agent, other_pos)
+    #                         print("---")
+    #                     else:
+    #                        print(f"Agent {i} is within a jammed area and cannot communicate with Agent {j}")
+    #                 else:
+    #                     print(f"Agent {i} is out of communication range with Agent {j}")
+    #                 if self.is_comm_blocked(i):
+    #                     print("comm is blocked")
 
     def print_local_state_section(self, agent, other_pos):
         """
@@ -751,7 +773,7 @@ class Environment(gym.core.Env):
         y_start = int(y_start)
         y_end = int(y_end)
         
-        local_state_section = agent.local_state[:, x_start:x_end, y_start:y_end]
+        local_state_section = agent.local_state[1:2, x_start:x_end, y_start:y_end]
         print(local_state_section)
     
     
@@ -854,22 +876,22 @@ class Environment(gym.core.Env):
         collected_data.append(observations)
         
         # print("Initial full_state for each agent:")
-        for agent_id, agent in enumerate(self.agents):
-            print_full_state_summary(agent.get_state(), step_count, agent_id)
+        # for agent_id, agent in enumerate(self.agents):
+        #     print_full_state_summary(agent.get_state(), step_count, agent_id)
         
         while step_count < max_steps:
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(self.agents)}
             
             observations, rewards, terminated, info = self.step(action_dict)
-            print(observations[0]['local_obs'])
+            # print(observations[0]['local_obs'])
             collected_data.append(observations)
             step_count += 1
             
-            print(f"Step {step_count} completed")
-            print("Full_state for each agent after step:")
+            # print(f"Step {step_count} completed")
+            # print("Full_state for each agent after step:")
             # for agent_id, agent in enumerate(self.agents):
             #     print_full_state_summary(agent.get_state(), step_count, agent_id)
-            self.print_all_agents_full_state_regions()
+            # self.print_all_agents_full_state_regions()
             # print_env_state_summary(step_count, self.global_state)
             
             if terminated:
@@ -918,9 +940,11 @@ def print_agent_full_state_region(agent, global_state, region_size=20):
                                      formatter={'float': lambda x: f'{x:4.0f}'}, 
                                      max_line_width=terminal_width,
                                      threshold=np.inf,
-                                     separator=' ')
+                                     separator='')
     print(region_str)
     print()
+    print("Agent observation for region:")
+    print(agent.get_observation_state()[1])
     print("Corresponding global_state section:")
     env_region = global_state[layer, x_start:x_end, y_start:y_end]
     # Create a string representation of the region
@@ -928,7 +952,7 @@ def print_agent_full_state_region(agent, global_state, region_size=20):
                                      formatter={'float': lambda x: f'{x:4.0f}'}, 
                                      max_line_width=terminal_width,
                                      threshold=np.inf,
-                                     separator=' ')
+                                     separator='')
     print(region_str)
     print()
 
