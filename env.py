@@ -227,8 +227,8 @@ class Environment(gym.core.Env):
             self.share_and_update_observations()
             # print(self.agents[3].get_observation_state()[1])
             
-            for i, agent in enumerate(self.agents):
-                print_agent_full_state_region(agent, self.global_state)
+            # for i, agent in enumerate(self.agents):
+            #     print_agent_full_state_region(agent, self.global_state)
             
             self.current_step += 1
             # self.render()
