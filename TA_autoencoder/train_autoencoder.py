@@ -348,17 +348,11 @@ def visualise_autoencoder_progress(autoencoder, h5_folder, epoch, output_folder,
     # Save the figure
     plt.tight_layout()
     plt.savefig(os.path.join(output_folder, f'layer_{layer}_epoch_{epoch}.png'), dpi=300, bbox_inches='tight')
-    plt.close
+    plt.close(fig)
 
     print(f"Visualisations for epoch {epoch} saved in {output_folder}")
 
-def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32):
-    dataset = FlattenedMultiAgentH5Dataset(h5_files)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
-
-    print(f"Training with batch size: {batch_size}")
-    print(f"Total number of batches per epoch: {len(dataloader)}")
-
+def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32):
     output_folder = os.path.join(H5_FOLDER, 'training_visualisations')
     os.makedirs(output_folder, exist_ok=True)
 
@@ -366,8 +360,16 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32):
     writer = SummaryWriter(log_dir=os.path.join(H5_FOLDER, 'tensorboard_logs'))
 
     try:
-        for ae_index in range(3):  # We now have 3 autoencoders
+        for ae_index in range(3):  # We have 3 autoencoders
             print(f"Training autoencoder {ae_index}")
+            
+            # Use appropriate dataset for each autoencoder
+            if ae_index == 2:
+                dataset = FlattenedMultiAgentH5Dataset(h5_files_all_jammers)
+            else:
+                dataset = FlattenedMultiAgentH5Dataset(h5_files_low_jammers)
+            
+            dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
             
             start_epoch = load_training_state(autoencoder, ae_index)
             
@@ -375,7 +377,7 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32):
                 if interrupt_flag.value:
                     print(f"Interrupt detected. Saving progress for autoencoder {ae_index}...")
                     save_training_state(autoencoder, ae_index, epoch)
-                    writer.flush()  # Ensure all pending events are flushed to disk
+                    writer.flush()
                     return
 
                 try:
@@ -385,9 +387,9 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32):
                     
                     for batch in tqdm(dataloader, desc=f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs}"):
                         if interrupt_flag.value:
-                            raise KeyboardInterrupt  # Raise to break out of the loop
+                            raise KeyboardInterrupt
 
-                        if ae_index == 1:  # For the shared autoencoder (layers 1 and 2) - effectively doubles batch size
+                        if ae_index == 1:  # For the shared autoencoder (layers 1 and 2)
                             layer_batch = {
                                 f'layer_{ae_index}': torch.cat([batch[f'layer_1'], batch[f'layer_2']], dim=0)
                             } 
@@ -431,7 +433,7 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32):
                     if (epoch + 1) % 10 == 0:
                         autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_epoch_{epoch+1}.pth"))
                         # Generate and save visualizations
-                        visualise_autoencoder_progress(autoencoder, H5_FOLDER, epoch + 1, output_folder)
+                        visualise_autoencoder_progress(autoencoder, H5_FOLDER, epoch + 1, output_folder, ae_index)
 
                     mem_percent = psutil.virtual_memory().percent
                     logging.info(f"Memory usage: {mem_percent}%")
@@ -443,7 +445,7 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32):
                 except KeyboardInterrupt:
                     print(f"Interrupt detected. Saving progress for autoencoder {ae_index}...")
                     save_training_state(autoencoder, ae_index, epoch)
-                    writer.flush()  # Ensure all pending events are flushed to disk
+                    writer.flush()
                     return
 
                 except Exception as e:
@@ -467,35 +469,48 @@ def main():
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
     original_config = load_config(config_path)
     
+    # Configuration ranges for autoencoders 0 and 1
     seed_range = range(1, 5)
     num_agents_range = range(10, 15)
     num_targets_range = range(40, 45)
-    num_jammers_range = range(0, 4)
+    num_jammers_range_low = range(0, 5)  # 0-4 jammers
+    
+    # Additional configuration range for autoencoder 2 (jammer layer)
+    num_jammers_range_high = range(85, 91)  # 85-90 jammers
     
     configs = [
         {'seed': seed, 'n_agents': num_agents, 'n_targets': num_targets, 'n_jammers': num_jammers}
         for seed in seed_range
         for num_agents in num_agents_range
         for num_targets in num_targets_range
-        for num_jammers in num_jammers_range
+        for num_jammers in num_jammers_range_low
     ]
     
-    total_configs = len(configs)
+    # Additional configs for autoencoder 2
+    configs_high_jammers = [
+        {'seed': seed, 'n_agents': num_agents, 'n_targets': num_targets, 'n_jammers': num_jammers}
+        for seed in seed_range
+        for num_agents in num_agents_range
+        for num_targets in num_targets_range
+        for num_jammers in num_jammers_range_high
+    ]
+    
+    all_configs = configs + configs_high_jammers
+    
+    total_configs = len(all_configs)
     initial_completed = len(load_progress())
     print(f"Initial completed configurations: {initial_completed}/{total_configs}")
     
     configs_to_process = []
-    for config in configs:
+    for config in all_configs:
         filename = f"data_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
         filepath = os.path.join(H5_FOLDER, filename)
-        if not os.path.exists(filepath):
-            configs_to_process.append((config, config_path, H5_FOLDER, STEPS_PER_EPISODE))
-            continue
-        if not is_dataset_complete(filepath, STEPS_PER_EPISODE):
+        if not os.path.exists(filepath) or not is_dataset_complete(filepath, STEPS_PER_EPISODE):
             configs_to_process.append((config, config_path, H5_FOLDER, STEPS_PER_EPISODE))
     
     print(f"Configurations to process: {len(configs_to_process)}")
     
+    # Process configurations
     num_processes = max(1, mp.cpu_count() - 1)
     with Pool(processes=num_processes, initializer=init_worker) as pool:
         try:
@@ -516,9 +531,11 @@ def main():
     if len(completed_configs) == total_configs:
         print("All configurations processed. Starting autoencoder training...")
 
-        h5_files = [os.path.join(H5_FOLDER, filename) for filename in completed_configs]
+        # Separate h5 files for regular and high-jammer configurations
+        h5_files_low_jammers = [os.path.join(H5_FOLDER, filename) for filename in completed_configs if int(filename.split('_j')[1].split('_')[0]) < 5]
+        h5_files_all_jammers = [os.path.join(H5_FOLDER, filename) for filename in completed_configs]
         
-        with h5py.File(h5_files[0], 'r') as f:
+        with h5py.File(h5_files_low_jammers[0], 'r') as f:
             first_step = f['data']['0']
             first_agent = first_step[list(first_step.keys())[0]]
             input_shape = first_agent['full_state'].shape
@@ -526,7 +543,12 @@ def main():
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         autoencoder = EnvironmentAutoencoder(input_shape, device)
 
-        train_autoencoder(autoencoder, h5_files)
+        # Train autoencoders
+        train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers)
+
+        # Save the final autoencoder
+        autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
+        print(f"Final autoencoder saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
     else:
         print(f"Not all configurations are complete. {len(completed_configs)}/{total_configs} configurations are ready.")
         print("Please run the script again to process the remaining configurations.")

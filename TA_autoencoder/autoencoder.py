@@ -93,12 +93,12 @@ class EnvironmentAutoencoder:
     def custom_loss(self, recon_x, x, layer):
         if layer == 0:  # Binary case (0/1)
             return F.mse_loss(recon_x, x, reduction='mean')
-        else:  # -20 to 0 case
+        else:  # -20 to 0 case (including jammer layer)
             x_rescaled = self.inverse_scalers[layer](x)
             recon_x_rescaled = self.inverse_scalers[layer](recon_x)
             
-            # Add a small epsilon to avoid division by zero
-            weights = torch.exp(x_rescaled / 20) + 1e-8
+            # Increase weight for values closer to 0
+            weights = torch.exp(-x_rescaled / 5) + 1e-8  # Adjust the divisor to control the weighting curve
             mse_loss = torch.mean(weights * (recon_x_rescaled - x_rescaled)**2)
             
             return mse_loss
