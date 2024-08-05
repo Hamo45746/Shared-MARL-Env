@@ -25,9 +25,9 @@ jamming_radius: 20 #This is radius, in comparison to comms_range. That is why it
 seed: 1
 
 # Example locations
-agent_positions:
- - [1, 17]
- - [3, 17]
+# agent_positions:
+#  - [1, 17]
+#  - [3, 17]
 #  - [23, 37]
 #  - [31, 13]
 #  - [61, 19]

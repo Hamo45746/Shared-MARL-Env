@@ -307,10 +307,10 @@ def load_training_state(autoencoder, layer):
         return state['epoch']
     return 0
 
-def visualise_autoencoder_progress_table(autoencoder, h5_folder, epoch, output_folder):
+def visualise_autoencoder_progress(autoencoder, h5_folder, epoch, output_folder, layer):
     # Find a suitable H5 file (with high number of targets and agents)
     suitable_file = None
-    for filename in os.listdir(h5_folder): # Should get the same data file everytime - not smart way to do it though
+    for filename in os.listdir(h5_folder):
         if filename.endswith('.h5') and 'a7' in filename and 't7' in filename:
             suitable_file = os.path.join(h5_folder, filename)
             break
@@ -328,47 +328,27 @@ def visualise_autoencoder_progress_table(autoencoder, h5_folder, epoch, output_f
     # Create output folder if it doesn't exist
     os.makedirs(output_folder, exist_ok=True)
 
-    # Visualise each layer
-    for layer in range(4):
-        fig, axes = plt.subplots(1, 3, figsize=(20, 10))
-        fig.suptitle(f'Layer {layer} - Epoch {epoch}')
+    fig, axes = plt.subplots(1, 2, figsize=(20, 10))
+    fig.suptitle(f'Layer {layer} - Epoch {epoch}')
 
-        # Input
-        axes[0].axis('tight')
-        axes[0].axis('off')
-        input_table = axes[0].table(cellText=full_state[layer].round(2), loc='center', cellLoc='center')
-        axes[0].set_title('Input')
+    # Input
+    im_input = axes[0].imshow(full_state[layer], cmap='viridis')
+    axes[0].set_title('Input')
+    plt.colorbar(im_input, ax=axes[0], fraction=0.046, pad=0.04)
 
-        # Encode
-        ae_index = min(layer, 2)  # Use the same autoencoder for layers 1 and 2
-        encoded = autoencoder.encode_state(full_state)[layer]
-        axes[1].axis('tight')
-        axes[1].axis('off')
-        encoded_table = axes[1].table(cellText=encoded.reshape(-1, 1).round(2), loc='center', cellLoc='center')
-        axes[1].set_title('Encoded (256 values)')
+    # Output
+    ae_index = min(layer, 2)  # Use the same autoencoder for layers 1 and 2
+    with torch.no_grad():
+        encoded = autoencoder.autoencoders[ae_index].encode(torch.FloatTensor(full_state[layer]).unsqueeze(0).unsqueeze(0))
+        decoded = autoencoder.autoencoders[ae_index].decoder(encoded).cpu().numpy().squeeze()
+    im_output = axes[1].imshow(decoded, cmap='viridis')
+    axes[1].set_title('Output')
+    plt.colorbar(im_output, ax=axes[1], fraction=0.046, pad=0.04)
 
-        # Output
-        decoded = autoencoder.decode_state(autoencoder.encode_state(full_state))[layer]
-        axes[2].axis('tight')
-        axes[2].axis('off')
-        output_table = axes[2].table(cellText=decoded.round(2), loc='center', cellLoc='center')
-        axes[2].set_title('Output')
-
-        # Adjust table styles
-        for table in [input_table, output_table]:
-            table.auto_set_font_size(False)
-            table.set_fontsize(8)
-            table.scale(1, 1.5)
-
-        # Adjust encoded table style
-        encoded_table.auto_set_font_size(False)
-        encoded_table.set_fontsize(6)
-        encoded_table.scale(0.5, 1)
-
-        # Save the figure
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_folder, f'layer_{layer}_epoch_{epoch}.png'), dpi=300, bbox_inches='tight')
-        plt.close(fig)
+    # Save the figure
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_folder, f'layer_{layer}_epoch_{epoch}.png'), dpi=300, bbox_inches='tight')
+    plt.close
 
     print(f"Visualisations for epoch {epoch} saved in {output_folder}")
 
@@ -451,7 +431,7 @@ def train_autoencoder(autoencoder, h5_files, num_epochs=100, batch_size=32):
                     if (epoch + 1) % 10 == 0:
                         autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_epoch_{epoch+1}.pth"))
                         # Generate and save visualizations
-                        visualise_autoencoder_progress_table(autoencoder, H5_FOLDER, epoch + 1, output_folder)
+                        visualise_autoencoder_progress(autoencoder, H5_FOLDER, epoch + 1, output_folder)
 
                     mem_percent = psutil.virtual_memory().percent
                     logging.info(f"Memory usage: {mem_percent}%")
@@ -487,9 +467,9 @@ def main():
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
     original_config = load_config(config_path)
     
-    seed_range = range(1, 7)
-    num_agents_range = range(1, 8)
-    num_targets_range = range(1, 8)
+    seed_range = range(1, 5)
+    num_agents_range = range(10, 15)
+    num_targets_range = range(40, 45)
     num_jammers_range = range(0, 4)
     
     configs = [

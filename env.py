@@ -689,11 +689,11 @@ class Environment(gym.core.Env):
                 if i != j:
                     other_pos = other_agent.current_position()
                     if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(i) and not self.is_comm_blocked(j):
-                        print(f"Agent {i} is communicating with Agent {j}")
+                        # print(f"Agent {i} is communicating with Agent {j}")
                         other_agent.update_full_state(current_obs, current_pos)
                         other_obs = self.safely_observe(j)
-                        terminal_width, _ = shutil.get_terminal_size()
-                        np.set_printoptions(threshold=np.inf, linewidth=terminal_width)
+                        # terminal_width, _ = shutil.get_terminal_size()
+                        # np.set_printoptions(threshold=np.inf, linewidth=terminal_width)
                         
                         # Print the other agent's observation
                         # print(f"Agent {j}'s observation:")
@@ -867,9 +867,9 @@ class Environment(gym.core.Env):
         step_count = 0
         collected_data = []
         # Get the terminal size
-        terminal_size = shutil.get_terminal_size((80, 20))
+        # terminal_size = shutil.get_terminal_size((80, 20))
         
-        np.set_printoptions(threshold=np.inf)
+        # np.set_printoptions(threshold=np.inf)
         
         observations = self.reset()
         # print("Initial global_state shape:", self.global_state.shape)
