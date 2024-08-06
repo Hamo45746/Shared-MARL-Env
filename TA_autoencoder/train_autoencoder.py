@@ -279,6 +279,14 @@ def process_config(args):
         config, config_path, h5_folder, steps_per_episode = args
         filepath = collect_data_for_config(config, config_path, steps_per_episode, h5_folder)
         if is_dataset_complete(filepath, steps_per_episode):
+            # Verify that the file contains data for all 4 layers
+            with h5py.File(filepath, 'r') as f:
+                first_step = f['data']['0']
+                first_agent = first_step[list(first_step.keys())[0]]
+                full_state = first_agent['full_state'][()]
+                if full_state.shape[0] != 4:
+                    logging.error(f"Incorrect number of layers in {filepath}: expected 4, got {full_state.shape[0]}")
+                    return None
             progress = load_progress()
             progress.add(os.path.basename(filepath))
             save_progress(progress)
@@ -307,11 +315,11 @@ def load_training_state(autoencoder, layer):
         return state['epoch']
     return 0
 
-def visualise_autoencoder_progress(autoencoder, h5_folder, epoch, output_folder, layer):
+def visualise_autoencoder_progress(autoencoder, h5_folder, epoch, output_folder, ae_index):
     # Find a suitable H5 file (with high number of targets and agents)
     suitable_file = None
     for filename in os.listdir(h5_folder):
-        if filename.endswith('.h5') and 'a7' in filename and 't7' in filename:
+        if filename.endswith('.h5') and 'a14' in filename and 't42' in filename:
             suitable_file = os.path.join(h5_folder, filename)
             break
     
@@ -329,28 +337,36 @@ def visualise_autoencoder_progress(autoencoder, h5_folder, epoch, output_folder,
     os.makedirs(output_folder, exist_ok=True)
 
     fig, axes = plt.subplots(1, 2, figsize=(20, 10))
-    fig.suptitle(f'Layer {layer} - Epoch {epoch}')
+    fig.suptitle(f'Autoencoder {ae_index} - Epoch {epoch}')
 
-    # Input
-    im_input = axes[0].imshow(full_state[layer], cmap='viridis')
-    axes[0].set_title('Input')
-    plt.colorbar(im_input, ax=axes[0], fraction=0.046, pad=0.04)
+    # Determine which layer(s) to visualize based on ae_index
+    if ae_index == 0:
+        layers_to_visualize = [0]
+    elif ae_index == 1:
+        layers_to_visualize = [1, 2]
+    else:  # ae_index == 2
+        layers_to_visualize = [3]
 
-    # Output
-    ae_index = min(layer, 2)  # Use the same autoencoder for layers 1 and 2
-    with torch.no_grad():
-        encoded = autoencoder.autoencoders[ae_index].encode(torch.FloatTensor(full_state[layer]).unsqueeze(0).unsqueeze(0))
-        decoded = autoencoder.autoencoders[ae_index].decoder(encoded).cpu().numpy().squeeze()
-    im_output = axes[1].imshow(decoded, cmap='viridis')
-    axes[1].set_title('Output')
-    plt.colorbar(im_output, ax=axes[1], fraction=0.046, pad=0.04)
+    for layer in layers_to_visualize:
+        # Input
+        im_input = axes[0].imshow(full_state[layer], cmap='viridis')
+        axes[0].set_title(f'Input (Layer {layer})')
+        plt.colorbar(im_input, ax=axes[0], fraction=0.046, pad=0.04)
 
-    # Save the figure
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_folder, f'layer_{layer}_epoch_{epoch}.png'), dpi=300, bbox_inches='tight')
-    plt.close(fig)
+        # Output
+        with torch.no_grad():
+            encoded = autoencoder.autoencoders[ae_index].encode(torch.FloatTensor(full_state[layer]).unsqueeze(0).unsqueeze(0))
+            decoded = autoencoder.autoencoders[ae_index].decoder(encoded).cpu().numpy().squeeze()
+        im_output = axes[1].imshow(decoded, cmap='viridis')
+        axes[1].set_title(f'Output (Layer {layer})')
+        plt.colorbar(im_output, ax=axes[1], fraction=0.046, pad=0.04)
 
-    print(f"Visualisations for epoch {epoch} saved in {output_folder}")
+        # Save the figure
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_folder, f'autoencoder_{ae_index}_layer_{layer}_epoch_{epoch}.png'), dpi=300, bbox_inches='tight')
+        plt.close(fig)
+
+    print(f"Visualisations for autoencoder {ae_index}, epoch {epoch} saved in {output_folder}")
 
 def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32):
     output_folder = os.path.join(H5_FOLDER, 'training_visualisations')
@@ -389,12 +405,14 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                         if interrupt_flag.value:
                             raise KeyboardInterrupt
 
-                        if ae_index == 1:  # For the shared autoencoder (layers 1 and 2)
+                        if ae_index == 0:
+                            layer_batch = {f'layer_0': batch[f'layer_0']}
+                        elif ae_index == 1:
                             layer_batch = {
-                                f'layer_{ae_index}': torch.cat([batch[f'layer_1'], batch[f'layer_2']], dim=0)
-                            } 
-                        else:
-                            layer_batch = {f'layer_{ae_index}': batch[f'layer_{ae_index}']}
+                                f'layer_1': torch.cat([batch[f'layer_1'], batch[f'layer_2']], dim=0)
+                            }
+                        else:  # ae_index == 2
+                            layer_batch = {f'layer_3': batch[f'layer_3']}
                         
                         loss, gradient_norm, weight_update_norm = autoencoder.train_step(layer_batch, ae_index)
                         

@@ -81,11 +81,13 @@ class EnvironmentAutoencoder:
         self.scalers = [
             lambda x: x,  # For binary layer (layer 0)
             lambda x: (x + 20) / 20,  # For negative layers (layers 1 and 2)
+            lambda x: (x + 20) / 20,  # For negative layers (layers 1 and 2)
             lambda x: (x + 20) / 20   # For negative layer (layer 3)
         ]
         
         self.inverse_scalers = [
             lambda x: x,  # For binary layer (layer 0)
+            lambda x: x * 20 - 20,  # For negative layers (layers 1 and 2)
             lambda x: x * 20 - 20,  # For negative layers (layers 1 and 2)
             lambda x: x * 20 - 20   # For negative layer (layer 3)
         ]
@@ -150,11 +152,16 @@ class EnvironmentAutoencoder:
 
     def encode_state(self, state):
         with torch.no_grad():
-            scaled_state = [self.scalers[min(i, 2)](state[i]) for i in range(len(state))]
+            scaled_state = [self.scalers[i](state[i]) for i in range(len(state))]
             state_tensor = torch.FloatTensor(scaled_state).unsqueeze(1)  # Add channel dimension
             encoded_layers = []
-            for i in range(4):  # We still have 4 layers in the state
-                ae_index = min(i, 2)  # Use the same autoencoder for layers 1 and 2
+            for i in range(4):  # We have 4 layers in the state
+                if i == 0:
+                    ae_index = 0  # Use first autoencoder for map layer
+                elif i in [1, 2]:
+                    ae_index = 1  # Use second autoencoder for agent and target layers
+                else:
+                    ae_index = 2  # Use third autoencoder for jammer layer
                 ae = self.autoencoders[ae_index]
                 ae.eval()
                 ae.to(self.device)
@@ -168,8 +175,13 @@ class EnvironmentAutoencoder:
     def decode_state(self, encoded_state):
         with torch.no_grad():
             decoded_layers = []
-            for i in range(4):  # We still have 4 layers in the state
-                ae_index = min(i, 2)  # Use the same autoencoder for layers 1 and 2
+            for i in range(4):  # We have 4 layers in the state
+                if i == 0:
+                    ae_index = 0  # Use first autoencoder for map layer
+                elif i in [1, 2]:
+                    ae_index = 1  # Use second autoencoder for agent and target layers
+                else:
+                    ae_index = 2  # Use third autoencoder for jammer layer
                 ae = self.autoencoders[ae_index]
                 ae.eval()
                 ae.to(self.device)
