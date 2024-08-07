@@ -30,7 +30,7 @@ multiagent:
             "type": "box",
             "low": -inf,
             "high": inf,
-            "shape": [256]
+            "shape": [32,4]
           },
           "velocity": {
             "type": "box",

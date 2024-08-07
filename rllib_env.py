@@ -35,13 +35,12 @@ class Environment(MultiAgentEnv):
         self.use_task_allocation = self.config.get('use_task_allocation_with_continuous', False)
         self._seed(self.seed_value)
 
-        # # Initialize autoencoders for all layers
-        # self.autoencoder = EnvironmentAutoencoder((self.obs_range, self.obs_range), encoded_dim=32)
-
-        # for layer in ["map_view", "agent", "target", "jammer"]:
-        #     self.autoencoder.add_layer(layer, (self.obs_range, self.obs_range), encoded_dim=32)
-        #     self.autoencoder.load(f'outputs/trained_autoencoder_{layer}.pth', layer)
-        #     self.autoencoder.autoencoders[layer].eval()
+        # Initialize autoencoders for all layers
+        self.autoencoder = EnvironmentAutoencoder((self.obs_range, self.obs_range), encoded_dim=32)
+        for layer in ["map_view", "agent", "target", "jammer"]:
+            self.autoencoder.add_layer(layer, (self.obs_range, self.obs_range), encoded_dim=32)
+            self.autoencoder.load(f'outputs/trained_autoencoder_{layer}.pth', layer)
+            self.autoencoder.autoencoders[layer].eval()
 
         self.map_matrix = self.load_map()
         # Global state includes layers for map, agents, targets, and jammers
@@ -53,24 +52,24 @@ class Environment(MultiAgentEnv):
             self.agent_paths = {agent_id: [] for agent_id in range(self.num_agents)}
             self.current_waypoints = {agent_id: None for agent_id in range(self.num_agents)}
         
-        # Assumes static environment map
+        # Assumes static environment map - this is for task allocation
         self.path_processor = PathProcessor(self.map_matrix, self.X, self.Y)
 
+        # Initialise environment 
         self.initialise_agents()
         self.initialise_targets()
         self.initialise_jammers()
-
         self.define_action_space()
         self.define_observation_space()
 
         # Set global state layers
         self.global_state[0] = self.map_matrix
         self.update_global_state()
-        
         self.current_step = 0
         self.render_modes = render_mode
         self.screen = None
         pygame.init()
+
 
     def load_map(self):
         original_map = np.load(self.config['map_path'])[:, :, 0]
@@ -79,7 +78,7 @@ class Environment(MultiAgentEnv):
         self.X = int(original_x * self.map_scale)
         self.Y = int(original_y * self.map_scale)
         resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
-        return (resized_map != 0).astype(int) # 1 for obstacles, 0 for free space
+        return (resized_map != 0).astype(int) # 0 for obstacles, 1 for free space
 
 
     def initialise_agents(self):
@@ -88,7 +87,6 @@ class Environment(MultiAgentEnv):
                                                 self.path_processor, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
         self.agent_name_mapping = dict(zip(self.agents, list(range(self.num_agents))))
-
 
     def initialise_targets(self):
         self.num_targets = self.config['n_targets']
@@ -111,7 +109,7 @@ class Environment(MultiAgentEnv):
         elif self.agent_type == 'task_allocation':
             self.action_space = spaces.Discrete((2 * self.agents[0].max_distance + 1) ** 2)
         else:
-            self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(self.num_agents * 2,), dtype=np.float32)
+            self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
 
 
     def define_observation_space(self):
@@ -131,26 +129,39 @@ class Environment(MultiAgentEnv):
                 'full_state': spaces.Box(low=-20, high=1, shape=(self.D, self.X, self.Y), dtype=np.float32)
             })
 
-    # def encode_observation(self, observation):
-    #     encoded_layers = []
-    #     for i, layer in enumerate(["map_view", "agent", "target", "jammer"]):
-    #         layer_data = observation[i]
-    #         min_val, max_val = layer_data.min(), layer_data.max()
-    #         self.autoencoder.original_min[layer] = min_val
-    #         self.autoencoder.original_max[layer] = max_val
-    #         layer_data_normalized = (layer_data - min_val) / (max_val - min_val) * 2 - 1
-    #         encoded_layer = self.autoencoder.encode_state({layer: layer_data_normalized})
-    #         encoded_layers.append(encoded_layer[layer])
-    #     return np.concatenate(encoded_layers, axis=0)
+    def encode_observation(self, observations):
+        encoded_observations = {}
+        for agent_id, obs in observations.items():
+            # Split the 'map' observation into individual layers and encode them
+            map_layers = [obs['map'][i] for i in range(4)]
+            encoded_map = []
+            for i, layer in enumerate(["map_view", "agent", "target", "jammer"]):
+                encoded_layer = self.autoencoder.encode_state({layer: map_layers[i]})
+                encoded_map.append(encoded_layer[layer]['encoded'])
+            # Stack the encoded map without flattening
+            encoded_map = np.stack(encoded_map, axis=-1)
+            encoded_observations[agent_id] = {
+                    "encoded_map": np.stack(encoded_map),
+                    "velocity": obs['velocity'],
+                    "goal": obs['goal']
+                }
+        return encoded_observations
 
-    # def decode_observation(self, encoded_observation):
-    #     decoded_layers = []
-    #     for i, layer in enumerate(["map_view", "agent", "target", "jammer"]):
-    #         encoded_layer = encoded_observation[i]
-    #         decoded_layer = self.autoencoder.decode_state({layer: encoded_layer})
-    #         decoded_layer_denormalized = (decoded_layer[layer] + 1) / 2 * (self.autoencoder.original_max[layer] - self.autoencoder.original_min[layer]) + self.autoencoder.original_min[layer]
-    #         decoded_layers.append(decoded_layer_denormalized)
-    #     return np.stack(decoded_layers, axis=0)
+
+    def decode_observation(self, encoded_observations):
+        decoded_observations = {}
+        for agent_id, encoded_obs in encoded_observations.items():
+            encoded_map = encoded_obs['encoded_map']
+            decoded_map = []
+            for i, layer in enumerate(["map_view", "agent", "target", "jammer"]):
+                decoded_layer = self.autoencoder.decode_state({layer: {'encoded': encoded_map[i]}})
+                decoded_map.append(decoded_layer[layer])
+            decoded_observations[agent_id] = {
+                "map": np.stack(decoded_map),
+                "velocity": encoded_obs['velocity'],
+                "goal": encoded_obs['goal']
+            }
+        return decoded_observations
     
 
     def reset(self, seed= None, options: dict = None):
@@ -164,56 +175,29 @@ class Environment(MultiAgentEnv):
         self.global_state.fill(0)
         self.global_state[0] = self.map_matrix # Uncomment above code if map_matrix is changed by sim
 
-        # Reinitialise agent positions
-        if 'agent_positions' in self.config:
-            agent_positions = [tuple(pos) for pos in self.config['agent_positions']]
-        else:
-            agent_positions = None
-
-        self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, self.path_processor, agent_positions, agent_type=self.agent_type, randinit=True)
-        self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
-        
-        # Reinitialise target positions
-        if 'target_positions' in self.config:
-            target_positions = [tuple(pos) for pos in self.config['target_positions']]
-        else:
-            target_positions = None
-
-        self.targets = target_utils.create_targets(self.num_targets, self.map_matrix, self.obs_range, self.np_random, self.path_processor ,target_positions, randinit=True)
-        self.target_layer = TargetLayer(self.X, self.Y, self.targets, self.map_matrix)
-
-        # Reinitialise jammers
-        self.jammers = jammer_utils.create_jammers(self.num_jammers, self.map_matrix, self.np_random, self.config['jamming_radius'])
-        self.jammer_layer = JammerLayer(self.X, self.Y, self.jammers)
-        
-        self.jammed_positions = set()
+        self.initialise_agents()
+        self.initialise_targets()
+        self.initialise_jammers()
         
         self.target_layer.update()
         self.agent_layer.update()
         # Update layers in global state
-        self.global_state[1] = self.agent_layer.get_state_matrix()
-        self.global_state[2] = self.target_layer.get_state_matrix()
-        self.global_state[3] = self.jammer_layer.get_state_matrix()
+        self.update_global_state()
         self.current_step = 0
 
         observations = {}
-        encoded_observations = {}
         for agent_id in range(self.num_agents):
             obs = self.safely_observe(agent_id)
             self.agents[agent_id].set_observation_state(obs)
-            #encoded_map = self.encode_observation(obs['map'])
             observations[agent_id] = {
                 "map": obs['map'],
                 "velocity": obs['velocity'],
                 "goal": obs['goal']
             }
-            # encoded_observations[agent_id] = {
-            #     "map": encoded_map,
-            #     "velocity": obs['velocity'],
-            #     "goal": obs['goal']
-            # }
+        
+        encoded_observations = self.encode_observation(observations)
             
-        return observations, info
+        return encoded_observations, info
     
 
     def step(self, actions_dict):
@@ -321,39 +305,25 @@ class Environment(MultiAgentEnv):
 
         self.target_layer.update()
         self.agent_layer.update()
-        # Update the global state with the new layer states
         self.update_global_state()
-        
-        # Update observations and communicate
         observations = self.update_observations()
         self.share_and_update_observations()
-        
         self.jammer_layer.activate_jammers(self.current_step)
         self.update_jammed_areas()
         self.check_jammer_destruction()
 
         # Collect final local states and calculate rewards
         local_states, rewards = self.collect_local_states_and_rewards()
-
-        # encoded_observations = {}
-        # for agent_id, obs in observations.items():
-        #     # Split the 'map' observation into individual layers and encode them
-        #     map_layers = [obs['map'][i] for i in range(4)]
-        #     encoded_map = []
-        #     for i, layer in enumerate(["map_view", "agent", "target", "jammer"]):
-        #         encoded_layer = self.autoencoder.encode_state({layer: map_layers[i]})
-        #         encoded_map.append(encoded_layer[layer]['encoded'])
-        #     encoded_observations[agent_id] = {
-        #         "encoded_map": np.stack(encoded_map),
-        #         "velocity": obs['velocity'],
-        #         "goal": obs['goal']
-        #     }
+        encoded_observations = self.encode_observation(observations)
         
         self.current_step += 1
         
-        terminated = self.is_episode_done()
-        truncated = self.is_episode_done()
+        terminated = {agent_id: self.is_episode_done() for agent_id in range(self.num_agents)}
+        truncated = {agent_id: self.is_episode_done() for agent_id in range(self.num_agents)}
         info = {}
+
+        terminated["__all__"] = self.is_episode_done()
+        truncated["__all__"] = self.is_episode_done()
 
         np.set_printoptions(threshold=2000, suppress=True, precision=1, linewidth=2000)
     
@@ -368,13 +338,13 @@ class Environment(MultiAgentEnv):
         #     print(f"Agent {agent_id}: {encoded_obs[agent_id]}")
         
         # print("Decoded Observations")
-        # decoded_obs = {}
-        # for agent_id, encoded in encoded_obs.items():
-        #     decoded_obs[agent_id] = self.autoencoder.decode_state({layer: {'encoded': encoded[i]} for i, layer in enumerate(["map_view", "agent", "target", "jammer"])})
+        # decoded_obs = self.decode_observation(encoded_observations)
+        # for agent_id, obs in decoded_obs.items():
+        #     decoded_obs[agent_id] = obs["map"]
         #     print(f"Agent {agent_id}: {decoded_obs[agent_id]}")
         
         # If i'm collecting observations I have to return observations. Once the auto encoder is trained I can return encoded observation
-        return observations, rewards, terminated, truncated, info
+        return encoded_observations, rewards, terminated, truncated, info
     
 
     def update_observations(self): #Alex had this one
@@ -384,6 +354,7 @@ class Environment(MultiAgentEnv):
             self.agent_layer.agents[agent_id].set_observation_state(obs)
             observations[agent_id] = obs
         return observations
+
 
     def collect_local_states_and_rewards(self):
         local_states = {}
@@ -407,12 +378,14 @@ class Environment(MultiAgentEnv):
         
         return local_states, rewards
     
+
     def action_to_waypoint(self, action):
         # Convert the action (which is now an index) to a waypoint (x, y) coordinate
         x = action // self.Y
         y = action % self.Y
         return np.array([x, y])
     
+
     def is_valid_action(self, agent_id, action):
         agent = self.agents[agent_id]
         if self.agent_type == 'task_allocation':
@@ -421,9 +394,11 @@ class Environment(MultiAgentEnv):
         else:
             return action in agent.action_space
 
+
     def chebyshev_distance(self, pos1, pos2):
         return max(abs(pos1[0] - pos2[0]), abs(pos1[1] - pos2[1]))
     
+
     def check_jammer_destruction(self):
         for agent_id in range(self.num_agents):
             agent_pos = self.agent_layer.get_position(agent_id)
@@ -431,11 +406,13 @@ class Environment(MultiAgentEnv):
                 if not jammer.get_destroyed() and jammer.current_position() == tuple(agent_pos):
                     jammer.set_destroyed()
                     self.update_jammed_areas()
-                    
+
+
     def update_global_state(self):
         self.global_state[1] = self.agent_layer.get_state_matrix()
         self.global_state[2] = self.target_layer.get_state_matrix()
         self.global_state[3] = self.jammer_layer.get_state_matrix()
+
 
     def draw_model_state(self):
         """
@@ -457,9 +434,15 @@ class Environment(MultiAgentEnv):
                     col = (255, 255, 255)
                 pygame.draw.rect(self.screen, col, pos)
     
+
     #need to update this, doing it for testing
     def is_episode_done(self):
-        return False 
+        # Example condition: end episode after a fixed number of steps
+        max_steps = 500  # or any other logic to end the episode
+        if self.current_step >= max_steps:
+            return True
+        return False
+
 
     def draw_agents(self):
         """
@@ -551,6 +534,7 @@ class Environment(MultiAgentEnv):
                 ),
             )
             
+
     def draw_waypoints(self):
         """
         Draw waypoints for task allocation agents.
@@ -717,10 +701,6 @@ class Environment(MultiAgentEnv):
         obs = np.full((self.global_state.shape[0], self.obs_range, self.obs_range), fill_value=-20, dtype=np.float32)
         # Get the current position of the agent
         xp, yp = agent_layer.get_position(agent_idx)
-        # # Get the current velocity of the agent
-        # if self.agent_type == 'continuous':
-        #     vx, vy = self.agents[agent_idx].velocity
-        
         # Calculate bounds for the observation
         xlo, xhi, ylo, yhi, xolo, xohi, yolo, yohi = self.obs_clip(xp, yp)
         xlo1 = int(xlo)
@@ -746,13 +726,6 @@ class Environment(MultiAgentEnv):
                 pad_width = [(0,0), (self.obs_range-obs_shape[0], 0),(0, self.obs_range-obs_shape[1])]
             obs_padded = np.pad(obs_slice, pad_width[1:], mode='constant', constant_values=-21)
             obs[layer, :obs_padded.shape[0], :obs_padded.shape[1]] = obs_padded
-        
-        # if self.agent_type == 'continuous':
-        #     # Add the velocity and position to the observation
-        #     velocity_layer = np.full((self.obs_range, self.obs_range), fill_value=-20, dtype=np.float32)
-        #     velocity_layer[0, 0] = vx
-        #     velocity_layer[0, 1] = vy
-        #     obs[self.global_state.shape[0]] = velocity_layer
 
         return obs  
     
@@ -787,6 +760,7 @@ class Environment(MultiAgentEnv):
                     other_pos = other_agent.current_position()
                     agent_id = self.agent_name_mapping[agent]
                     other_agent_id = self.agent_name_mapping[other_agent]
+
                     if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(other_agent_id):
                         other_agent.update_local_state(current_obs, current_pos)
                         agent.communicated = True 
@@ -904,7 +878,8 @@ class Environment(MultiAgentEnv):
         np.random.seed(seed)
         random.seed(seed)
 
-    def run_simulation(self, max_steps=5):
+
+    def run_simulation(self, max_steps=100):
         running = True
         step_count = 0
         collected_data = []
@@ -919,13 +894,13 @@ class Environment(MultiAgentEnv):
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(self.agents)}
             observations, rewards, terminated, truncated, self.info = self.step(action_dict)
             collected_data.append(observations)
-            #self.render()  
+            self.render()  
             step_count += 1
 
             if terminated or truncated:
                 break
 
-        #pygame.image.save(self.screen, "outputs/environment_snapshot.png")
+        pygame.image.save(self.screen, "outputs/environment_snapshot.png")
         self.reset()
         pygame.quit()
 

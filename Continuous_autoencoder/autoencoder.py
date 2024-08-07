@@ -99,7 +99,7 @@ class EnvironmentAutoencoder:
 
         self.autoencoders[layer_name] = ConvAutoencoder(1, input_shape, encoded_dim, activation_fn).to(self.device)
         self.optimizers[layer_name] = optim.Adam(self.autoencoders[layer_name].parameters(), lr=0.001)
-        self.schedulers[layer_name] = optim.lr_scheduler.ReduceLROnPlateau(self.optimizers[layer_name], 'min', patience=5, factor=0.1, min_lr=1e-6)
+        self.schedulers[layer_name] = optim.lr_scheduler.ReduceLROnPlateau(self.optimizers[layer_name], 'min', patience=8, factor=0.4, min_lr=1e-5)
 
     def train(self, data, layer_name, epochs=10, batch_size=32):
         dataloader = torch.utils.data.DataLoader(data[layer_name], batch_size=batch_size, shuffle=True)
@@ -125,10 +125,10 @@ class EnvironmentAutoencoder:
             losses.append(average_loss)
             self.schedulers[layer_name].step(average_loss)
 
-            if (epoch + 1) % 2 == 0:
+            if (epoch + 1) % 20 == 0:
                 print(f"Epoch [{epoch+1}/{epochs}], Loss: {average_loss:.6f}")
 
-            if (epoch + 1) % 10 == 0:
+            if (epoch + 1) % 100 == 0:
                 self.visualize_reconstructions(dataloader, layer_name, epoch)
 
         # Plot the training loss
