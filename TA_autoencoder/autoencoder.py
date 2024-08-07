@@ -99,8 +99,21 @@ class EnvironmentAutoencoder:
             x_rescaled = self.inverse_scalers[layer](x)
             recon_x_rescaled = self.inverse_scalers[layer](recon_x)
             
-            # Increase weight for values closer to 0
-            weights = torch.exp(-x_rescaled / 5) + 1e-8  # Adjust the divisor to control the weighting curve
+            # Create a mask for values above -20
+            mask = (x_rescaled > -20).float()
+            
+            # Calculate the proportion of values above -20
+            proportion_above_threshold = mask.mean()
+            
+            # Calculate the weight for values above -20
+            # The smaller the proportion, the higher the weight
+            weight_above_threshold = 1 / (proportion_above_threshold + 1e-6)
+            
+            # Create a weight tensor
+            weights = torch.ones_like(x_rescaled)
+            weights = torch.where(mask == 1, weight_above_threshold, weights)
+            
+            # Calculate weighted MSE loss
             mse_loss = torch.mean(weights * (recon_x_rescaled - x_rescaled)**2)
             
             return mse_loss

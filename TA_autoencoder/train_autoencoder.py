@@ -202,7 +202,9 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
     env.num_agents = config['n_agents']
     env.reset()
 
-    filename = f"data_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
+    # Update filename to include map information
+    map_name = os.path.splitext(os.path.basename(config['map_path']))[0]
+    filename = f"data_m{map_name}_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
     filepath = os.path.join(h5_folder, filename)
 
     start_step = 0
@@ -487,17 +489,18 @@ def main():
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
     original_config = load_config(config_path)
     
-    # Configuration ranges for autoencoders 0 and 1
-    seed_range = range(1, 5)
-    num_agents_range = range(10, 15)
-    num_targets_range = range(40, 45)
-    num_jammers_range_low = range(0, 5)  # 0-4 jammers
-    
-    # Additional configuration range for autoencoder 2 (jammer layer)
+    # Configuration ranges
+    seed_range = range(1, 4)
+    num_agents_range = range(12, 15)
+    num_targets_range = range(42, 45)
+    num_jammers_range_low = range(0, 4)  # 0-3 jammers
     num_jammers_range_high = range(85, 91)  # 85-90 jammers
     
+    map_paths = ['city_image_1.npy', 'city_image_2.npy', 'city_image_3.npy']
+    
     configs = [
-        {'seed': seed, 'n_agents': num_agents, 'n_targets': num_targets, 'n_jammers': num_jammers}
+        {'map_path': map_path, 'seed': seed, 'n_agents': num_agents, 'n_targets': num_targets, 'n_jammers': num_jammers}
+        for map_path in map_paths
         for seed in seed_range
         for num_agents in num_agents_range
         for num_targets in num_targets_range
@@ -506,7 +509,8 @@ def main():
     
     # Additional configs for autoencoder 2
     configs_high_jammers = [
-        {'seed': seed, 'n_agents': num_agents, 'n_targets': num_targets, 'n_jammers': num_jammers}
+        {'map_path': map_path, 'seed': seed, 'n_agents': num_agents, 'n_targets': num_targets, 'n_jammers': num_jammers}
+        for map_path in map_paths
         for seed in seed_range
         for num_agents in num_agents_range
         for num_targets in num_targets_range
@@ -521,7 +525,8 @@ def main():
     
     configs_to_process = []
     for config in all_configs:
-        filename = f"data_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
+        map_name = os.path.splitext(os.path.basename(config['map_path']))[0]
+        filename = f"data_m{map_name}_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
         filepath = os.path.join(H5_FOLDER, filename)
         if not os.path.exists(filepath) or not is_dataset_complete(filepath, STEPS_PER_EPISODE):
             configs_to_process.append((config, config_path, H5_FOLDER, STEPS_PER_EPISODE))
@@ -570,6 +575,7 @@ def main():
     else:
         print(f"Not all configurations are complete. {len(completed_configs)}/{total_configs} configurations are ready.")
         print("Please run the script again to process the remaining configurations.")
+
     
 if __name__ == "__main__":
     try:
