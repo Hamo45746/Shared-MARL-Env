@@ -16,6 +16,7 @@ import signal
 import fcntl
 import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
+import traceback
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -318,57 +319,75 @@ def load_training_state(autoencoder, layer):
     return 0
 
 def visualise_autoencoder_progress(autoencoder, h5_folder, epoch, output_folder, ae_index):
-    # Find a suitable H5 file (with high number of targets and agents)
-    suitable_file = None
-    for filename in os.listdir(h5_folder):
-        if filename.endswith('.h5') and 'a14' in filename and 't42' in filename:
-            suitable_file = os.path.join(h5_folder, filename)
-            break
+    # Store the original device
+    original_device = next(autoencoder.autoencoders[ae_index].parameters()).device
     
-    if not suitable_file:
-        print("No suitable H5 file found.")
-        return
+    try:
+        # Move autoencoder to CPU for visualization
+        autoencoder.autoencoders[ae_index] = autoencoder.autoencoders[ae_index].cpu()
+        
+        # Find a suitable H5 file (with high number of targets and agents)
+        suitable_file = None
+        for filename in os.listdir(h5_folder):
+            if filename.endswith('.h5') and 'a14' in filename and 't42' in filename:
+                suitable_file = os.path.join(h5_folder, filename)
+                break
+        
+        if not suitable_file:
+            logging.warning("No suitable H5 file found for visualization.")
+            return
 
-    # Load data from the H5 file
-    with h5py.File(suitable_file, 'r') as f:
-        first_step = f['data']['0']
-        first_agent = first_step[list(first_step.keys())[0]]
-        full_state = first_agent['full_state'][()]
+        # Load data from the H5 file
+        with h5py.File(suitable_file, 'r') as f:
+            first_step = f['data']['0']
+            first_agent = first_step[list(first_step.keys())[0]]
+            full_state = first_agent['full_state'][()]
 
-    # Create output folder if it doesn't exist
-    os.makedirs(output_folder, exist_ok=True)
+        # Create output folder if it doesn't exist
+        os.makedirs(output_folder, exist_ok=True)
 
-    fig, axes = plt.subplots(1, 2, figsize=(20, 10))
-    fig.suptitle(f'Autoencoder {ae_index} - Epoch {epoch}')
+        fig, axes = plt.subplots(1, 2, figsize=(20, 10))
+        fig.suptitle(f'Autoencoder {ae_index} - Epoch {epoch}')
 
-    # Determine which layer(s) to visualize based on ae_index
-    if ae_index == 0:
-        layers_to_visualize = [0]
-    elif ae_index == 1:
-        layers_to_visualize = [1, 2]
-    else:  # ae_index == 2
-        layers_to_visualize = [3]
+        # Determine which layer(s) to visualize based on ae_index
+        if ae_index == 0:
+            layers_to_visualize = [0]
+        elif ae_index == 1:
+            layers_to_visualize = [1, 2]
+        else:  # ae_index == 2
+            layers_to_visualize = [3]
 
-    for layer in layers_to_visualize:
-        # Input
-        im_input = axes[0].imshow(full_state[layer], cmap='viridis')
-        axes[0].set_title(f'Input (Layer {layer})')
-        plt.colorbar(im_input, ax=axes[0], fraction=0.046, pad=0.04)
+        for layer in layers_to_visualize:
+            # Input
+            im_input = axes[0].imshow(full_state[layer], cmap='viridis')
+            axes[0].set_title(f'Input (Layer {layer})')
+            plt.colorbar(im_input, ax=axes[0], fraction=0.046, pad=0.04)
 
-        # Output
-        with torch.no_grad():
-            encoded = autoencoder.autoencoders[ae_index].encode(torch.FloatTensor(full_state[layer]).unsqueeze(0).unsqueeze(0))
-            decoded = autoencoder.autoencoders[ae_index].decoder(encoded).cpu().numpy().squeeze()
-        im_output = axes[1].imshow(decoded, cmap='viridis')
-        axes[1].set_title(f'Output (Layer {layer})')
-        plt.colorbar(im_output, ax=axes[1], fraction=0.046, pad=0.04)
+            # Output
+            with torch.no_grad():
+                input_tensor = torch.FloatTensor(full_state[layer]).unsqueeze(0).unsqueeze(0)
+                encoded = autoencoder.autoencoders[ae_index].encode(input_tensor)
+                decoded = autoencoder.autoencoders[ae_index].decoder(encoded)
+                decoded = decoded.numpy().squeeze()
 
-        # Save the figure
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_folder, f'autoencoder_{ae_index}_layer_{layer}_epoch_{epoch}.png'), dpi=300, bbox_inches='tight')
-        plt.close(fig)
+            im_output = axes[1].imshow(decoded, cmap='viridis')
+            axes[1].set_title(f'Output (Layer {layer})')
+            plt.colorbar(im_output, ax=axes[1], fraction=0.046, pad=0.04)
 
-    print(f"Visualisations for autoencoder {ae_index}, epoch {epoch} saved in {output_folder}")
+            # Save the figure
+            plt.tight_layout()
+            plt.savefig(os.path.join(output_folder, f'autoencoder_{ae_index}_layer_{layer}_epoch_{epoch}.png'), dpi=300, bbox_inches='tight')
+            plt.close(fig)
+
+        logging.info(f"Visualisations for autoencoder {ae_index}, epoch {epoch} saved in {output_folder}")
+    
+    except Exception as e:
+        logging.error(f"Error during visualization for autoencoder {ae_index}, epoch {epoch}: {str(e)}")
+        traceback.print_exc()
+    
+    finally:
+        # Move autoencoder back to the original device
+        autoencoder.autoencoders[ae_index] = autoencoder.autoencoders[ae_index].to(original_device)
 
 def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32):
     output_folder = os.path.join(H5_FOLDER, 'training_visualisations')
