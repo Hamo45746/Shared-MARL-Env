@@ -117,10 +117,12 @@ def test_specific_autoencoder(autoencoder_path, h5_folder, output_folder):
             # This is a full autoencoder save
             for i, ae in enumerate(autoencoder.autoencoders):
                 ae.load_state_dict(checkpoint['model_state_dicts'][i])
+                ae.to(device)  # Ensure the model is on the correct device
                 ae.eval()
         else:
             # This is a single autoencoder save
             autoencoder.autoencoders[0].load_state_dict(checkpoint)
+            autoencoder.autoencoders[0].to(device)  # Ensure the model is on the correct device
             autoencoder.autoencoders[0].eval()
 
         logging.info(f"Loaded autoencoder from {autoencoder_path}")
@@ -142,7 +144,9 @@ def test_specific_autoencoder(autoencoder_path, h5_folder, output_folder):
 
             # Output
             with torch.no_grad():
-                encoded = autoencoder.autoencoders[ae_index].encode(torch.FloatTensor(input_data).unsqueeze(0).unsqueeze(0).to(device))
+                # Move input data to the same device as the model
+                input_tensor = torch.FloatTensor(input_data).unsqueeze(0).unsqueeze(0).to(device)
+                encoded = autoencoder.autoencoders[ae_index].encode(input_tensor)
                 decoded = autoencoder.autoencoders[ae_index].decoder(encoded).cpu().numpy().squeeze()
 
             im_output = axes[1].imshow(decoded, cmap='viridis')
