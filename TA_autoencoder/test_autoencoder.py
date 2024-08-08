@@ -107,7 +107,7 @@ def test_specific_autoencoder(autoencoder_path, h5_folder, output_folder):
         full_state = load_data_from_h5(h5_file, step=30)
 
         input_shape = full_state.shape
-        logging.info(f"Input shape: {input_shape}")
+        logging.info(f"Full input shape: {input_shape}")
 
         # Load the specific autoencoder
         autoencoder = EnvironmentAutoencoder(input_shape, device)
@@ -117,12 +117,12 @@ def test_specific_autoencoder(autoencoder_path, h5_folder, output_folder):
             # This is a full autoencoder save
             for i, ae in enumerate(autoencoder.autoencoders):
                 ae.load_state_dict(checkpoint['model_state_dicts'][i])
-                ae.to(device)  # Ensure the model is on the correct device
+                ae.to(device)
                 ae.eval()
         else:
             # This is a single autoencoder save
             autoencoder.autoencoders[0].load_state_dict(checkpoint)
-            autoencoder.autoencoders[0].to(device)  # Ensure the model is on the correct device
+            autoencoder.autoencoders[0].to(device)
             autoencoder.autoencoders[0].eval()
 
         logging.info(f"Loaded autoencoder from {autoencoder_path}")
@@ -134,6 +134,8 @@ def test_specific_autoencoder(autoencoder_path, h5_folder, output_folder):
             ae_index = min(layer, 2)  # 0 for layer 0, 1 for layers 1 and 2, 2 for layer 3
             input_data = full_state[layer]
 
+            logging.info(f"Layer {layer} - Input shape: {input_data.shape}")
+
             fig, axes = plt.subplots(1, 2, figsize=(20, 10))
             fig.suptitle(f'Layer {layer} - Autoencoder Test')
 
@@ -144,17 +146,27 @@ def test_specific_autoencoder(autoencoder_path, h5_folder, output_folder):
 
             # Output
             with torch.no_grad():
-                # Move input data to the same device as the model
                 input_tensor = torch.FloatTensor(input_data).unsqueeze(0).unsqueeze(0).to(device)
-                encoded = autoencoder.autoencoders[ae_index].encode(input_tensor)
-                decoded = autoencoder.autoencoders[ae_index].decoder(encoded).cpu().numpy().squeeze()
+                logging.info(f"Layer {layer} - Input tensor shape: {input_tensor.shape}")
+                
+                # Use the forward method of the autoencoder
+                decoded = autoencoder.autoencoders[ae_index](input_tensor)
+                logging.info(f"Layer {layer} - Decoded shape: {decoded.shape}")
+                
+                decoded = decoded.squeeze().cpu().numpy()
+                logging.info(f"Layer {layer} - Final decoded shape: {decoded.shape}")
 
             im_output = axes[1].imshow(decoded, cmap='viridis')
             axes[1].set_title('Reconstructed Output')
             plt.colorbar(im_output, ax=axes[1], fraction=0.046, pad=0.04)
 
             # Calculate and display MSE
-            mse = np.mean((input_data - decoded) ** 2)
+            if input_data.shape != decoded.shape:
+                logging.warning(f"Layer {layer} - Shape mismatch: input {input_data.shape}, decoded {decoded.shape}")
+                mse = np.nan
+            else:
+                mse = np.mean((input_data - decoded) ** 2)
+            
             plt.suptitle(f'Layer {layer} - Autoencoder Test (MSE: {mse:.6f})')
 
             # Save the figure
@@ -170,6 +182,7 @@ def test_specific_autoencoder(autoencoder_path, h5_folder, output_folder):
 
     except Exception as e:
         logging.error(f"An error occurred: {str(e)}")
+        logging.exception("Exception details:")
         raise
 
 # You can keep your existing main() function and add this new one
