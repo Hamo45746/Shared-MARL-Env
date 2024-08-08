@@ -389,7 +389,7 @@ def visualise_autoencoder_progress(autoencoder, h5_folder, epoch, output_folder,
         # Move autoencoder back to the original device
         autoencoder.autoencoders[ae_index] = autoencoder.autoencoders[ae_index].to(original_device)
 
-def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32):
+def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=5, delta=0.0001):
     output_folder = os.path.join(H5_FOLDER, 'training_visualisations')
     os.makedirs(output_folder, exist_ok=True)
 
@@ -409,6 +409,10 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
             dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
             
             start_epoch = load_training_state(autoencoder, ae_index)
+            
+            # Early stopping variables
+            best_loss = float('inf')
+            epochs_no_improve = 0
             
             for epoch in range(start_epoch, num_epochs):
                 if interrupt_flag.value:
@@ -463,6 +467,22 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                         # Log epoch-level metrics
                         writer.add_scalar(f'Autoencoder_{ae_index}/Epoch_Loss', avg_loss, epoch)
                         writer.add_scalar(f'Autoencoder_{ae_index}/NaN_Batches', nan_batches, epoch)
+
+                        # Check for improvement
+                        if avg_loss < best_loss - delta:
+                            best_loss = avg_loss
+                            epochs_no_improve = 0
+                            # Save the best model
+                            autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_best.pth"))
+                        else:
+                            epochs_no_improve += 1
+
+                        # Check early stopping condition
+                        if epochs_no_improve >= patience:
+                            print(f"Early stopping triggered for autoencoder {ae_index}")
+                            logging.info(f"Early stopping triggered for autoencoder {ae_index}")
+                            break
+
                     else:
                         print(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} failed. All batches resulted in NaN loss.")
                         logging.warning(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} failed. All batches resulted in NaN loss.")
@@ -490,6 +510,9 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                 except Exception as e:
                     logging.error(f"Error during training autoencoder {ae_index}, epoch {epoch+1}: {str(e)}")
                     raise
+
+            print(f"Autoencoder {ae_index} training completed.")
+            logging.info(f"Autoencoder {ae_index} training completed.")
 
             # After finishing all epochs for an autoencoder, move it back to CPU
             autoencoder.move_to_cpu(ae_index)
