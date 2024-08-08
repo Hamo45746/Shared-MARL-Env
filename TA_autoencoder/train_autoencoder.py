@@ -312,9 +312,17 @@ def save_training_state(autoencoder, layer, epoch):
 def load_training_state(autoencoder, layer):
     state_path = os.path.join(H5_FOLDER, f"training_state_layer_{layer}.pth")
     if os.path.exists(state_path):
-        state = torch.load(state_path, map_location=autoencoder.device)
+        state = torch.load(state_path, map_location='cpu')  # Always load to CPU first
         autoencoder.autoencoders[layer].load_state_dict(state['model_state_dicts'][layer])
         autoencoder.optimizers[layer].load_state_dict(state['optimizer_state_dicts'][layer])
+        
+        # Move model and optimizer to the correct device
+        autoencoder.autoencoders[layer].to(autoencoder.device)
+        for state in autoencoder.optimizers[layer].state.values():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor):
+                    state[k] = v.to(autoencoder.device)
+        
         return state['epoch']
     return 0
 
@@ -389,7 +397,7 @@ def visualise_autoencoder_progress(autoencoder, h5_folder, epoch, output_folder,
         # Move autoencoder back to the original device
         autoencoder.autoencoders[ae_index] = autoencoder.autoencoders[ae_index].to(original_device)
 
-def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=5, delta=0.0001):
+def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=10, delta=0.001):
     output_folder = os.path.join(H5_FOLDER, 'training_visualisations')
     os.makedirs(output_folder, exist_ok=True)
 
@@ -409,6 +417,9 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
             dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
             
             start_epoch = load_training_state(autoencoder, ae_index)
+            
+            # Ensure the autoencoder is on the correct device
+            autoencoder.autoencoders[ae_index].to(autoencoder.device)
             
             # Early stopping variables
             best_loss = float('inf')
@@ -431,13 +442,13 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                             raise KeyboardInterrupt
 
                         if ae_index == 0:
-                            layer_batch = {f'layer_0': batch[f'layer_0']}
+                            layer_batch = {f'layer_0': batch[f'layer_0'].to(autoencoder.device)}
                         elif ae_index == 1:
                             layer_batch = {
-                                f'layer_1': torch.cat([batch[f'layer_1'], batch[f'layer_2']], dim=0)
+                                f'layer_1': torch.cat([batch[f'layer_1'], batch[f'layer_2']], dim=0).to(autoencoder.device)
                             }
                         else:  # ae_index == 2
-                            layer_batch = {f'layer_3': batch[f'layer_3']}
+                            layer_batch = {f'layer_3': batch[f'layer_3'].to(autoencoder.device)}
                         
                         loss, gradient_norm, weight_update_norm = autoencoder.train_step(layer_batch, ae_index)
                         
@@ -521,7 +532,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
         writer.close()
         autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
         logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
-    
+
     
 def main():
     # Set up signal handler
