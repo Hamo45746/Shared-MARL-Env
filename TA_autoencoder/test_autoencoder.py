@@ -16,7 +16,7 @@ AUTOENCODER_FILE = 'trained_autoencoder.pth'
 def find_suitable_h5_file(h5_folder):
     logging.info("Searching for suitable H5 file...")
     for filename in os.listdir(h5_folder):
-        if filename.endswith('.h5') and 'a7' in filename and 't7' in filename:
+        if filename.endswith('.h5') and 'a14' in filename:
             logging.info(f"Found suitable file: {filename}")
             return os.path.join(h5_folder, filename)
     raise FileNotFoundError("No suitable H5 file found.")
@@ -97,6 +97,86 @@ def load_autoencoder_for_layer(path, input_shape, device, layer, epoch):
         logging.error(f"Error loading autoencoder: {str(e)}")
         raise
 
+def test_specific_autoencoder(autoencoder_path, h5_folder, output_folder):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logging.info(f"Using device: {device}")
+
+    try:
+        # Find a suitable H5 file
+        h5_file = find_suitable_h5_file(h5_folder)
+        full_state = load_data_from_h5(h5_file, step=30)
+
+        input_shape = full_state.shape
+        logging.info(f"Input shape: {input_shape}")
+
+        # Load the specific autoencoder
+        autoencoder = EnvironmentAutoencoder(input_shape, device)
+        checkpoint = torch.load(autoencoder_path, map_location=device)
+        
+        if 'model_state_dicts' in checkpoint:
+            # This is a full autoencoder save
+            for i, ae in enumerate(autoencoder.autoencoders):
+                ae.load_state_dict(checkpoint['model_state_dicts'][i])
+                ae.eval()
+        else:
+            # This is a single autoencoder save
+            autoencoder.autoencoders[0].load_state_dict(checkpoint)
+            autoencoder.autoencoders[0].eval()
+
+        logging.info(f"Loaded autoencoder from {autoencoder_path}")
+
+        os.makedirs(output_folder, exist_ok=True)
+
+        # Test and visualize each layer
+        for layer in range(4):
+            ae_index = min(layer, 2)  # 0 for layer 0, 1 for layers 1 and 2, 2 for layer 3
+            input_data = full_state[layer]
+
+            fig, axes = plt.subplots(1, 2, figsize=(20, 10))
+            fig.suptitle(f'Layer {layer} - Autoencoder Test')
+
+            # Input
+            im_input = axes[0].imshow(input_data, cmap='viridis')
+            axes[0].set_title('Input')
+            plt.colorbar(im_input, ax=axes[0], fraction=0.046, pad=0.04)
+
+            # Output
+            with torch.no_grad():
+                encoded = autoencoder.autoencoders[ae_index].encode(torch.FloatTensor(input_data).unsqueeze(0).unsqueeze(0).to(device))
+                decoded = autoencoder.autoencoders[ae_index].decoder(encoded).cpu().numpy().squeeze()
+
+            im_output = axes[1].imshow(decoded, cmap='viridis')
+            axes[1].set_title('Reconstructed Output')
+            plt.colorbar(im_output, ax=axes[1], fraction=0.046, pad=0.04)
+
+            # Calculate and display MSE
+            mse = np.mean((input_data - decoded) ** 2)
+            plt.suptitle(f'Layer {layer} - Autoencoder Test (MSE: {mse:.6f})')
+
+            # Save the figure
+            plt.tight_layout()
+            output_file = os.path.join(output_folder, f'test_layer_{layer}.png')
+            plt.savefig(output_file, dpi=300, bbox_inches='tight')
+            plt.close(fig)
+
+            logging.info(f"Saved visualization for layer {layer} to {output_file}")
+            logging.info(f"MSE for layer {layer}: {mse:.6f}")
+
+        print(f"Test complete. Visualizations saved in {output_folder}")
+
+    except Exception as e:
+        logging.error(f"An error occurred: {str(e)}")
+        raise
+
+# You can keep your existing main() function and add this new one
+def main_test_specific():
+    H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
+    AUTOENCODER_FILE = 'autoencoder_0_best.pth'  # Update this to the file you want to test
+    OUTPUT_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data/training_visualisations'  # Update this path
+
+    autoencoder_path = os.path.join(H5_FOLDER, AUTOENCODER_FILE)
+    test_specific_autoencoder(autoencoder_path, H5_FOLDER, OUTPUT_FOLDER)
+
 def main():
     start_time = time.time()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -151,4 +231,5 @@ def main():
         raise
 
 if __name__ == "__main__":
-    main()
+    # main()
+    main_test_specific()

@@ -41,36 +41,43 @@ class FlattenedMultiAgentH5Dataset(Dataset):
     def __init__(self, h5_files):
         self.h5_files = h5_files
         self.file_indices = []
+        self.step_indices = []
+        self.agent_indices = []
         self.cumulative_lengths = [0]
         
         for file_idx, h5_file in enumerate(self.h5_files):
             with h5py.File(h5_file, 'r') as f:
-                length = sum(len(step) for step in f['data'].values())
-            self.file_indices.extend([file_idx] * length)
-            self.cumulative_lengths.append(self.cumulative_lengths[-1] + length)
+                data = f['data']
+                for step_idx in data.keys():
+                    step_data = data[step_idx]
+                    for agent_idx in step_data.keys():
+                        self.file_indices.append(file_idx)
+                        self.step_indices.append(int(step_idx))
+                        self.agent_indices.append(int(agent_idx))
+            
+            self.cumulative_lengths.append(len(self.file_indices))
         
-        self.total_length = self.cumulative_lengths[-1]
+        self.total_length = len(self.file_indices)
 
     def __len__(self):
         return self.total_length
 
     def __getitem__(self, idx):
         file_idx = self.file_indices[idx]
-        local_idx = idx - self.cumulative_lengths[file_idx]
+        step_idx = self.step_indices[idx]
+        agent_idx = self.agent_indices[idx]
         
         with h5py.File(self.h5_files[file_idx], 'r') as f:
             data = f['data']
-            cumulative_step_length = 0
-            for step_idx, step_data in data.items():
-                step_length = len(step_data)
-                if local_idx < cumulative_step_length + step_length:
-                    agent_idx = local_idx - cumulative_step_length
-                    agent_id = list(step_data.keys())[agent_idx]
-                    full_state = step_data[agent_id]['full_state'][()]
-                    return {f'layer_{i}': torch.FloatTensor(full_state[i]) for i in range(full_state.shape[0])}
-                cumulative_step_length += step_length
-        
-        raise IndexError(f"Index {idx} is out of bounds")
+            step_data = data[str(step_idx)]
+            agent_data = step_data[str(agent_idx)]
+            full_state = agent_data['full_state'][()]
+            
+            # Convert to torch tensor and ensure it's float32
+            full_state_tensor = torch.from_numpy(full_state).float()
+            
+            # Create a dictionary with each layer as a separate item
+            return {f'layer_{i}': full_state_tensor[i] for i in range(full_state_tensor.shape[0])}
 
 def init_worker():
     signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -397,7 +404,7 @@ def visualise_autoencoder_progress(autoencoder, h5_folder, epoch, output_folder,
         # Move autoencoder back to the original device
         autoencoder.autoencoders[ae_index] = autoencoder.autoencoders[ae_index].to(original_device)
 
-def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=10, delta=0.001):
+def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=5, delta=0.0001):
     output_folder = os.path.join(H5_FOLDER, 'training_visualisations')
     os.makedirs(output_folder, exist_ok=True)
 
@@ -547,7 +554,7 @@ def main():
     num_agents_range = range(12, 15)
     num_targets_range = range(42, 45)
     num_jammers_range_low = range(0, 4)  # 0-3 jammers
-    num_jammers_range_high = range(85, 91)  # 85-90 jammers
+    num_jammers_range_high = range(85, 90)  # 85-89 jammers
     
     map_paths = ['city_image_1.npy', 'city_image_2.npy', 'city_image_3.npy']
     
