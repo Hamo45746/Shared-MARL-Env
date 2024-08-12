@@ -9,9 +9,12 @@ import math
 def ceildiv(a, b):
     return -(a // -b)
 
+def calculate_elu_gain(negative_slope=1.0):
+    return math.sqrt(1.55)  # Theoretical gain for ELU
+
 def kaiming_elu_init_(tensor, a=1.0, mode='fan_in', nonlinearity='elu'):
     fan = nn.init._calculate_correct_fan(tensor, mode)
-    gain = nn.init.calculate_gain(nonlinearity, a)
+    gain = calculate_elu_gain(a)
     std = gain / math.sqrt(fan)
     with torch.no_grad():
         return tensor.normal_(0, std)
@@ -82,7 +85,9 @@ class LayerAutoencoder(nn.Module):
 
     def _init_weights(self, module):
         if isinstance(module, (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)):
-            kaiming_elu_init_(module.weight, mode='fan_out', nonlinearity='elu')
+            gain = math.sqrt(1.55)  # Theoretical gain for ELU
+            nn.init.kaiming_normal_(module.weight, a=0, mode='fan_out', nonlinearity='leaky_relu')
+            module.weight.data *= gain  # Scale the weights by the ELU gain
             if module.bias is not None:
                 nn.init.constant_(module.bias, 0)
         elif isinstance(module, nn.BatchNorm2d):
