@@ -4,9 +4,17 @@ import torch.optim as optim
 import torch.cuda.amp as amp
 import torch.nn.functional as F
 import numpy as np
+import math
 
 def ceildiv(a, b):
     return -(a // -b)
+
+def kaiming_elu_init_(tensor, a=1.0, mode='fan_in', nonlinearity='elu'):
+    fan = nn.init._calculate_correct_fan(tensor, mode)
+    gain = nn.init.calculate_gain(nonlinearity, a)
+    std = gain / math.sqrt(fan)
+    with torch.no_grad():
+        return tensor.normal_(0, std)
 
 class LayerAutoencoder(nn.Module):
     def __init__(self, input_shape):
@@ -74,9 +82,12 @@ class LayerAutoencoder(nn.Module):
 
     def _init_weights(self, module):
         if isinstance(module, (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)):
-            nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='elu')
+            kaiming_elu_init_(module.weight, mode='fan_out', nonlinearity='elu')
             if module.bias is not None:
                 nn.init.constant_(module.bias, 0)
+        elif isinstance(module, nn.BatchNorm2d):
+            nn.init.constant_(module.weight, 1)
+            nn.init.constant_(module.bias, 0)
 
     def forward(self, x):
         encoded = self.encoder(x)
