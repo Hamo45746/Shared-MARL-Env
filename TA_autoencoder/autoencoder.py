@@ -14,11 +14,11 @@ class LayerAutoencoder(nn.Module):
         self.input_shape = input_shape  # (276, 155)
 
         # Calculate dimensions after each conv layer
-        self.conv1_out = ((input_shape[0] - 3) // 2 + 1, (input_shape[1] - 3) // 2 + 1)
-        self.conv2_out = ((self.conv1_out[0] - 3) // 2 + 1, (self.conv1_out[1] - 3) // 2 + 1)
-        self.conv3_out = ((self.conv2_out[0] - 3) // 2 + 1, (self.conv2_out[1] - 3) // 2 + 1)
-        self.conv4_out = ((self.conv3_out[0] - 3) // 2 + 1, (self.conv3_out[1] - 3) // 2 + 1)
-        self.conv5_out = ((self.conv4_out[0] - 3) // 2 + 1, (self.conv4_out[1] - 3) // 2 + 1)
+        self.conv1_out = (ceildiv(input_shape[0], 2), ceildiv(input_shape[1], 2))
+        self.conv2_out = (ceildiv(self.conv1_out[0], 2), ceildiv(self.conv1_out[1], 2))
+        self.conv3_out = (ceildiv(self.conv2_out[0], 2), ceildiv(self.conv2_out[1], 2))
+        self.conv4_out = (ceildiv(self.conv3_out[0], 2), ceildiv(self.conv3_out[1], 2))
+        self.conv5_out = (ceildiv(self.conv4_out[0], 2), ceildiv(self.conv4_out[1], 2))
 
         self.flatten_size = 256 * self.conv5_out[0] * self.conv5_out[1]
 
