@@ -130,7 +130,7 @@ def test_specific_autoencoder(autoencoder_path, h5_folder, output_folder):
         os.makedirs(output_folder, exist_ok=True)
 
         # Test and visualize each layer
-        for layer in range(4):
+        for layer in range(2):
             ae_index = min(layer, 2)  # 0 for layer 0, 1 for layers 1 and 2, 2 for layer 3
             input_data = full_state[layer]
 

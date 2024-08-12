@@ -419,7 +419,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
     writer = SummaryWriter(log_dir=os.path.join(H5_FOLDER, 'tensorboard_logs'))
 
     try:
-        for ae_index in range(3):  # We have 3 autoencoders
+        for ae_index in range(0, 3):
             print(f"Training autoencoder {ae_index}")
             
             # Use appropriate dataset for each autoencoder

@@ -84,9 +84,7 @@ class LayerAutoencoder(nn.Module):
             nn.ConvTranspose2d(8, 1, kernel_size=3, stride=2, padding=1, output_padding=1)
         )
 
-        if self.is_binary:
-            self.final_activation = nn.Sigmoid()
-        else:
+        if not self.is_binary:
             self.final_activation = nn.Hardtanh(min_val=-20, max_val=0)
 
         self.apply(self._init_weights)
@@ -113,7 +111,9 @@ class LayerAutoencoder(nn.Module):
             background_mask = (decoded <= -19.9).float()
             decoded = decoded * (1 - background_mask) + (-20) * background_mask
         
-        return self.final_activation(decoded)
+            return self.final_activation(decoded)
+        else:
+            return decoded
 
     def encode(self, x):
         x = self.encoder_conv(x)
@@ -153,7 +153,7 @@ class EnvironmentAutoencoder:
             proportion_nonbackground = max(proportion_nonbackground, min_proportion)
             
             # Calculate weights for background and non-background
-            background_weight = 0.01  # Small weight for background
+            background_weight = 1  # Small weight for background
             nonbackground_weight = 1 / proportion_nonbackground  # Higher weight for non-background
             
             # Compute MSE for background and non-background separately
