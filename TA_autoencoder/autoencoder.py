@@ -20,67 +20,55 @@ def kaiming_elu_init_(tensor, a=1.0, mode='fan_in', nonlinearity='elu'):
         return tensor.normal_(0, std)
 
 class LayerAutoencoder(nn.Module):
-    def __init__(self, input_shape):
+    def __init__(self, input_shape, encoded_dim=64):
         super(LayerAutoencoder, self).__init__()
         self.input_shape = input_shape  # (276, 155)
+        self.encoded_dim = encoded_dim
 
-        # Encoder convolutional layers
-        self.encoder_conv = nn.Sequential(
-            nn.Conv2d(1, 8, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(),
+        # Calculate intermediate sizes
+        self.conv_output_shape = (input_shape[0] // 32, input_shape[1] // 32)  # After 5 stride-2 convolutions
+        flattened_size = 512 * self.conv_output_shape[0] * self.conv_output_shape[1]
+        intermediate_size1 = flattened_size // 4
+        intermediate_size2 = intermediate_size1 // 4
+
+        # Encoder
+        self.encoder = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),
+            nn.LeakyReLU(0.2),
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(64, 256, kernel_size=3, stride=2, padding=1),
-            nn.ReLU()
-        )
-
-        # Calculate the output size of the last convolutional layer
-        with torch.no_grad():
-            dummy_input = torch.zeros(1, 1, *input_shape)
-            conv_output = self.encoder_conv(dummy_input)
-            self.flatten_size = conv_output.numel()
-            self.conv_output_shape = conv_output.shape[1:]
-
-        # Encoder linear layers
-        self.encoder_linear = nn.Sequential(
+            nn.LeakyReLU(0.2),
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.LeakyReLU(0.2),
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
+            nn.LeakyReLU(0.2),
+            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),
+            nn.LeakyReLU(0.2),
             nn.Flatten(),
-            nn.Linear(self.flatten_size, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 512),
-            nn.ReLU(),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64)
+            nn.Linear(flattened_size, intermediate_size1),
+            nn.LeakyReLU(0.2),
+            nn.Linear(intermediate_size1, intermediate_size2),
+            nn.LeakyReLU(0.2),
+            nn.Linear(intermediate_size2, encoded_dim)
         )
 
         # Decoder
         self.decoder = nn.Sequential(
-            nn.Linear(64, 128),
-            nn.ReLU(),
-            nn.Linear(128, 256),
-            nn.ReLU(),
-            nn.Linear(256, 512),
-            nn.ReLU(),
-            nn.Linear(512, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, self.flatten_size),
-            nn.ReLU(),
-            nn.Unflatten(1, self.conv_output_shape),
-            nn.ConvTranspose2d(256, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU(),
+            nn.Linear(encoded_dim, intermediate_size2),
+            nn.LeakyReLU(0.2),
+            nn.Linear(intermediate_size2, intermediate_size1),
+            nn.LeakyReLU(0.2),
+            nn.Linear(intermediate_size1, flattened_size),
+            nn.LeakyReLU(0.2),
+            nn.Unflatten(1, (512, self.conv_output_shape[0], self.conv_output_shape[1])),
+            nn.ConvTranspose2d(512, 256, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.LeakyReLU(0.2),
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU(),
-            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU(),
-            nn.ConvTranspose2d(16, 8, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU(),
-            nn.ConvTranspose2d(8, 1, kernel_size=3, stride=2, padding=1, output_padding=1)
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(32, 1, kernel_size=3, stride=2, padding=1, output_padding=1)
         )
 
         self.final_activation = nn.Hardtanh(min_val=-20, max_val=0)
@@ -94,16 +82,15 @@ class LayerAutoencoder(nn.Module):
                 nn.init.constant_(module.bias, 0)
 
     def forward(self, x):
-        x = self.encoder_conv(x)
-        encoded = self.encoder_linear(x)
-        decoded = self.decoder(encoded)
-        # Resize the output to match the input size exactly
-        decoded = F.interpolate(decoded, size=self.input_shape, mode='bilinear', align_corners=False)
+        encoded = self.encode(x)
+        decoded = self.decode(encoded)
         return self.final_activation(decoded)
 
     def encode(self, x):
-        x = self.encoder_conv(x)
-        return self.encoder_linear(x)
+        return self.encoder(x)
+
+    def decode(self, x):
+        return self.decoder(x)
 
 class EnvironmentAutoencoder:
     def __init__(self, input_shape, device):
