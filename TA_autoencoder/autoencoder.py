@@ -85,7 +85,7 @@ class LayerAutoencoder(nn.Module):
         )
 
         if self.is_binary:
-            self.final_activation = nn.Sigmoid()
+            self.final_activation = lambda x: torch.clamp(x, 0, 1)
         else:
             self.final_activation = nn.Hardtanh(min_val=-20, max_val=0)
 
@@ -93,7 +93,10 @@ class LayerAutoencoder(nn.Module):
 
     def _init_weights(self, module):
         if isinstance(module, (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)):
-            nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+            if self.is_binary:
+                nn.init.xavier_uniform_(module.weight, gain=1.0)
+            else:
+                nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
             if module.bias is not None:
                 nn.init.constant_(module.bias, 0)
 
@@ -129,13 +132,16 @@ class EnvironmentAutoencoder:
             LayerAutoencoder((input_shape[1], input_shape[2]))   # For layer 3
         ]
         
-        self.optimizers = [optim.Adam(ae.parameters(), lr=0.001) for ae in self.autoencoders]
+        self.optimizers = [optim.Adam(ae.parameters(), lr=0.0001) for ae in self.autoencoders]
+        self.schedulers = [optim.lr_scheduler.ReduceLROnPlateau(opt, mode='min', factor=0.5, patience=5, verbose=True) for opt in self.optimizers]
         self.scaler = amp.GradScaler()
 
     def custom_loss(self, recon_x, x, layer):
         if layer == 0:  # Binary case (0/1)
-            return F.binary_cross_entropy_with_logits(recon_x, x, reduction='mean')
-            # return F.mse_loss(recon_x, x, reduction='mean')
+            # Use a combination of MSE and BCE for binary layer
+            mse_loss = F.mse_loss(recon_x, x, reduction='mean')
+            bce_loss = F.binary_cross_entropy(recon_x.clamp(min=1e-7, max=1-1e-7), x, reduction='mean')
+            return mse_loss + bce_loss
         else:  # -20 to 0 case (including jammer layer)
             # Create masks for background and non-background values
             background_mask = (x == -20).float()
@@ -204,7 +210,10 @@ class EnvironmentAutoencoder:
         
         optimizer.zero_grad()
         
-        return loss.item(), total_norm.item(), total_update_norm
+        loss_value = loss.item()
+        self.schedulers[layer].step(loss_value)
+        
+        return loss_value, total_norm.item(), total_update_norm
 
     def move_to_cpu(self, layer):
         self.autoencoders[layer] = self.autoencoders[layer].to('cpu')
