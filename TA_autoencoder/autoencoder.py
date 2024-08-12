@@ -13,52 +13,29 @@ class LayerAutoencoder(nn.Module):
         super(LayerAutoencoder, self).__init__()
         self.input_shape = input_shape  # (276, 155)
 
-        # # Calculate dimensions after each conv layer
-        # self.conv1_out = (ceildiv(input_shape[0], 2), ceildiv(input_shape[1], 2)) # 138, 78
-        # self.conv2_out = (ceildiv(self.conv1_out[0], 2), ceildiv(self.conv1_out[1], 2)) # 69, 39
-        # self.conv3_out = (ceildiv(self.conv2_out[0], 2), ceildiv(self.conv2_out[1], 2)) # 35, 20
-        # self.conv4_out = (ceildiv(self.conv3_out[0], 2), ceildiv(self.conv3_out[1], 2)) # 18, 10
-        # self.conv5_out = (ceildiv(self.conv4_out[0], 2), ceildiv(self.conv4_out[1], 2)) # 9, 5
+        # Calculate dimensions after each conv layer
+        self.conv1_out = (ceildiv(input_shape[0], 2), ceildiv(input_shape[1], 2)) # 138, 78
+        self.conv2_out = (ceildiv(self.conv1_out[0], 2), ceildiv(self.conv1_out[1], 2)) # 69, 39
+        self.conv3_out = (ceildiv(self.conv2_out[0], 2), ceildiv(self.conv2_out[1], 2)) # 35, 20
+        self.conv4_out = (ceildiv(self.conv3_out[0], 2), ceildiv(self.conv3_out[1], 2)) # 18, 10
+        self.conv5_out = (ceildiv(self.conv4_out[0], 2), ceildiv(self.conv4_out[1], 2)) # 9, 5
 
-        # self.flatten_size = 256 * self.conv5_out[0] * self.conv5_out[1]
+        self.flatten_size = 256 * self.conv5_out[0] * self.conv5_out[1]
 
-        # # Encoder
-        # self.encoder = nn.Sequential(
-        #     nn.Conv2d(1, 8, kernel_size=3, stride=2, padding=0),
-        #     nn.ELU(),
-        #     nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=0),
-        #     nn.ELU(),
-        #     nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=0),
-        #     nn.ELU(),
-        #     nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=0),
-        #     nn.ELU(),
-        #     nn.Conv2d(64, 256, kernel_size=3, stride=2, padding=0),
-        #     nn.ELU(),
-        #     nn.Flatten(),
-        #     nn.Linear(self.flatten_size, 1024),
-        #     nn.ELU(),
-        #     nn.Linear(1024, 512),
-        #     nn.ELU(),
-        #     nn.Linear(512, 256),
-        #     nn.ELU(),
-        #     nn.Linear(256, 128),
-        #     nn.ELU(),
-        #     nn.Linear(128, 64)
-        # )
-        self.linearXIn = ceildiv(ceildiv(ceildiv(ceildiv(input_shape[0], 2), 2), 2), 2) # needs to match stride each layer
-        self.linearYIn = ceildiv(ceildiv(ceildiv(ceildiv(input_shape[1], 2), 2), 2), 2)
         # Encoder
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(1, 8, kernel_size=3, stride=2, padding=0),
             nn.ELU(),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=0),
             nn.ELU(),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=0),
             nn.ELU(),
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=0),
+            nn.ELU(),
+            nn.Conv2d(64, 256, kernel_size=3, stride=2, padding=0),
             nn.ELU(),
             nn.Flatten(),
-            nn.Linear(256 * self.linearXIn * self.linearYIn, 1024),
+            nn.Linear(self.flatten_size, 1024),
             nn.ELU(),
             nn.Linear(1024, 512),
             nn.ELU(),
@@ -66,8 +43,7 @@ class LayerAutoencoder(nn.Module):
             nn.ELU(),
             nn.Linear(256, 128),
             nn.ELU(),
-            nn.Linear(128, 64),
-            nn.ELU()
+            nn.Linear(128, 64)
         )
 
         # Decoder
@@ -80,9 +56,9 @@ class LayerAutoencoder(nn.Module):
             nn.ELU(),
             nn.Linear(512, 1024),
             nn.ELU(),
-            nn.Linear(1024, 256 * self.linearXIn * self.linearYIn),
+            nn.Linear(1024, self.flatten_size),
             nn.ELU(),
-            nn.Unflatten(1, (256, self.linearXIn, self.linearYIn)),
+            nn.Unflatten(1, (256, self.conv5_out[0], self.conv5_out[1])),
             nn.ConvTranspose2d(256, 64, kernel_size=3, stride=2, output_padding=1),
             nn.ELU(),
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, output_padding=1),
