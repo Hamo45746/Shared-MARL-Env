@@ -411,7 +411,7 @@ def visualise_autoencoder_progress(autoencoder, h5_folder, epoch, output_folder,
         # Move autoencoder back to the original device
         autoencoder.autoencoders[ae_index] = autoencoder.autoencoders[ae_index].to(original_device)
 
-def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=2, delta=0.001):
+def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=1, delta=0.001):
     output_folder = os.path.join(H5_FOLDER, 'training_visualisations')
     os.makedirs(output_folder, exist_ok=True)
 

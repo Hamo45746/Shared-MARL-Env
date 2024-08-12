@@ -20,9 +20,10 @@ def kaiming_elu_init_(tensor, a=1.0, mode='fan_in', nonlinearity='elu'):
         return tensor.normal_(0, std)
 
 class LayerAutoencoder(nn.Module):
-    def __init__(self, input_shape):
+    def __init__(self, input_shape, is_binary=False):
         super(LayerAutoencoder, self).__init__()
         self.input_shape = input_shape  # (276, 155)
+        self.is_binary = is_binary
 
         # Encoder convolutional layers
         self.encoder_conv = nn.Sequential(
@@ -83,7 +84,10 @@ class LayerAutoencoder(nn.Module):
             nn.ConvTranspose2d(8, 1, kernel_size=3, stride=2, padding=1, output_padding=1)
         )
 
-        self.final_activation = nn.Hardtanh(min_val=-20, max_val=0)
+        if self.is_binary:
+            self.final_activation = nn.Sigmoid()
+        else:
+            self.final_activation = nn.Hardtanh(min_val=-20, max_val=0)
 
         self.apply(self._init_weights)
 
@@ -101,9 +105,11 @@ class LayerAutoencoder(nn.Module):
         # Interpolate to match input size
         decoded = F.interpolate(decoded, size=self.input_shape, mode='bilinear', align_corners=False)
         
-        # Apply thresholding to mitigate interpolation effects
-        background_mask = (decoded <= -19.9).float()
-        decoded = decoded * (1 - background_mask) + (-20) * background_mask
+        if not self.is_binary:
+            # Apply thresholding to mitigate interpolation effects for continuous data
+            background_mask = (decoded <= -19.9).float()
+            decoded = decoded * (1 - background_mask) + (-20) * background_mask
+        
         return self.final_activation(decoded)
 
     def encode(self, x):
@@ -118,18 +124,18 @@ class EnvironmentAutoencoder:
         
         # Create 3 autoencoders
         self.autoencoders = [
-            LayerAutoencoder((input_shape[1], input_shape[2])),  # For layer 0
+            LayerAutoencoder((input_shape[1], input_shape[2]), is_binary=True),  # For layer 0
             LayerAutoencoder((input_shape[1], input_shape[2])),  # For layers 1 and 2
             LayerAutoencoder((input_shape[1], input_shape[2]))   # For layer 3
         ]
         
-        self.optimizers = [optim.Adam(ae.parameters(), lr=0.0001) for ae in self.autoencoders]
+        self.optimizers = [optim.Adam(ae.parameters(), lr=0.001) for ae in self.autoencoders]
         self.scaler = amp.GradScaler()
 
     def custom_loss(self, recon_x, x, layer):
         if layer == 0:  # Binary case (0/1)
-            # return F.binary_cross_entropy_with_logits(recon_x, x, reduction='mean')
-            return F.mse_loss(recon_x, x, reduction='mean')
+            return F.binary_cross_entropy_with_logits(recon_x, x, reduction='mean')
+            # return F.mse_loss(recon_x, x, reduction='mean')
         else:  # -20 to 0 case (including jammer layer)
             # Create masks for background and non-background values
             background_mask = (x == -20).float()
