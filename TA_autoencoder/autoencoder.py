@@ -83,7 +83,7 @@ class LayerAutoencoder(nn.Module):
             nn.ReLU(),
             nn.ConvTranspose2d(16, 8, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(8, 1, kernel_size=4, stride=2, padding=1),  # Adjusted kernel size
+            nn.ConvTranspose2d(8, 1, kernel_size=4, stride=2, padding=1, output_padding=(0,1)),
             nn.Hardtanh(min_val=-20, max_val=0)  # Ensure output is between -20 and 0
         )
 
