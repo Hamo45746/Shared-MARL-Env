@@ -14,28 +14,28 @@ class LayerAutoencoder(nn.Module):
         self.input_shape = input_shape  # (276, 155)
 
         # Calculate dimensions after each conv layer
-        self.conv1_out = (ceildiv(input_shape[0], 2), ceildiv(input_shape[1], 2)) # 138, 78
-        self.conv2_out = (ceildiv(self.conv1_out[0], 2), ceildiv(self.conv1_out[1], 2)) # 69, 39
-        self.conv3_out = (ceildiv(self.conv2_out[0], 2), ceildiv(self.conv2_out[1], 2)) # 35, 20
-        self.conv4_out = (ceildiv(self.conv3_out[0], 2), ceildiv(self.conv3_out[1], 2)) # 18, 10
-        self.conv5_out = (ceildiv(self.conv4_out[0], 2), ceildiv(self.conv4_out[1], 2)) # 9, 5
+        self.conv1_out = ((input_shape[0] - 3) // 2 + 1, (input_shape[1] - 3) // 2 + 1)
+        self.conv2_out = ((self.conv1_out[0] - 3) // 2 + 1, (self.conv1_out[1] - 3) // 2 + 1)
+        self.conv3_out = ((self.conv2_out[0] - 3) // 2 + 1, (self.conv2_out[1] - 3) // 2 + 1)
+        self.conv4_out = ((self.conv3_out[0] - 3) // 2 + 1, (self.conv3_out[1] - 3) // 2 + 1)
+        self.conv5_out = ((self.conv4_out[0] - 3) // 2 + 1, (self.conv4_out[1] - 3) // 2 + 1)
 
         self.flatten_size = 256 * self.conv5_out[0] * self.conv5_out[1]
 
         # Encoder
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 8, kernel_size=3, stride=2, padding=0), # 8 x 138 x 78 = 86112
+            nn.Conv2d(1, 8, kernel_size=3, stride=2, padding=1),
             nn.ELU(),
-            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=0), # 16 x 69 x 39
+            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=1),
             nn.ELU(),
-            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=0), # 32 x 35 x 20
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
             nn.ELU(),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=0), # 64 x 18 x 10
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.ELU(),
-            nn.Conv2d(64, 256, kernel_size=3, stride=2, padding=0), # 256 x 9 x 5
+            nn.Conv2d(64, 256, kernel_size=3, stride=2, padding=1),
             nn.ELU(),
-            nn.Flatten(), # size error 32 x 5376 in this layer?
-            nn.Linear(self.flatten_size, 1024), # 11520x1024
+            nn.Flatten(),
+            nn.Linear(self.flatten_size, 1024),
             nn.ELU(),
             nn.Linear(1024, 512),
             nn.ELU(),
@@ -59,17 +59,24 @@ class LayerAutoencoder(nn.Module):
             nn.Linear(1024, self.flatten_size),
             nn.ELU(),
             nn.Unflatten(1, (256, self.conv5_out[0], self.conv5_out[1])),
-            nn.ConvTranspose2d(256, 64, kernel_size=3, stride=2, output_padding=1),
+            nn.ConvTranspose2d(256, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ELU(),
-            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, output_padding=1),
+            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ELU(),
-            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, output_padding=1),
+            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ELU(),
-            nn.ConvTranspose2d(16, 8, kernel_size=3, stride=2, output_padding=1),
+            nn.ConvTranspose2d(16, 8, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ELU(),
-            nn.ConvTranspose2d(8, 1, kernel_size=3, stride=2, output_padding=1),
+            nn.ConvTranspose2d(8, 1, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.Hardtanh(min_val=-20, max_val=0)  # Ensure output is between -20 and 0
         )
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)):
+            nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='elu')
+            if module.bias is not None:
+                nn.init.constant_(module.bias, 0)
 
     def forward(self, x):
         encoded = self.encoder(x)
