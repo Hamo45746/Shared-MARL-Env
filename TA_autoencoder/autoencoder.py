@@ -85,7 +85,7 @@ class LayerAutoencoder(nn.Module):
         )
 
         if self.is_binary:
-            self.final_activation = lambda x: torch.clamp(x, 0, 1)
+            self.final_activation = nn.Sigmoid()
         else:
             self.final_activation = nn.Hardtanh(min_val=-20, max_val=0)
 
@@ -138,10 +138,8 @@ class EnvironmentAutoencoder:
 
     def custom_loss(self, recon_x, x, layer):
         if layer == 0:  # Binary case (0/1)
-            # Use a combination of MSE and BCE for binary layer
-            mse_loss = F.mse_loss(recon_x, x, reduction='mean')
-            bce_loss = F.binary_cross_entropy(recon_x.clamp(min=1e-7, max=1-1e-7), x, reduction='mean')
-            return mse_loss + bce_loss
+            return F.binary_cross_entropy_with_logits(recon_x, x, reduction='mean')
+            # return F.mse_loss(recon_x, x, reduction='mean')
         else:  # -20 to 0 case (including jammer layer)
             # Create masks for background and non-background values
             background_mask = (x == -20).float()
