@@ -20,55 +20,67 @@ def kaiming_elu_init_(tensor, a=1.0, mode='fan_in', nonlinearity='elu'):
         return tensor.normal_(0, std)
 
 class LayerAutoencoder(nn.Module):
-    def __init__(self, input_shape, encoded_dim=64):
+    def __init__(self, input_shape):
         super(LayerAutoencoder, self).__init__()
         self.input_shape = input_shape  # (276, 155)
-        self.encoded_dim = encoded_dim
 
-        # Calculate intermediate sizes
-        self.conv_output_shape = (input_shape[0] // 32, input_shape[1] // 32)  # After 5 stride-2 convolutions
-        flattened_size = 512 * self.conv_output_shape[0] * self.conv_output_shape[1]
-        intermediate_size1 = flattened_size // 4
-        intermediate_size2 = intermediate_size1 // 4
-
-        # Encoder
-        self.encoder = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),
+        # Encoder convolutional layers
+        self.encoder_conv = nn.Sequential(
+            nn.Conv2d(1, 8, kernel_size=3, stride=2, padding=1),
+            nn.LeakyReLU(0.2),
+            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=1),
+            nn.LeakyReLU(0.2),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(0.2),
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(64, 256, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
-            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
+        )
+
+        # Calculate the output size of the last convolutional layer
+        with torch.no_grad():
+            dummy_input = torch.zeros(1, 1, *input_shape)
+            conv_output = self.encoder_conv(dummy_input)
+            self.flatten_size = conv_output.numel()
+            self.conv_output_shape = conv_output.shape[1:]
+
+        # Encoder linear layers
+        self.encoder_linear = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(flattened_size, intermediate_size1),
+            nn.Linear(self.flatten_size, 1024),
             nn.LeakyReLU(0.2),
-            nn.Linear(intermediate_size1, intermediate_size2),
+            nn.Linear(1024, 512),
             nn.LeakyReLU(0.2),
-            nn.Linear(intermediate_size2, encoded_dim)
+            nn.Linear(512, 256),
+            nn.LeakyReLU(0.2),
+            nn.Linear(256, 128),
+            nn.LeakyReLU(0.2),
+            nn.Linear(128, 64)
         )
 
         # Decoder
         self.decoder = nn.Sequential(
-            nn.Linear(encoded_dim, intermediate_size2),
+            nn.Linear(64, 128),
             nn.LeakyReLU(0.2),
-            nn.Linear(intermediate_size2, intermediate_size1),
+            nn.Linear(128, 256),
             nn.LeakyReLU(0.2),
-            nn.Linear(intermediate_size1, flattened_size),
+            nn.Linear(256, 512),
             nn.LeakyReLU(0.2),
-            nn.Unflatten(1, (512, self.conv_output_shape[0], self.conv_output_shape[1])),
-            nn.ConvTranspose2d(512, 256, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.Linear(512, 1024),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.Linear(1024, self.flatten_size),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.Unflatten(1, self.conv_output_shape),
+            nn.ConvTranspose2d(256, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.LeakyReLU(0.2),
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(32, 1, kernel_size=3, stride=2, padding=1, output_padding=1)
+            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(16, 8, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(8, 1, kernel_size=3, stride=2, padding=1, output_padding=1)
         )
 
         self.final_activation = nn.Hardtanh(min_val=-20, max_val=0)
@@ -82,15 +94,21 @@ class LayerAutoencoder(nn.Module):
                 nn.init.constant_(module.bias, 0)
 
     def forward(self, x):
-        encoded = self.encode(x)
-        decoded = self.decode(encoded)
+        x = self.encoder_conv(x)
+        encoded = self.encoder_linear(x)
+        decoded = self.decoder(encoded)
+        
+        # Interpolate to match input size
+        decoded = F.interpolate(decoded, size=self.input_shape, mode='bilinear', align_corners=False)
+        
+        # Apply thresholding to mitigate interpolation effects
+        background_mask = (decoded <= -19.9).float()
+        decoded = decoded * (1 - background_mask) + (-20) * background_mask
         return self.final_activation(decoded)
 
     def encode(self, x):
-        return self.encoder(x)
-
-    def decode(self, x):
-        return self.decoder(x)
+        x = self.encoder_conv(x)
+        return self.encoder_linear(x)
 
 class EnvironmentAutoencoder:
     def __init__(self, input_shape, device):
@@ -105,7 +123,7 @@ class EnvironmentAutoencoder:
             LayerAutoencoder((input_shape[1], input_shape[2]))   # For layer 3
         ]
         
-        self.optimizers = [optim.Adam(ae.parameters(), lr=0.001) for ae in self.autoencoders]
+        self.optimizers = [optim.Adam(ae.parameters(), lr=0.0001) for ae in self.autoencoders]
         self.scaler = amp.GradScaler()
 
     def custom_loss(self, recon_x, x, layer):
@@ -150,7 +168,7 @@ class EnvironmentAutoencoder:
         
         with amp.autocast():
             outputs = ae(layer_input.unsqueeze(1))  # Add channel dimension
-            loss = self.custom_loss(outputs.squeeze(1), layer_input, layer)
+            loss = self.custom_loss(outputs.squeeze(1), layer_input, layer)  # Removed channel dimension for loss calculation
 
             # Check for nan loss
             if torch.isnan(loss):
