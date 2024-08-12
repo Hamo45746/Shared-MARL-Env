@@ -83,9 +83,16 @@ class LayerAutoencoder(nn.Module):
             nn.ReLU(),
             nn.ConvTranspose2d(16, 8, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(8, 1, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ConvTranspose2d(8, 1, kernel_size=4, stride=2, padding=1),  # Adjusted kernel size
             nn.Hardtanh(min_val=-20, max_val=0)  # Ensure output is between -20 and 0
         )
+
+        # Verify output size
+        with torch.no_grad():
+            dummy_encoded = torch.zeros(1, 64)
+            dummy_output = self.decoder(dummy_encoded)
+            print(f"Decoder output shape: {dummy_output.shape[2:]}")
+            assert dummy_output.shape[2:] == torch.Size(input_shape), f"Output shape {dummy_output.shape[2:]} doesn't match input shape {input_shape}"
 
         self.apply(self._init_weights)
 
