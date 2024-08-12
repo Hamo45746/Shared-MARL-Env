@@ -24,18 +24,18 @@ class LayerAutoencoder(nn.Module):
 
         # Encoder
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 8, kernel_size=3, stride=2, padding=0),
+            nn.Conv2d(1, 8, kernel_size=3, stride=2, padding=0), # 8 x 138 x 78 = 86112
             nn.ELU(),
-            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=0),
+            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=0), # 16 x 69 x 39
             nn.ELU(),
-            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=0),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=0), # 32 x 35 x 20
             nn.ELU(),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=0),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=0), # 64 x 18 x 10
             nn.ELU(),
-            nn.Conv2d(64, 256, kernel_size=3, stride=2, padding=0),
+            nn.Conv2d(64, 256, kernel_size=3, stride=2, padding=0), # 256 x 9 x 5
             nn.ELU(),
-            nn.Flatten(),
-            nn.Linear(self.flatten_size, 1024),
+            nn.Flatten(), # size error 32 x 5376 in this layer?
+            nn.Linear(self.flatten_size, 1024), # 11520x1024
             nn.ELU(),
             nn.Linear(1024, 512),
             nn.ELU(),
