@@ -105,12 +105,13 @@ class EnvironmentAutoencoder:
             LayerAutoencoder((input_shape[1], input_shape[2]))   # For layer 3
         ]
         
-        self.optimizers = [optim.Adam(ae.parameters(), lr=0.0001) for ae in self.autoencoders]
+        self.optimizers = [optim.Adam(ae.parameters(), lr=0.001) for ae in self.autoencoders]
         self.scaler = amp.GradScaler()
 
     def custom_loss(self, recon_x, x, layer):
         if layer == 0:  # Binary case (0/1)
-            return F.binary_cross_entropy_with_logits(recon_x, x, reduction='mean')
+            # return F.binary_cross_entropy_with_logits(recon_x, x, reduction='mean')
+            return F.mse_loss(recon_x, x, reduction='mean')
         else:  # -20 to 0 case (including jammer layer)
             # Create masks for background and non-background values
             background_mask = (x == -20).float()
@@ -149,7 +150,7 @@ class EnvironmentAutoencoder:
         
         with amp.autocast():
             outputs = ae(layer_input.unsqueeze(1))  # Add channel dimension
-            loss = self.custom_loss(outputs.squeeze(1), layer_input, layer)  # Removed channel dimension for loss calculation
+            loss = self.custom_loss(outputs.squeeze(1), layer_input, layer)
 
             # Check for nan loss
             if torch.isnan(loss):
