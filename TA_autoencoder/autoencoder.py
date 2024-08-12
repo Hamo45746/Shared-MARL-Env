@@ -42,11 +42,8 @@ class LayerAutoencoder(nn.Module):
         with torch.no_grad():
             dummy_input = torch.zeros(1, 1, *input_shape)
             conv_output = self.encoder_conv(dummy_input)
-            self.flatten_size = conv_output.numel() // conv_output.size(0)
+            self.flatten_size = conv_output.numel()
             self.conv_output_shape = conv_output.shape[1:]
-
-        print(f"Flatten size: {self.flatten_size}")
-        print(f"Conv output shape: {self.conv_output_shape}")
 
         # Encoder linear layers
         self.encoder_linear = nn.Sequential(
@@ -83,16 +80,10 @@ class LayerAutoencoder(nn.Module):
             nn.ReLU(),
             nn.ConvTranspose2d(16, 8, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(8, 1, kernel_size=4, stride=2, padding=1, output_padding=(0,1)),
-            nn.Hardtanh(min_val=-20, max_val=0)  # Ensure output is between -20 and 0
+            nn.ConvTranspose2d(8, 1, kernel_size=3, stride=2, padding=1, output_padding=1)
         )
 
-        # Verify output size
-        with torch.no_grad():
-            dummy_encoded = torch.zeros(1, 64)
-            dummy_output = self.decoder(dummy_encoded)
-            print(f"Decoder output shape: {dummy_output.shape[2:]}")
-            assert dummy_output.shape[2:] == torch.Size(input_shape), f"Output shape {dummy_output.shape[2:]} doesn't match input shape {input_shape}"
+        self.final_activation = nn.Hardtanh(min_val=-20, max_val=0)
 
         self.apply(self._init_weights)
 
@@ -106,12 +97,13 @@ class LayerAutoencoder(nn.Module):
         x = self.encoder_conv(x)
         encoded = self.encoder_linear(x)
         decoded = self.decoder(encoded)
-        return decoded
+        # Resize the output to match the input size exactly
+        decoded = F.interpolate(decoded, size=self.input_shape, mode='bilinear', align_corners=False)
+        return self.final_activation(decoded)
 
     def encode(self, x):
         x = self.encoder_conv(x)
         return self.encoder_linear(x)
-    
 
 class EnvironmentAutoencoder:
     def __init__(self, input_shape, device):
