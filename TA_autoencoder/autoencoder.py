@@ -24,35 +24,29 @@ class LayerAutoencoder(nn.Module):
         super(LayerAutoencoder, self).__init__()
         self.input_shape = input_shape  # (276, 155)
 
-        # Calculate padding for each layer to ensure correct output size
-        def calc_padding(input_size, kernel_size=3, stride=2):
-            padding = max(0, (stride - (input_size % stride)) % stride)
-            return padding // 2, padding - padding // 2
-
-        # Calculate sizes for each layer
-        sizes = [input_shape]
-        for _ in range(5):  # We have 5 conv layers
-            h, w = sizes[-1]
-            pH, pW = calc_padding(h), calc_padding(w)
-            new_h = (h + pH[0] + pH[1] - 3) // 2 + 1
-            new_w = (w + pW[0] + pW[1] - 3) // 2 + 1
-            sizes.append((new_h, new_w))
-
         # Encoder convolutional layers
         self.encoder_conv = nn.Sequential(
-            nn.Conv2d(1, 8, kernel_size=3, stride=2, padding=calc_padding(input_shape[0])),
+            nn.Conv2d(1, 8, kernel_size=3, stride=2, padding=1),
             nn.ReLU(),
-            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=calc_padding(sizes[1][0])),
+            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=1),
             nn.ReLU(),
-            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=calc_padding(sizes[2][0])),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=calc_padding(sizes[3][0])),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.ReLU(),
-            nn.Conv2d(64, 256, kernel_size=3, stride=2, padding=calc_padding(sizes[4][0])),
+            nn.Conv2d(64, 256, kernel_size=3, stride=2, padding=1),
             nn.ReLU()
         )
 
-        self.flatten_size = 256 * sizes[-1][0] * sizes[-1][1]
+        # Calculate the output size of the last convolutional layer
+        with torch.no_grad():
+            dummy_input = torch.zeros(1, 1, *input_shape)
+            conv_output = self.encoder_conv(dummy_input)
+            self.flatten_size = conv_output.numel() // conv_output.size(0)
+            self.conv_output_shape = conv_output.shape[1:]
+
+        print(f"Flatten size: {self.flatten_size}")
+        print(f"Conv output shape: {self.conv_output_shape}")
 
         # Encoder linear layers
         self.encoder_linear = nn.Sequential(
@@ -80,16 +74,16 @@ class LayerAutoencoder(nn.Module):
             nn.ReLU(),
             nn.Linear(1024, self.flatten_size),
             nn.ReLU(),
-            nn.Unflatten(1, (256, sizes[-1][0], sizes[-1][1])),
-            nn.ConvTranspose2d(256, 64, kernel_size=3, stride=2, padding=1, output_padding=calc_padding(sizes[4][0], stride=2)[0]),
+            nn.Unflatten(1, self.conv_output_shape),
+            nn.ConvTranspose2d(256, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=calc_padding(sizes[3][0], stride=2)[0]),
+            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=calc_padding(sizes[2][0], stride=2)[0]),
+            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(16, 8, kernel_size=3, stride=2, padding=1, output_padding=calc_padding(sizes[1][0], stride=2)[0]),
+            nn.ConvTranspose2d(16, 8, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(8, 1, kernel_size=3, stride=2, padding=1, output_padding=calc_padding(sizes[0][0], stride=2)[0]),
+            nn.ConvTranspose2d(8, 1, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.Hardtanh(min_val=-20, max_val=0)  # Ensure output is between -20 and 0
         )
 
@@ -110,6 +104,7 @@ class LayerAutoencoder(nn.Module):
     def encode(self, x):
         x = self.encoder_conv(x)
         return self.encoder_linear(x)
+    
 
 class EnvironmentAutoencoder:
     def __init__(self, input_shape, device):
