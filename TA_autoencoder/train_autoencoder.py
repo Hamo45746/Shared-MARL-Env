@@ -47,13 +47,16 @@ class FlattenedMultiAgentH5Dataset(Dataset):
         
         for file_idx, h5_file in enumerate(self.h5_files):
             with h5py.File(h5_file, 'r') as f:
+                if 'data' not in f:
+                    logging.warning(f"No 'data' group in file {h5_file}")
+                    continue
                 data = f['data']
                 for step_idx in data.keys():
                     step_data = data[step_idx]
                     for agent_idx in step_data.keys():
                         self.file_indices.append(file_idx)
-                        self.step_indices.append(int(step_idx))
-                        self.agent_indices.append(int(agent_idx))
+                        self.step_indices.append(step_idx)
+                        self.agent_indices.append(agent_idx)
             
             self.cumulative_lengths.append(len(self.file_indices))
         
@@ -69,12 +72,16 @@ class FlattenedMultiAgentH5Dataset(Dataset):
         
         with h5py.File(self.h5_files[file_idx], 'r') as f:
             data = f['data']
-            step_data = data[str(step_idx)]
-            agent_data = step_data[str(agent_idx)]
+            step_data = data[step_idx]
+            agent_data = step_data[agent_idx]
             full_state = agent_data['full_state'][()]
             
             # Convert to torch tensor and ensure it's float32
             full_state_tensor = torch.from_numpy(full_state).float()
+            
+            # Ensure we have all 4 layers
+            if full_state_tensor.shape[0] != 4:
+                raise ValueError(f"Expected 4 layers, but got {full_state_tensor.shape[0]} layers in file {self.h5_files[file_idx]}, step {step_idx}, agent {agent_idx}")
             
             # Create a dictionary with each layer as a separate item
             return {f'layer_{i}': full_state_tensor[i] for i in range(full_state_tensor.shape[0])}

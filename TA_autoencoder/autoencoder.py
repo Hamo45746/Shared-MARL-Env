@@ -12,51 +12,68 @@ class LayerAutoencoder(nn.Module):
     def __init__(self, input_shape):
         super(LayerAutoencoder, self).__init__()
         self.input_shape = input_shape  # (276, 155)
-        self.linearXIn = ceildiv(ceildiv(ceildiv(ceildiv(input_shape[0], 2), 2), 2), 2) # needs to match stride each layer
-        self.linearYIn = ceildiv(ceildiv(ceildiv(ceildiv(input_shape[1], 2), 2), 2), 2)
+
+        # Calculate dimensions after each conv layer
+        self.conv1_out = ((input_shape[0] - 3) // 2 + 1, (input_shape[1] - 3) // 2 + 1)
+        self.conv2_out = ((self.conv1_out[0] - 3) // 2 + 1, (self.conv1_out[1] - 3) // 2 + 1)
+        self.conv3_out = ((self.conv2_out[0] - 3) // 2 + 1, (self.conv2_out[1] - 3) // 2 + 1)
+        self.conv4_out = ((self.conv3_out[0] - 3) // 2 + 1, (self.conv3_out[1] - 3) // 2 + 1)
+        self.conv5_out = ((self.conv4_out[0] - 3) // 2 + 1, (self.conv4_out[1] - 3) // 2 + 1)
+
+        self.flatten_size = 256 * self.conv5_out[0] * self.conv5_out[1]
+
         # Encoder
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
+            nn.Conv2d(1, 8, kernel_size=3, stride=2, padding=0),
+            nn.ELU(),
+            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=0),
+            nn.ELU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=0),
+            nn.ELU(),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=0),
+            nn.ELU(),
+            nn.Conv2d(64, 256, kernel_size=3, stride=2, padding=0),
+            nn.ELU(),
             nn.Flatten(),
-            nn.Linear(256 * self.linearXIn * self.linearYIn, 512),
-            nn.LeakyReLU(0.2),
-            nn.Linear(512, 256)
+            nn.Linear(self.flatten_size, 1024),
+            nn.ELU(),
+            nn.Linear(1024, 512),
+            nn.ELU(),
+            nn.Linear(512, 256),
+            nn.ELU(),
+            nn.Linear(256, 128),
+            nn.ELU(),
+            nn.Linear(128, 64)
         )
 
         # Decoder
         self.decoder = nn.Sequential(
+            nn.Linear(64, 128),
+            nn.ELU(),
+            nn.Linear(128, 256),
+            nn.ELU(),
             nn.Linear(256, 512),
-            nn.LeakyReLU(0.2),
-            nn.Linear(512, 256 * self.linearXIn * self.linearYIn),
-            nn.LeakyReLU(0.2),
-            nn.Unflatten(1, (256, self.linearXIn, self.linearYIn)),
-            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(32, 1, kernel_size=3, stride=2, padding=1)
+            nn.ELU(),
+            nn.Linear(512, 1024),
+            nn.ELU(),
+            nn.Linear(1024, self.flatten_size),
+            nn.ELU(),
+            nn.Unflatten(1, (256, self.conv5_out[0], self.conv5_out[1])),
+            nn.ConvTranspose2d(256, 64, kernel_size=3, stride=2, output_padding=1),
+            nn.ELU(),
+            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, output_padding=1),
+            nn.ELU(),
+            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, output_padding=1),
+            nn.ELU(),
+            nn.ConvTranspose2d(16, 8, kernel_size=3, stride=2, output_padding=1),
+            nn.ELU(),
+            nn.ConvTranspose2d(8, 1, kernel_size=3, stride=2, output_padding=1),
+            nn.Hardtanh(min_val=-20, max_val=0)  # Ensure output is between -20 and 0
         )
-        self.apply(self._init_weights)
-
-    def _init_weights(self, module):
-        if isinstance(module, (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)):
-            nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
-            if module.bias is not None:
-                nn.init.constant_(module.bias, 0)
 
     def forward(self, x):
         encoded = self.encoder(x)
         decoded = self.decoder(encoded)
-        decoded = F.interpolate(decoded, size=self.input_shape, mode='bilinear', align_corners=False)
         return decoded
 
     def encode(self, x):
@@ -77,53 +94,45 @@ class EnvironmentAutoencoder:
         
         self.optimizers = [optim.Adam(ae.parameters(), lr=0.0001) for ae in self.autoencoders]
         self.scaler = amp.GradScaler()
-        
-        self.scalers = [
-            lambda x: x,  # For binary layer (layer 0)
-            lambda x: (x + 20) / 20,  # For negative layers (layers 1 and 2)
-            lambda x: (x + 20) / 20,  # For negative layers (layers 1 and 2)
-            lambda x: (x + 20) / 20   # For negative layer (layer 3)
-        ]
-        
-        self.inverse_scalers = [
-            lambda x: x,  # For binary layer (layer 0)
-            lambda x: x * 20 - 20,  # For negative layers (layers 1 and 2)
-            lambda x: x * 20 - 20,  # For negative layers (layers 1 and 2)
-            lambda x: x * 20 - 20   # For negative layer (layer 3)
-        ]
 
     def custom_loss(self, recon_x, x, layer):
         if layer == 0:  # Binary case (0/1)
-            return F.mse_loss(recon_x, x, reduction='mean')
+            return F.binary_cross_entropy_with_logits(recon_x, x, reduction='mean')
         else:  # -20 to 0 case (including jammer layer)
-            x_rescaled = self.inverse_scalers[layer](x)
-            recon_x_rescaled = self.inverse_scalers[layer](recon_x)
+            # Create masks for background and non-background values
+            background_mask = (x == -20).float()
+            nonbackground_mask = (x > -20).float()
             
-            # Create a mask for values above -20
-            mask = (x_rescaled > -20).float()
+            # Calculate the proportion of non-background values
+            proportion_nonbackground = nonbackground_mask.mean()
             
-            # Calculate the proportion of values above -20
-            proportion_above_threshold = mask.mean()
+            # Set a minimum proportion to avoid division by zero
+            min_proportion = 1e-6
+            proportion_nonbackground = max(proportion_nonbackground, min_proportion)
             
-            # Calculate the weight for values above -20
-            # The smaller the proportion, the higher the weight
-            weight_above_threshold = 1 / (proportion_above_threshold + 1e-6)
+            # Calculate weights for background and non-background
+            background_weight = 0.01  # Small weight for background
+            nonbackground_weight = 1 / proportion_nonbackground  # Higher weight for non-background
             
-            # Create a weight tensor
-            weights = torch.ones_like(x_rescaled)
-            weights = torch.where(mask == 1, weight_above_threshold, weights)
+            # Compute MSE for background and non-background separately
+            background_mse = F.mse_loss(recon_x * background_mask, x * background_mask, reduction='sum')
+            nonbackground_mse = F.mse_loss(recon_x * nonbackground_mask, x * nonbackground_mask, reduction='sum')
             
-            # Calculate weighted MSE loss
-            mse_loss = torch.mean(weights * (recon_x_rescaled - x_rescaled)**2)
+            # Compute L1 loss for non-background to encourage sparsity and exact reconstruction
+            nonbackground_l1 = F.l1_loss(recon_x * nonbackground_mask, x * nonbackground_mask, reduction='sum')
             
-            return mse_loss
+            # Combine losses with appropriate weights
+            total_loss = (background_weight * background_mse +
+                        nonbackground_weight * (nonbackground_mse + 10 * nonbackground_l1)) / x.numel()
+            
+            return total_loss
 
     def train_step(self, batch, layer):
         ae = self.autoencoders[layer].to(self.device)
         optimizer = self.optimizers[layer]
         ae.train()
 
-        layer_input = self.scalers[layer](batch[f'layer_{layer}']).to(self.device)
+        layer_input = batch[f'layer_{layer}'].to(self.device)
         
         with amp.autocast():
             outputs = ae(layer_input.unsqueeze(1))  # Add channel dimension
@@ -165,8 +174,7 @@ class EnvironmentAutoencoder:
 
     def encode_state(self, state):
         with torch.no_grad():
-            scaled_state = [self.scalers[i](state[i]) for i in range(len(state))]
-            state_tensor = torch.FloatTensor(scaled_state).unsqueeze(1)  # Add channel dimension
+            state_tensor = torch.FloatTensor(state).unsqueeze(1)  # Add channel dimension
             encoded_layers = []
             for i in range(4):  # We have 4 layers in the state
                 if i == 0:
@@ -200,8 +208,7 @@ class EnvironmentAutoencoder:
                 ae.to(self.device)
                 encoded_layer = torch.FloatTensor(encoded_state[i]).unsqueeze(0).unsqueeze(0).to(self.device)
                 decoded_layer = ae.decoder(encoded_layer)
-                decoded_layer = self.inverse_scalers[ae_index](decoded_layer.cpu().numpy().squeeze())
-                decoded_layers.append(decoded_layer)
+                decoded_layers.append(decoded_layer.cpu().numpy().squeeze())
                 ae.to('cpu')
                 torch.cuda.empty_cache()
         return np.array(decoded_layers)
