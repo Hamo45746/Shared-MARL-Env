@@ -24,17 +24,8 @@ class LayerAutoencoder(nn.Module):
         super(LayerAutoencoder, self).__init__()
         self.input_shape = input_shape  # (276, 155)
 
-        # Calculate dimensions after each conv layer
-        self.conv1_out = ((input_shape[0] - 3) // 2 + 1, (input_shape[1] - 3) // 2 + 1)
-        self.conv2_out = ((self.conv1_out[0] - 3) // 2 + 1, (self.conv1_out[1] - 3) // 2 + 1)
-        self.conv3_out = ((self.conv2_out[0] - 3) // 2 + 1, (self.conv2_out[1] - 3) // 2 + 1)
-        self.conv4_out = ((self.conv3_out[0] - 3) // 2 + 1, (self.conv3_out[1] - 3) // 2 + 1)
-        self.conv5_out = ((self.conv4_out[0] - 3) // 2 + 1, (self.conv4_out[1] - 3) // 2 + 1)
-
-        self.flatten_size = 256 * self.conv5_out[0] * self.conv5_out[1]
-
-        # Encoder
-        self.encoder = nn.Sequential(
+        # Encoder convolutional layers
+        self.encoder_conv = nn.Sequential(
             nn.Conv2d(1, 8, kernel_size=3, stride=2, padding=1),
             nn.ELU(),
             nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=1),
@@ -44,7 +35,17 @@ class LayerAutoencoder(nn.Module):
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.ELU(),
             nn.Conv2d(64, 256, kernel_size=3, stride=2, padding=1),
-            nn.ELU(),
+            nn.ELU()
+        )
+
+        # Calculate the output size of the last convolutional layer
+        with torch.no_grad():
+            dummy_input = torch.zeros(1, 1, *input_shape)
+            conv_output = self.encoder_conv(dummy_input)
+            self.flatten_size = conv_output.numel()
+
+        # Encoder linear layers
+        self.encoder_linear = nn.Sequential(
             nn.Flatten(),
             nn.Linear(self.flatten_size, 1024),
             nn.ELU(),
@@ -69,7 +70,7 @@ class LayerAutoencoder(nn.Module):
             nn.ELU(),
             nn.Linear(1024, self.flatten_size),
             nn.ELU(),
-            nn.Unflatten(1, (256, self.conv5_out[0], self.conv5_out[1])),
+            nn.Unflatten(1, (256, conv_output.shape[2], conv_output.shape[3])),
             nn.ConvTranspose2d(256, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ELU(),
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
@@ -81,6 +82,7 @@ class LayerAutoencoder(nn.Module):
             nn.ConvTranspose2d(8, 1, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.Hardtanh(min_val=-20, max_val=0)  # Ensure output is between -20 and 0
         )
+
         self.apply(self._init_weights)
 
     def _init_weights(self, module):
@@ -90,17 +92,16 @@ class LayerAutoencoder(nn.Module):
             module.weight.data *= gain  # Scale the weights by the ELU gain
             if module.bias is not None:
                 nn.init.constant_(module.bias, 0)
-        elif isinstance(module, nn.BatchNorm2d):
-            nn.init.constant_(module.weight, 1)
-            nn.init.constant_(module.bias, 0)
 
     def forward(self, x):
-        encoded = self.encoder(x)
+        x = self.encoder_conv(x)
+        encoded = self.encoder_linear(x)
         decoded = self.decoder(encoded)
         return decoded
 
     def encode(self, x):
-        return self.encoder(x)
+        x = self.encoder_conv(x)
+        return self.encoder_linear(x)
 
 class EnvironmentAutoencoder:
     def __init__(self, input_shape, device):
