@@ -43,6 +43,7 @@ class LayerAutoencoder(nn.Module):
             dummy_input = torch.zeros(1, 1, *input_shape)
             conv_output = self.encoder_conv(dummy_input)
             self.flatten_size = conv_output.numel()
+            self.conv_output_shape = conv_output.shape[1:]
 
         # Encoder linear layers
         self.encoder_linear = nn.Sequential(
@@ -70,7 +71,7 @@ class LayerAutoencoder(nn.Module):
             nn.ELU(),
             nn.Linear(1024, self.flatten_size),
             nn.ELU(),
-            nn.Unflatten(1, (256, conv_output.shape[2], conv_output.shape[3])),
+            nn.Unflatten(1, self.conv_output_shape),
             nn.ConvTranspose2d(256, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ELU(),
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
@@ -80,8 +81,10 @@ class LayerAutoencoder(nn.Module):
             nn.ConvTranspose2d(16, 8, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ELU(),
             nn.ConvTranspose2d(8, 1, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.Hardtanh(min_val=-20, max_val=0)  # Ensure output is between -20 and 0
+            nn.ELU()
         )
+
+        self.final_activation = nn.Hardtanh(min_val=-20, max_val=0)
 
         self.apply(self._init_weights)
 
@@ -97,7 +100,9 @@ class LayerAutoencoder(nn.Module):
         x = self.encoder_conv(x)
         encoded = self.encoder_linear(x)
         decoded = self.decoder(encoded)
-        return decoded
+        # Resize the output to match the input size exactly
+        decoded = F.interpolate(decoded, size=self.input_shape, mode='bilinear', align_corners=False)
+        return self.final_activation(decoded)
 
     def encode(self, x):
         x = self.encoder_conv(x)
@@ -160,7 +165,7 @@ class EnvironmentAutoencoder:
         
         with amp.autocast():
             outputs = ae(layer_input.unsqueeze(1))  # Add channel dimension
-            loss = self.custom_loss(outputs, layer_input.unsqueeze(1), layer)
+            loss = self.custom_loss(outputs.squeeze(1), layer_input, layer)  # Removed channel dimension for loss calculation
 
             # Check for nan loss
             if torch.isnan(loss):
