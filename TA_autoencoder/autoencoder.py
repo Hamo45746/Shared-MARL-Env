@@ -3,26 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.cuda.amp import GradScaler, autocast
 
-class DynamicConv2d(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride):
-        super(DynamicConv2d, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride)
-        self.stride = stride
-
-    def forward(self, x):
-        h, w = x.shape[2:]
-        h_out = (h - self.conv.kernel_size[0]) // self.stride + 1
-        w_out = (w - self.conv.kernel_size[1]) // self.stride + 1
-        return self.conv(x[:, :, :h_out*self.stride, :w_out*self.stride])
-
-class DynamicConvTranspose2d(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride):
-        super(DynamicConvTranspose2d, self).__init__()
-        self.convt = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride)
-        self.stride = stride
-
-    def forward(self, x, output_size):
-        return self.convt(x, output_size=output_size)
 
 class LayerAutoencoder(nn.Module):
     def __init__(self, is_map=False):
@@ -31,13 +11,13 @@ class LayerAutoencoder(nn.Module):
 
         # Encoder convolutional layers (no padding)
         self.encoder_conv = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=0),  # Output: 137x77
+            nn.Conv2d(1, 32, kernel_size=3, stride=2),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=0),  # Output: 68x38
+            nn.Conv2d(32, 64, kernel_size=3, stride=2),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=0),  # Output: 33x18
+            nn.Conv2d(64, 128, kernel_size=3, stride=2),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=0),  # Output: 16x8
+            nn.Conv2d(128, 256, kernel_size=3, stride=2),
             nn.LeakyReLU(0.2),
         )
 
@@ -46,52 +26,36 @@ class LayerAutoencoder(nn.Module):
 
         # Encoder linear layers with more gradual reduction
         self.encoder_linear = nn.Sequential(
-            nn.Linear(self.flattened_size, 16384),
+            nn.Linear(self.flattened_size, 8192),
             nn.LeakyReLU(0.2),
-            nn.Linear(16384, 8192),
+            nn.Linear(8192, 2048),
             nn.LeakyReLU(0.2),
-            nn.Linear(8192, 4096),
+            nn.Linear(2048, 512),
             nn.LeakyReLU(0.2),
-            nn.Linear(4096, 2048),
-            nn.LeakyReLU(0.2),
-            nn.Linear(2048, 1024),
-            nn.LeakyReLU(0.2),
-            nn.Linear(1024, 512),
-            nn.LeakyReLU(0.2),
-            nn.Linear(512, 256),
-            nn.LeakyReLU(0.2),
-            nn.Linear(256, 64)
+            nn.Linear(512, 128)
         )
 
         # Decoder linear layers with gradual expansion
         self.decoder_linear = nn.Sequential(
-            nn.Linear(64, 256),
+            nn.Linear(128, 512),
             nn.LeakyReLU(0.2),
-            nn.Linear(256, 512),
+            nn.Linear(512, 2048),
             nn.LeakyReLU(0.2),
-            nn.Linear(512, 1024),
+            nn.Linear(2048, 8192),
             nn.LeakyReLU(0.2),
-            nn.Linear(1024, 2048),
-            nn.LeakyReLU(0.2),
-            nn.Linear(2048, 4096),
-            nn.LeakyReLU(0.2),
-            nn.Linear(4096, 8192),
-            nn.LeakyReLU(0.2),
-            nn.Linear(8192, 16384),
-            nn.LeakyReLU(0.2),
-            nn.Linear(16384, self.flattened_size),
+            nn.Linear(8192, self.flattened_size),
             nn.LeakyReLU(0.2)
         )
 
-        # Decoder convolutional layers (no padding)
+        # Decoder convolutional layers
         self.decoder_conv = nn.Sequential(
-            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=0),  # Output: 33x17
+            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=0),  # Output: 67x35
+            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=0),  # Output: 135x71
+            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(32, 1, kernel_size=3, stride=2, padding=0),  # Output: 271x143
+            nn.ConvTranspose2d(32, 1, kernel_size=3, stride=2),
         )
 
         self.apply(self._init_weights)
@@ -103,40 +67,35 @@ class LayerAutoencoder(nn.Module):
                 nn.init.constant_(module.bias, 0)
 
     def forward(self, x):
-        # Ensure input is 4D: [batch_size, channels, height, width]
-        if x.dim() == 3:
-            x = x.unsqueeze(1)  # Add channel dimension
-        elif x.dim() == 2:
-            x = x.unsqueeze(0).unsqueeze(0)  # Add batch and channel dimensions
-
         # Encoder
-        x = self.encoder_conv(x)
-        x = x.view(x.size(0), -1)
+        x = nn.Flatten(self.encoder_conv(x))
         encoded = self.encoder_linear(x)
 
         # Decoder
-        x = self.decoder_linear(encoded)
-        x = x.view(x.size(0), 256, 16, 8)
+        x = nn.Unflatten(self.decoder_linear(encoded))
         x = self.decoder_conv(x)
-
+        
         # Ensure output size is 276x155 using interpolation
         x = F.interpolate(x, size=(276, 155), mode='bilinear', align_corners=False)
 
         if not self.is_map:
             x = torch.clamp(x, min=-20, max=0)
-
-        return x.squeeze(1) # remove channel dimension
+            
+        return x
 
     def encode(self, x):
-        # Ensure input is 4D: [batch_size, channels, height, width]
-        if x.dim() == 3:
-            x = x.unsqueeze(1)  # Add channel dimension
-        elif x.dim() == 2:
-            x = x.unsqueeze(0).unsqueeze(0)  # Add batch and channel dimensions
-
         x = self.encoder_conv(x)
-        x = x.view(x.size(0), -1)
+        x = nn.Flatten(x)
         return self.encoder_linear(x)
+
+    def decode(self, x):
+        x = nn.Unflatten(self.decoder_linear(x))
+        x = self.decoder_conv(x)
+        # Ensure output size is 276x155 using interpolation
+        x = F.interpolate(x, size=(276, 155), mode='bilinear', align_corners=False)
+        if not self.is_map:
+            x = torch.clamp(x, min=-20, max=0)
+        return x
 
 class EnvironmentAutoencoder:
     def __init__(self, device):
