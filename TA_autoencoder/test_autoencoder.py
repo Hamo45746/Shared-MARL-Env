@@ -97,8 +97,8 @@ def load_autoencoder_for_layer(path, input_shape, device, layer, epoch):
         logging.error(f"Error loading autoencoder: {str(e)}")
         raise
 
-def test_specific_autoencoder(autoencoder_path, h5_folder, output_folder):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def test_specific_autoencoder(autoencoder, h5_folder, output_folder, autoencoder_index=None, epoch=None):
+    device = autoencoder.device
     logging.info(f"Using device: {device}")
 
     try:
@@ -109,28 +109,20 @@ def test_specific_autoencoder(autoencoder_path, h5_folder, output_folder):
         input_shape = full_state.shape
         logging.info(f"Full input shape: {input_shape}")
 
-        # Load the specific autoencoder
-        autoencoder = EnvironmentAutoencoder(input_shape, device)
-        checkpoint = torch.load(autoencoder_path, map_location=device)
-        
-        if 'model_state_dicts' in checkpoint:
-            # This is a full autoencoder save
-            for i, ae in enumerate(autoencoder.autoencoders):
-                ae.load_state_dict(checkpoint['model_state_dicts'][i])
-                ae.to(device)
-                ae.eval()
-        else:
-            # This is a single autoencoder save
-            autoencoder.autoencoders[0].load_state_dict(checkpoint)
-            autoencoder.autoencoders[0].to(device)
-            autoencoder.autoencoders[0].eval()
-
-        logging.info(f"Loaded autoencoder from {autoencoder_path}")
-
         os.makedirs(output_folder, exist_ok=True)
 
+        # Determine which layers to visualize
+        if autoencoder_index is None:
+            layers_to_visualize = range(4)
+        elif autoencoder_index == 0:
+            layers_to_visualize = [0]
+        elif autoencoder_index == 1:
+            layers_to_visualize = [1, 2]
+        else:
+            layers_to_visualize = [3]
+
         # Test and visualize each layer
-        for layer in range(2):
+        for layer in layers_to_visualize:
             ae_index = min(layer, 2)  # 0 for layer 0, 1 for layers 1 and 2, 2 for layer 3
             input_data = full_state[layer]
 
@@ -167,11 +159,13 @@ def test_specific_autoencoder(autoencoder_path, h5_folder, output_folder):
             else:
                 mse = np.mean((input_data - decoded) ** 2)
             
-            plt.suptitle(f'Layer {layer} - Autoencoder Test (MSE: {mse:.6f})')
+            epoch_str = f"Epoch {epoch} - " if epoch is not None else ""
+            plt.suptitle(f'Layer {layer} - {epoch_str}Autoencoder Test (MSE: {mse:.6f})')
 
             # Save the figure
             plt.tight_layout()
-            output_file = os.path.join(output_folder, f'test_layer_{layer}.png')
+            epoch_prefix = f"epoch_{epoch}_" if epoch is not None else ""
+            output_file = os.path.join(output_folder, f'{epoch_prefix}test_layer_{layer}.png')
             plt.savefig(output_file, dpi=300, bbox_inches='tight')
             plt.close(fig)
 

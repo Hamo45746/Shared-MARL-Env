@@ -16,7 +16,7 @@ import signal
 import fcntl
 import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
-import traceback
+from test_autoencoder import test_specific_autoencoder
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -316,102 +316,60 @@ def process_config(args):
 
 def save_training_state(autoencoder, layer, epoch):
     state = {
-        'model_state_dicts': [ae.state_dict() for ae in autoencoder.autoencoders],
-        'optimizer_state_dicts': [opt.state_dict() for opt in autoencoder.optimizers],
-        'layer': layer,
-        'epoch': epoch
+        'epoch': epoch,
+        'model_state_dict': autoencoder.autoencoders[layer].state_dict(),
+        'optimizer_state_dict': autoencoder.optimizers[layer].state_dict(),
+        'scheduler_state_dict': autoencoder.schedulers[layer].state_dict(),
+        'scaler': autoencoder.scaler.state_dict(),
     }
     torch.save(state, os.path.join(H5_FOLDER, f"training_state_layer_{layer}.pth"))
 
 def load_training_state(autoencoder, layer):
-    state_path = os.path.join(H5_FOLDER, f"training_state_layer_{layer}.pth")
+    # Map layer 2 to use autoencoder 1
+    ae_index = 1 if layer == 2 else layer
+    
+    state_path = os.path.join(H5_FOLDER, f"training_state_layer_{ae_index}.pth")
     if os.path.exists(state_path):
         state = torch.load(state_path, map_location='cpu')  # Always load to CPU first
-        autoencoder.autoencoders[layer].load_state_dict(state['model_state_dicts'][layer])
-        autoencoder.optimizers[layer].load_state_dict(state['optimizer_state_dicts'][layer])
+        
+        autoencoder.autoencoders[ae_index].load_state_dict(state['model_state_dict'])
+        autoencoder.optimizers[ae_index].load_state_dict(state['optimizer_state_dict'])
+        autoencoder.schedulers[ae_index].load_state_dict(state['scheduler_state_dict'])
         
         # Move model and optimizer to the correct device
-        autoencoder.autoencoders[layer].to(autoencoder.device)
-        for state in autoencoder.optimizers[layer].state.values():
+        autoencoder.autoencoders[ae_index].to(autoencoder.device)
+        for state in autoencoder.optimizers[ae_index].state.values():
             for k, v in state.items():
                 if isinstance(v, torch.Tensor):
                     state[k] = v.to(autoencoder.device)
         
+        # Load scaler state if it exists (for backwards compatibility)
+        if 'scaler' in state:
+            autoencoder.scaler.load_state_dict(state['scaler'])
+        
         return state['epoch']
     return 0
 
-def visualise_autoencoder_progress(autoencoder, h5_folder, epoch, output_folder, ae_index):
-    # Store the original device
-    original_device = next(autoencoder.autoencoders[ae_index].parameters()).device
-    
-    try:
-        # Move autoencoder to CPU for visualization
-        autoencoder.autoencoders[ae_index] = autoencoder.autoencoders[ae_index].cpu()
+# def load_training_state(autoencoder, layer):
+#     state_path = os.path.join(H5_FOLDER, f"training_state_layer_{layer}.pth")
+#     if os.path.exists(state_path):
+#         state = torch.load(state_path, map_location='cpu')  # Always load to CPU first
+#         autoencoder.autoencoders[layer].load_state_dict(state['model_state_dicts'][layer])
+#         autoencoder.optimizers[layer].load_state_dict(state['optimizer_state_dicts'][layer])
         
-        # Find a suitable H5 file (with high number of targets and agents)
-        suitable_file = None
-        for filename in os.listdir(h5_folder):
-            if filename.endswith('.h5') and 'a14' in filename and 't42' in filename:
-                suitable_file = os.path.join(h5_folder, filename)
-                break
+#         # Move model and optimizer to the correct device
+#         autoencoder.autoencoders[layer].to(autoencoder.device)
+#         for state in autoencoder.optimizers[layer].state.values():
+#             for k, v in state.items():
+#                 if isinstance(v, torch.Tensor):
+#                     state[k] = v.to(autoencoder.device)
         
-        if not suitable_file:
-            logging.warning("No suitable H5 file found for visualization.")
-            return
+#         return state['epoch']
+#     return 0
 
-        # Load data from the H5 file
-        with h5py.File(suitable_file, 'r') as f:
-            first_step = f['data']['0']
-            first_agent = first_step[list(first_step.keys())[0]]
-            full_state = first_agent['full_state'][()]
 
-        # Create output folder if it doesn't exist
-        os.makedirs(output_folder, exist_ok=True)
-
-        fig, axes = plt.subplots(1, 2, figsize=(20, 10))
-        fig.suptitle(f'Autoencoder {ae_index} - Epoch {epoch}')
-
-        # Determine which layer(s) to visualize based on ae_index
-        if ae_index == 0:
-            layers_to_visualize = [0]
-        elif ae_index == 1:
-            layers_to_visualize = [1, 2]
-        else:  # ae_index == 2
-            layers_to_visualize = [3]
-
-        for layer in layers_to_visualize:
-            # Input
-            im_input = axes[0].imshow(full_state[layer], cmap='viridis')
-            axes[0].set_title(f'Input (Layer {layer})')
-            plt.colorbar(im_input, ax=axes[0], fraction=0.046, pad=0.04)
-
-            # Output
-            with torch.no_grad():
-                input_tensor = torch.FloatTensor(full_state[layer]).unsqueeze(0).unsqueeze(0)
-                encoded = autoencoder.autoencoders[ae_index].encode(input_tensor)
-                decoded = autoencoder.autoencoders[ae_index].decoder(encoded)
-                decoded = decoded.numpy().squeeze()
-
-            im_output = axes[1].imshow(decoded, cmap='viridis')
-            axes[1].set_title(f'Output (Layer {layer})')
-            plt.colorbar(im_output, ax=axes[1], fraction=0.046, pad=0.04)
-
-            # Save the figure
-            plt.tight_layout()
-            plt.savefig(os.path.join(output_folder, f'autoencoder_{ae_index}_layer_{layer}_epoch_{epoch}.png'), dpi=300, bbox_inches='tight')
-            plt.close(fig)
-
-        logging.info(f"Visualisations for autoencoder {ae_index}, epoch {epoch} saved in {output_folder}")
-    
-    except Exception as e:
-        logging.error(f"Error during visualization for autoencoder {ae_index}, epoch {epoch}: {str(e)}")
-        traceback.print_exc()
-    
-    finally:
-        # Move autoencoder back to the original device
-        autoencoder.autoencoders[ae_index] = autoencoder.autoencoders[ae_index].to(original_device)
-
-def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=1, delta=0.001):
+def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=5, delta=0.001):
+    device = autoencoder.device
     output_folder = os.path.join(H5_FOLDER, 'training_visualisations')
     os.makedirs(output_folder, exist_ok=True)
 
@@ -432,9 +390,6 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
             
             start_epoch = load_training_state(autoencoder, ae_index)
             
-            # Ensure the autoencoder is on the correct device
-            autoencoder.autoencoders[ae_index].to(autoencoder.device)
-            
             # Early stopping variables
             best_loss = float('inf')
             epochs_no_improve = 0
@@ -446,102 +401,82 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                     writer.flush()
                     return
 
-                try:
-                    total_loss = 0
-                    num_batches = 0
-                    nan_batches = 0
+                total_loss = 0
+                num_batches = 0
+                
+                for batch in tqdm(dataloader, desc=f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs}"):
+                    if interrupt_flag.value:
+                        raise KeyboardInterrupt
+
+                    if ae_index == 0:
+                        layer_batch = batch[f'layer_0'].to(device)
+                    elif ae_index == 1:
+                        layer_batch = torch.cat([batch[f'layer_1'], batch[f'layer_2']], dim=0).to(device)
+                    else:  # ae_index == 2
+                        layer_batch = batch[f'layer_3'].to(device)
                     
-                    for batch in tqdm(dataloader, desc=f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs}"):
-                        if interrupt_flag.value:
-                            raise KeyboardInterrupt
+                    loss = autoencoder.train_step(layer_batch, ae_index)
+                    
+                    if loss is None:  # nan loss detected
+                        continue
+                    
+                    total_loss += loss
+                    num_batches += 1
 
-                        if ae_index == 0:
-                            layer_batch = {f'layer_0': batch[f'layer_0'].to(autoencoder.device)}
-                        elif ae_index == 1:
-                            layer_batch = {
-                                f'layer_1': torch.cat([batch[f'layer_1'], batch[f'layer_2']], dim=0).to(autoencoder.device)
-                            }
-                        else:  # ae_index == 2
-                            layer_batch = {f'layer_3': batch[f'layer_3'].to(autoencoder.device)}
-                        
-                        loss, gradient_norm, weight_update_norm = autoencoder.train_step(layer_batch, ae_index)
-                        
-                        if loss is None:  # nan loss detected
-                            nan_batches += 1
-                            continue
-                        
-                        total_loss += loss
-                        num_batches += 1
+                    # Log batch-level metrics
+                    writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + num_batches)
 
-                        # Log additional metrics
-                        writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + num_batches)
-                        writer.add_scalar(f'Autoencoder_{ae_index}/Gradient_Norm', gradient_norm, epoch * len(dataloader) + num_batches)
-                        writer.add_scalar(f'Autoencoder_{ae_index}/Weight_Update_Norm', weight_update_norm, epoch * len(dataloader) + num_batches)
+                    # Free up memory
+                    del layer_batch
+                    torch.cuda.empty_cache()
 
-                        # Free up memory
-                        del layer_batch
-                        torch.cuda.empty_cache()
+                if num_batches > 0:
+                    avg_loss = total_loss / num_batches
+                    print(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
+                    logging.info(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
 
-                    if num_batches > 0:
-                        avg_loss = total_loss / num_batches
-                        print(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
-                        print(f"NaN losses in {nan_batches} out of {num_batches + nan_batches} batches")
-                        logging.info(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
-                        logging.info(f"NaN losses in {nan_batches} out of {num_batches + nan_batches} batches")
+                    # Log epoch-level metrics
+                    writer.add_scalar(f'Autoencoder_{ae_index}/Epoch_Loss', avg_loss, epoch)
 
-                        # Log epoch-level metrics
-                        writer.add_scalar(f'Autoencoder_{ae_index}/Epoch_Loss', avg_loss, epoch)
-                        writer.add_scalar(f'Autoencoder_{ae_index}/NaN_Batches', nan_batches, epoch)
-
-                        # Check for improvement
-                        if avg_loss < best_loss - delta:
-                            best_loss = avg_loss
-                            epochs_no_improve = 0
-                            # Save the best model
-                            autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_best.pth"))
-                        else:
-                            epochs_no_improve += 1
-
-                        # Check early stopping condition
-                        if epochs_no_improve >= patience:
-                            print(f"Early stopping triggered for autoencoder {ae_index}")
-                            logging.info(f"Early stopping triggered for autoencoder {ae_index}")
-                            break
-
+                    # Check for improvement
+                    if avg_loss < best_loss - delta:
+                        best_loss = avg_loss
+                        epochs_no_improve = 0
+                        # Save the best model
+                        autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_best.pth"))
                     else:
-                        print(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} failed. All batches resulted in NaN loss.")
-                        logging.warning(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} failed. All batches resulted in NaN loss.")
+                        epochs_no_improve += 1
 
-                    save_training_state(autoencoder, ae_index, epoch + 1)
+                    # Check early stopping condition
+                    if epochs_no_improve >= patience:
+                        print(f"Early stopping triggered for autoencoder {ae_index}. No improvement for {patience} epochs.")
+                        logging.info(f"Early stopping triggered for autoencoder {ae_index}. No improvement for {patience} epochs.")
+                        break
 
-                    if (epoch + 1) % 10 == 0:
-                        autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_epoch_{epoch+1}.pth"))
-                        # Generate and save visualizations
-                        visualise_autoencoder_progress(autoencoder, H5_FOLDER, epoch + 1, output_folder, ae_index)
+                else:
+                    print(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} failed. All batches resulted in NaN loss.")
+                    logging.warning(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} failed. All batches resulted in NaN loss.")
 
-                    mem_percent = psutil.virtual_memory().percent
-                    logging.info(f"Memory usage: {mem_percent}%")
+                save_training_state(autoencoder, ae_index, epoch)
 
-                    if mem_percent > 90:
-                        logging.warning("High memory usage detected. Pausing for 60 seconds.")
-                        time.sleep(60)
+                if (epoch + 1) % 10 == 0:
+                    autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_epoch_{epoch+1}.pth"))
+                    # Generate and save visualizations
+                    test_specific_autoencoder(autoencoder, H5_FOLDER, output_folder, autoencoder_index=ae_index, epoch=epoch+1)
 
-                except KeyboardInterrupt:
-                    print(f"Interrupt detected. Saving progress for autoencoder {ae_index}...")
-                    save_training_state(autoencoder, ae_index, epoch)
-                    writer.flush()
-                    return
+                mem_percent = psutil.virtual_memory().percent
+                logging.info(f"Memory usage: {mem_percent}%")
 
-                except Exception as e:
-                    logging.error(f"Error during training autoencoder {ae_index}, epoch {epoch+1}: {str(e)}")
-                    raise
+                if mem_percent > 90:
+                    logging.warning("High memory usage detected. Pausing for 60 seconds.")
+                    time.sleep(60)
 
             print(f"Autoencoder {ae_index} training completed.")
             logging.info(f"Autoencoder {ae_index} training completed.")
 
-            # After finishing all epochs for an autoencoder, move it back to CPU
-            autoencoder.move_to_cpu(ae_index)
-
+    except Exception as e:
+        logging.error(f"Error during training: {str(e)}")
+        raise
     finally:
         writer.close()
         autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
