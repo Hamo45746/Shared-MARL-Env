@@ -29,51 +29,54 @@ class LayerAutoencoder(nn.Module):
         super(LayerAutoencoder, self).__init__()
         self.is_map = is_map
 
-        # Encoder
+        # Encoder convolutional layers (no padding)
         self.encoder_conv = nn.Sequential(
-            DynamicConv2d(1, 32, kernel_size=3, stride=2),
+            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=0),  # Output: 137x77
             nn.LeakyReLU(0.2),
-            DynamicConv2d(32, 64, kernel_size=3, stride=2),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=0),  # Output: 68x38
             nn.LeakyReLU(0.2),
-            DynamicConv2d(64, 128, kernel_size=3, stride=2),
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=0),  # Output: 33x18
             nn.LeakyReLU(0.2),
-            DynamicConv2d(128, 256, kernel_size=3, stride=2),
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=0),  # Output: 16x8
             nn.LeakyReLU(0.2),
         )
 
-        # Gradual reduction to 64
+        # Calculate the flattened size
+        self.flattened_size = 256 * 16 * 8
+
+        # Encoder linear layers
         self.encoder_linear = nn.Sequential(
-            nn.Linear(256, 256),
+            nn.Linear(self.flattened_size, 1024),
             nn.LeakyReLU(0.2),
-            nn.Linear(256, 192),
+            nn.Linear(1024, 512),
             nn.LeakyReLU(0.2),
-            nn.Linear(192, 128),
+            nn.Linear(512, 256),
             nn.LeakyReLU(0.2),
-            nn.Linear(128, 96),
-            nn.LeakyReLU(0.2),
-            nn.Linear(96, 64)
+            nn.Linear(256, 64)
         )
 
-        # Decoder (reverse of encoder)
+        # Decoder linear layers
         self.decoder_linear = nn.Sequential(
-            nn.Linear(64, 96),
+            nn.Linear(64, 256),
             nn.LeakyReLU(0.2),
-            nn.Linear(96, 128),
+            nn.Linear(256, 512),
             nn.LeakyReLU(0.2),
-            nn.Linear(128, 192),
+            nn.Linear(512, 1024),
             nn.LeakyReLU(0.2),
-            nn.Linear(192, 256),
-            nn.LeakyReLU(0.2),
-            nn.Linear(256, 256),
-            nn.LeakyReLU(0.2),
+            nn.Linear(1024, self.flattened_size),
+            nn.LeakyReLU(0.2)
         )
 
-        self.decoder_conv = nn.ModuleList([
-            DynamicConvTranspose2d(256, 128, kernel_size=3, stride=2),
-            DynamicConvTranspose2d(128, 64, kernel_size=3, stride=2),
-            DynamicConvTranspose2d(64, 32, kernel_size=3, stride=2),
-            DynamicConvTranspose2d(32, 1, kernel_size=3, stride=2)
-        ])
+        # Decoder convolutional layers (no padding)
+        self.decoder_conv = nn.Sequential(
+            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=0),  # Output: 33x17
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=0),  # Output: 67x35
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=0),  # Output: 135x71
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(32, 1, kernel_size=3, stride=2, padding=0),  # Output: 271x143
+        )
 
         self.apply(self._init_weights)
 
@@ -90,29 +93,18 @@ class LayerAutoencoder(nn.Module):
         elif x.dim() == 2:
             x = x.unsqueeze(0).unsqueeze(0)  # Add batch and channel dimensions
 
-        # Store original size for later
-        original_size = x.shape[2:]
-
         # Encoder
-        conv_outputs = []
-        for layer in self.encoder_conv:
-            x = layer(x)
-            conv_outputs.append(x)
-
-        # Flatten and apply linear layers
+        x = self.encoder_conv(x)
         x = x.view(x.size(0), -1)
         encoded = self.encoder_linear(x)
 
         # Decoder
         x = self.decoder_linear(encoded)
-        x = x.view(x.size(0), 256, conv_outputs[-1].size(2), conv_outputs[-1].size(3))
+        x = x.view(x.size(0), 256, 16, 8)
+        x = self.decoder_conv(x)
 
-        # Apply transposed convolutions
-        for i, layer in enumerate(self.decoder_conv):
-            output_size = conv_outputs[-i-2].shape[2:] if i < 3 else original_size
-            x = layer(x, output_size=output_size)
-            if i < 3:  # Don't apply activation to final layer
-                x = F.leaky_relu(x, 0.2)
+        # Ensure output size is 276x155 using interpolation
+        x = F.interpolate(x, size=(276, 155), mode='bilinear', align_corners=False)
 
         if self.is_map:
             return torch.sigmoid(x)
@@ -126,8 +118,7 @@ class LayerAutoencoder(nn.Module):
         elif x.dim() == 2:
             x = x.unsqueeze(0).unsqueeze(0)  # Add batch and channel dimensions
 
-        for layer in self.encoder_conv:
-            x = layer(x)
+        x = self.encoder_conv(x)
         x = x.view(x.size(0), -1)
         return self.encoder_linear(x)
 

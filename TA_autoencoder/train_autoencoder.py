@@ -563,10 +563,10 @@ def main():
         with h5py.File(h5_files_low_jammers[0], 'r') as f:
             first_step = f['data']['0']
             first_agent = first_step[list(first_step.keys())[0]]
-            input_shape = first_agent['full_state'].shape
+            # input_shape = first_agent['full_state'].shape
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        autoencoder = EnvironmentAutoencoder(input_shape, device)
+        autoencoder = EnvironmentAutoencoder(device)
 
         # Train autoencoders
         train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers)
