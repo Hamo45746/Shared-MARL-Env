@@ -396,9 +396,6 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
             best_loss = float('inf')
             epochs_no_improve = 0
             
-            # Initialize GradScaler for mixed precision training
-            scaler = GradScaler()
-            
             for epoch in range(start_epoch, num_epochs):
                 if interrupt_flag.value:
                     print(f"Interrupt detected. Saving progress for autoencoder {ae_index}...")

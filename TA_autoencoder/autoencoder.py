@@ -131,7 +131,7 @@ class EnvironmentAutoencoder:
 
         layer_input = batch.to(self.device)
         
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
         
         with autocast():
             layer_input = layer_input.unsqueeze(1)
