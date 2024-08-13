@@ -42,11 +42,19 @@ class LayerAutoencoder(nn.Module):
         )
 
         # Calculate the flattened size
-        self.flattened_size = 256 * 16 * 8
+        self.flattened_size = 256 * 16 * 8  # 32,768
 
-        # Encoder linear layers
+        # Encoder linear layers with more gradual reduction
         self.encoder_linear = nn.Sequential(
-            nn.Linear(self.flattened_size, 1024),
+            nn.Linear(self.flattened_size, 16384),
+            nn.LeakyReLU(0.2),
+            nn.Linear(16384, 8192),
+            nn.LeakyReLU(0.2),
+            nn.Linear(8192, 4096),
+            nn.LeakyReLU(0.2),
+            nn.Linear(4096, 2048),
+            nn.LeakyReLU(0.2),
+            nn.Linear(2048, 1024),
             nn.LeakyReLU(0.2),
             nn.Linear(1024, 512),
             nn.LeakyReLU(0.2),
@@ -55,7 +63,7 @@ class LayerAutoencoder(nn.Module):
             nn.Linear(256, 64)
         )
 
-        # Decoder linear layers
+        # Decoder linear layers with gradual expansion
         self.decoder_linear = nn.Sequential(
             nn.Linear(64, 256),
             nn.LeakyReLU(0.2),
@@ -63,7 +71,15 @@ class LayerAutoencoder(nn.Module):
             nn.LeakyReLU(0.2),
             nn.Linear(512, 1024),
             nn.LeakyReLU(0.2),
-            nn.Linear(1024, self.flattened_size),
+            nn.Linear(1024, 2048),
+            nn.LeakyReLU(0.2),
+            nn.Linear(2048, 4096),
+            nn.LeakyReLU(0.2),
+            nn.Linear(4096, 8192),
+            nn.LeakyReLU(0.2),
+            nn.Linear(8192, 16384),
+            nn.LeakyReLU(0.2),
+            nn.Linear(16384, self.flattened_size),
             nn.LeakyReLU(0.2)
         )
 
@@ -106,10 +122,10 @@ class LayerAutoencoder(nn.Module):
         # Ensure output size is 276x155 using interpolation
         x = F.interpolate(x, size=(276, 155), mode='bilinear', align_corners=False)
 
-        if self.is_map:
-            return torch.sigmoid(x)
-        else:
-            return torch.clamp(x, min=-20, max=0)
+        if not self.is_map:
+            x = torch.clamp(x, min=-20, max=0)
+
+        return x
 
     def encode(self, x):
         # Ensure input is 4D: [batch_size, channels, height, width]
@@ -139,7 +155,7 @@ class EnvironmentAutoencoder:
 
     def custom_loss(self, recon_x, x, layer):
         if layer == 0:  # Map layer (Binary Cross Entropy loss)
-            return F.binary_cross_entropy(recon_x, x, reduction='mean')
+            return F.binary_cross_entropy_with_logits(recon_x, x, reduction='mean')
         else:  # Other layers (-20 to 0 range)
             # MSE loss for non-background pixels, L1 loss for background
             mse_loss = F.mse_loss(recon_x, x, reduction='none')
