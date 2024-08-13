@@ -368,7 +368,8 @@ def load_training_state(autoencoder, layer):
 #     return 0
 
 
-def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=1, delta=0.001):
+        
+def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=1, delta=0.01):
     device = autoencoder.device
     output_folder = os.path.join(H5_FOLDER, 'training_visualisations')
     os.makedirs(output_folder, exist_ok=True)
@@ -379,6 +380,9 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
     try:
         for ae_index in range(0, 3):
             print(f"Training autoencoder {ae_index}")
+            
+            # Move current autoencoder to GPU
+            autoencoder.autoencoders[ae_index].to(device)
             
             # Use appropriate dataset for each autoencoder
             if ae_index == 2:
@@ -409,11 +413,11 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                         raise KeyboardInterrupt
 
                     if ae_index == 0:
-                        layer_batch = batch[f'layer_0'].to(device)
+                        layer_batch = batch[f'layer_0']
                     elif ae_index == 1:
-                        layer_batch = torch.cat([batch[f'layer_1'], batch[f'layer_2']], dim=0).to(device)
+                        layer_batch = torch.cat([batch[f'layer_1'], batch[f'layer_2']], dim=0)
                     else:  # ae_index == 2
-                        layer_batch = batch[f'layer_3'].to(device)
+                        layer_batch = batch[f'layer_3']
                     
                     loss = autoencoder.train_step(layer_batch, ae_index)
                     
@@ -471,6 +475,10 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                     logging.warning("High memory usage detected. Pausing for 60 seconds.")
                     time.sleep(60)
 
+            # Move current autoencoder back to CPU after training
+            autoencoder.autoencoders[ae_index].cpu()
+            torch.cuda.empty_cache()
+
             print(f"Autoencoder {ae_index} training completed.")
             logging.info(f"Autoencoder {ae_index} training completed.")
 
@@ -480,8 +488,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
     finally:
         writer.close()
         autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
-        logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
-
+        logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")        
     
 def main():
     # Set up signal handler

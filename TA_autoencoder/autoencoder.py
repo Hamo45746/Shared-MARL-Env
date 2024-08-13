@@ -144,9 +144,9 @@ class EnvironmentAutoencoder:
         print(f"Autoencoder using device: {self.device}")
         
         self.autoencoders = [
-            LayerAutoencoder(is_map=True).to(device),  # For layer 0 (map)
-            LayerAutoencoder().to(device),  # For layers 1 and 2
-            LayerAutoencoder().to(device)   # For layer 3
+            LayerAutoencoder(is_map=True),  # For layer 0 (map)
+            LayerAutoencoder(),  # For layers 1 and 2
+            LayerAutoencoder()   # For layer 3
         ]
         
         self.optimizers = [torch.optim.Adam(ae.parameters(), lr=0.0001) for ae in self.autoencoders]
@@ -154,7 +154,7 @@ class EnvironmentAutoencoder:
         self.scaler = GradScaler()
 
     def custom_loss(self, recon_x, x, layer):
-        if layer == 0:  # Map layer (Binary Cross Entropy loss)
+        if layer == 0:  # Map layer (Binary Cross Entropy loss with logits)
             return F.binary_cross_entropy_with_logits(recon_x, x, reduction='mean')
         else:  # Other layers (-20 to 0 range)
             # MSE loss for non-background pixels, L1 loss for background
@@ -174,8 +174,8 @@ class EnvironmentAutoencoder:
         optimizer.zero_grad()
         
         with autocast():
-            outputs = ae(layer_input)  # Remove unsqueeze(1) as it's handled in the forward method
-            loss = self.custom_loss(outputs.squeeze(1), layer_input, layer)
+            outputs = ae(layer_input)
+            loss = self.custom_loss(outputs, layer_input, layer)
         
         if torch.isnan(loss):
             print(f"NaN loss detected in layer {layer}")
@@ -195,35 +195,40 @@ class EnvironmentAutoencoder:
         with torch.no_grad():
             encoded_layers = []
             for i, ae in enumerate(self.autoencoders):
+                ae.to(self.device)
                 ae.eval()
                 layer_input = torch.FloatTensor(state[i]).unsqueeze(0).unsqueeze(0).to(self.device)
                 encoded_layer = ae.encode(layer_input)
                 encoded_layers.append(encoded_layer.cpu().numpy().squeeze())
+                ae.cpu()
+            torch.cuda.empty_cache()
         return encoded_layers
 
     def decode_state(self, encoded_state):
         with torch.no_grad():
             decoded_layers = []
             for i, ae in enumerate(self.autoencoders):
+                ae.to(self.device)
                 ae.eval()
                 encoded_layer = torch.FloatTensor(encoded_state[i]).unsqueeze(0).to(self.device)
                 decoded_layer = ae(encoded_layer.unsqueeze(2).unsqueeze(3))
                 decoded_layers.append(decoded_layer.cpu().numpy().squeeze())
+                ae.cpu()
+            torch.cuda.empty_cache()
         return decoded_layers
 
     def save(self, path):
         torch.save({
-            'model_state_dicts': [ae.state_dict() for ae in self.autoencoders],
+            'model_state_dicts': [ae.cpu().state_dict() for ae in self.autoencoders],
             'optimizer_state_dicts': [opt.state_dict() for opt in self.optimizers],
             'scheduler_state_dicts': [sch.state_dict() for sch in self.schedulers],
             'scaler': self.scaler.state_dict(),
         }, path)
 
     def load(self, path):
-        checkpoint = torch.load(path, map_location=self.device)
+        checkpoint = torch.load(path, map_location='cpu')
         for i, ae in enumerate(self.autoencoders):
             ae.load_state_dict(checkpoint['model_state_dicts'][i])
             self.optimizers[i].load_state_dict(checkpoint['optimizer_state_dicts'][i])
             self.schedulers[i].load_state_dict(checkpoint['scheduler_state_dicts'][i])
-            ae.to(self.device)
         self.scaler.load_state_dict(checkpoint['scaler'])
