@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.cuda.amp import GradScaler, autocast
 
-
 class LayerAutoencoder(nn.Module):
     def __init__(self, is_map=False):
         super(LayerAutoencoder, self).__init__()
@@ -68,16 +67,18 @@ class LayerAutoencoder(nn.Module):
 
     def forward(self, x):
         # Encoder
-        x = nn.Flatten(self.encoder_conv(x))
+        x = self.encoder_conv(x)
+        x = x.view(x.size(0), -1)
         encoded = self.encoder_linear(x)
 
         # Decoder
-        x = nn.Unflatten(self.decoder_linear(encoded))
+        x = self.decoder_linear(encoded)
+        x = x.view(x.size(0), 256, 16, 8)
         x = self.decoder_conv(x)
         
         # Ensure output size is 276x155 using interpolation
         x = F.interpolate(x, size=(276, 155), mode='bilinear', align_corners=False)
-
+        torch.cuda.empty_cache()
         if not self.is_map:
             x = torch.clamp(x, min=-20, max=0)
             
@@ -85,11 +86,12 @@ class LayerAutoencoder(nn.Module):
 
     def encode(self, x):
         x = self.encoder_conv(x)
-        x = nn.Flatten(x)
+        x = x.view(x.size(0), -1)
         return self.encoder_linear(x)
 
     def decode(self, x):
-        x = nn.Unflatten(self.decoder_linear(x))
+        x = self.decoder_linear(x)
+        x = x.view(x.size(0), 256, 16, 8)
         x = self.decoder_conv(x)
         # Ensure output size is 276x155 using interpolation
         x = F.interpolate(x, size=(276, 155), mode='bilinear', align_corners=False)
@@ -149,7 +151,7 @@ class EnvironmentAutoencoder:
         self.scaler.update()
         
         self.schedulers[layer].step(loss.item())
-        
+        torch.cuda.empty_cache()
         return loss.item()
 
     def encode_state(self, state):
