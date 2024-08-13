@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.cuda.amp import GradScaler, autocast
+import numpy as np
 
 class LayerAutoencoder(nn.Module):
     def __init__(self, is_map=False):
@@ -69,8 +70,11 @@ class LayerAutoencoder(nn.Module):
         torch.cuda.empty_cache()
         
         if not self.is_map:
-            x = torch.clamp(x, min=-20, max=0)
-        return x
+            # Apply thresholding to mitigate interpolation effects for continuous data
+            background_mask = (decoded <= -19.9).float()
+            decoded = decoded * (1 - background_mask) + (-20) * background_mask
+            decoded = torch.clamp(x, min=-20, max=0) #TODO: modify this to scale to -20-0 rather than clamp?
+        return decoded
 
     def encode(self, x):
         return self.encoder(x)
@@ -91,19 +95,34 @@ class EnvironmentAutoencoder:
         ]
         
         self.optimizers = [torch.optim.Adam(ae.parameters(), lr=0.0001) for ae in self.autoencoders]
-        self.schedulers = [torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='min', factor=0.5, patience=5, verbose=True) for opt in self.optimizers]
+        self.schedulers = [torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='min', factor=0.5, patience=5) for opt in self.optimizers]
         self.scaler = GradScaler()
 
     def custom_loss(self, recon_x, x, layer):
-        if layer == 0:  # Map layer (Binary Cross Entropy loss with logits)
+        if layer == 0:  # Binary case (0/1)
             return F.binary_cross_entropy_with_logits(recon_x, x, reduction='mean')
-        else:  # Other layers (-20 to 0 range)
-            # MSE loss for non-background pixels, L1 loss for background
-            mse_loss = F.mse_loss(recon_x, x, reduction='none')
-            l1_loss = F.l1_loss(recon_x, x, reduction='none')
+            # return F.mse_loss(recon_x, x, reduction='mean')
+        else:  # -20 to 0 case (including jammer layer)
+            # Create masks for background and non-background values
             background_mask = (x == -20).float()
-            combined_loss = background_mask * l1_loss + (1 - background_mask) * mse_loss
-            return combined_loss.mean()
+            nonbackground_mask = (x > -20).float()
+            # Calculate the proportion of non-background values
+            proportion_nonbackground = nonbackground_mask.mean()
+            # Set a minimum proportion to avoid division by zero
+            min_proportion = 1e-6
+            proportion_nonbackground = max(proportion_nonbackground, min_proportion)
+            # Calculate weights for background and non-background
+            background_weight = 1  # Small weight for background
+            nonbackground_weight = 1 / proportion_nonbackground  # Higher weight for non-background
+            # Compute MSE for background and non-background separately
+            background_mse = F.mse_loss(recon_x * background_mask, x * background_mask, reduction='sum')
+            nonbackground_mse = F.mse_loss(recon_x * nonbackground_mask, x * nonbackground_mask, reduction='sum')
+            # Compute L1 loss for non-background to encourage sparsity and exact reconstruction
+            nonbackground_l1 = F.l1_loss(recon_x * nonbackground_mask, x * nonbackground_mask, reduction='sum')
+            # Combine losses with appropriate weights
+            total_loss = (background_weight * background_mse +
+                        nonbackground_weight * (nonbackground_mse + 10 * nonbackground_l1)) / x.numel()
+            return total_loss
 
     def train_step(self, batch, layer):
         ae = self.autoencoders[layer]
@@ -115,8 +134,8 @@ class EnvironmentAutoencoder:
         optimizer.zero_grad()
         
         with autocast():
-            outputs = ae(layer_input)
-            loss = self.custom_loss(outputs, layer_input, layer)
+            outputs = ae(layer_input.unsqueeze(1)) # Add channel dim
+            loss = self.custom_loss(outputs.squeeze(1), layer_input, layer) # remove channel dim, calc loss
         
         if torch.isnan(loss):
             print(f"NaN loss detected in layer {layer}")
@@ -129,37 +148,56 @@ class EnvironmentAutoencoder:
         self.scaler.scale(loss).backward()
         self.scaler.step(optimizer)
         self.scaler.update()
-        
-        self.schedulers[layer].step(loss.item())
+        loss_value = loss.item()
+        self.schedulers[layer].step(loss_value)
         torch.cuda.empty_cache()
-        return loss.item()
+        return loss_value
+    
+    def move_to_cpu(self, layer):
+        self.autoencoders[layer] = self.autoencoders[layer].to('cpu')
+        torch.cuda.empty_cache()
 
     def encode_state(self, state):
         with torch.no_grad():
+            state_tensor = torch.FloatTensor(state).unsqueeze(1)  # Add channel dimension
             encoded_layers = []
-            for i, ae in enumerate(self.autoencoders):
-                ae.to(self.device)
+            for i in range(4):  # We have 4 layers in the state
+                if i == 0:
+                    ae_index = 0  # Use first autoencoder for map layer
+                elif i in [1, 2]:
+                    ae_index = 1  # Use second autoencoder for agent and target layers
+                else:
+                    ae_index = 2  # Use third autoencoder for jammer layer
+                ae = self.autoencoders[ae_index]
                 ae.eval()
-                layer_input = torch.FloatTensor(state[i]).unsqueeze(0).unsqueeze(0).to(self.device)
+                ae.to(self.device)
+                layer_input = state_tensor[i].unsqueeze(0).to(self.device)  # Add batch dimension and move to GPU
                 encoded_layer = ae.encode(layer_input)
                 encoded_layers.append(encoded_layer.cpu().numpy().squeeze())
-                ae.cpu()
-            torch.cuda.empty_cache()
-        return encoded_layers
+                ae.to('cpu')
+                torch.cuda.empty_cache()
+        return np.array(encoded_layers)
 
     def decode_state(self, encoded_state):
         with torch.no_grad():
             decoded_layers = []
-            for i, ae in enumerate(self.autoencoders):
-                ae.to(self.device)
+            for i in range(4):  # We have 4 layers in the state
+                if i == 0:
+                    ae_index = 0  # Use first autoencoder for map layer
+                elif i in [1, 2]:
+                    ae_index = 1  # Use second autoencoder for agent and target layers
+                else:
+                    ae_index = 2  # Use third autoencoder for jammer layer
+                ae = self.autoencoders[ae_index]
                 ae.eval()
-                encoded_layer = torch.FloatTensor(encoded_state[i]).unsqueeze(0).to(self.device)
-                decoded_layer = ae(encoded_layer.unsqueeze(2).unsqueeze(3))
+                ae.to(self.device)
+                encoded_layer = torch.FloatTensor(encoded_state[i]).unsqueeze(0).unsqueeze(0).to(self.device)
+                decoded_layer = ae.decoder(encoded_layer)
                 decoded_layers.append(decoded_layer.cpu().numpy().squeeze())
-                ae.cpu()
-            torch.cuda.empty_cache()
-        return decoded_layers
-
+                ae.to('cpu')
+                torch.cuda.empty_cache()
+        return np.array(decoded_layers)
+    
     def save(self, path):
         torch.save({
             'model_state_dicts': [ae.cpu().state_dict() for ae in self.autoencoders],

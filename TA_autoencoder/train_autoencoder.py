@@ -483,9 +483,8 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                     logging.warning("High memory usage detected. Pausing for 60 seconds.")
                     time.sleep(60)
 
-            # Move current autoencoder back to CPU after training
-            autoencoder.autoencoders[ae_index] = autoencoder.autoencoders[ae_index].cpu()
-            torch.cuda.empty_cache()
+            # After finishing all epochs for an autoencoder, move it back to CPU
+            autoencoder.move_to_cpu(ae_index)
 
             print(f"Autoencoder {ae_index} training completed.")
             logging.info(f"Autoencoder {ae_index} training completed.")
