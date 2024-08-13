@@ -422,7 +422,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                     
                     loss = autoencoder.train_step(layer_batch, ae_index)
                     
-                    if not torch.isnan(loss):
+                    if loss is not None:
                         total_loss += loss
                         num_batches += 1
                         writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + num_batches)
@@ -459,6 +459,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                     autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_epoch_{epoch+1}.pth"))
                     test_specific_autoencoder(autoencoder, H5_FOLDER, output_folder, autoencoder_index=ae_index, epoch=epoch+1)
 
+                torch.cuda.empty_cache()
                 mem_percent = psutil.virtual_memory().percent
                 logging.info(f"Memory usage: {mem_percent}%")
 
@@ -566,7 +567,7 @@ def main():
         autoencoder = EnvironmentAutoencoder(device)
 
         # Train autoencoders
-        train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers)
+        train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, batch_size=8)
 
         # Save the final autoencoder
         autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))

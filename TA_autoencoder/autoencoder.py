@@ -152,6 +152,7 @@ class EnvironmentAutoencoder:
         self.scaler.update()
         loss_value = loss.item()
         self.schedulers[layer].step(loss_value)
+        del outputs
         torch.cuda.empty_cache()
         return loss_value
     
