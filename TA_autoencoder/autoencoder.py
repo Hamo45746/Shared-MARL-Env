@@ -125,7 +125,7 @@ class LayerAutoencoder(nn.Module):
         if not self.is_map:
             x = torch.clamp(x, min=-20, max=0)
 
-        return x
+        return x.squeeze(1) # remove channel dimension
 
     def encode(self, x):
         # Ensure input is 4D: [batch_size, channels, height, width]
@@ -179,6 +179,8 @@ class EnvironmentAutoencoder:
         
         if torch.isnan(loss):
             print(f"NaN loss detected in layer {layer}")
+            print(f"Input shape: {layer_input.shape}")
+            print(f"Output shape: {outputs.shape}")
             print(f"Input min: {layer_input.min()}, max: {layer_input.max()}")
             print(f"Output min: {outputs.min()}, max: {outputs.max()}")
             return None
