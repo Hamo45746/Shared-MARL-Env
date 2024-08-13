@@ -84,6 +84,12 @@ class LayerAutoencoder(nn.Module):
                 nn.init.constant_(module.bias, 0)
 
     def forward(self, x):
+        # Ensure input is 4D: [batch_size, channels, height, width]
+        if x.dim() == 3:
+            x = x.unsqueeze(1)  # Add channel dimension
+        elif x.dim() == 2:
+            x = x.unsqueeze(0).unsqueeze(0)  # Add batch and channel dimensions
+
         # Store original size for later
         original_size = x.shape[2:]
 
@@ -114,6 +120,12 @@ class LayerAutoencoder(nn.Module):
             return torch.clamp(x, min=-20, max=0)
 
     def encode(self, x):
+        # Ensure input is 4D: [batch_size, channels, height, width]
+        if x.dim() == 3:
+            x = x.unsqueeze(1)  # Add channel dimension
+        elif x.dim() == 2:
+            x = x.unsqueeze(0).unsqueeze(0)  # Add batch and channel dimensions
+
         for layer in self.encoder_conv:
             x = layer(x)
         x = x.view(x.size(0), -1)
@@ -150,12 +162,12 @@ class EnvironmentAutoencoder:
         optimizer = self.optimizers[layer]
         ae.train()
 
-        layer_input = batch[f'layer_{layer}'].to(self.device)
+        layer_input = batch.to(self.device)
         
         optimizer.zero_grad()
         
         with autocast():
-            outputs = ae(layer_input.unsqueeze(1))  # Add channel dimension
+            outputs = ae(layer_input)  # Remove unsqueeze(1) as it's handled in the forward method
             loss = self.custom_loss(outputs.squeeze(1), layer_input, layer)
         
         if torch.isnan(loss):
