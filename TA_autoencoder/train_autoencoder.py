@@ -1,9 +1,5 @@
 import os
 import sys
-import h5py
-import numpy as np
-import torch
-from torch.utils.data import DataLoader, Dataset
 import yaml
 import multiprocessing as mp
 from multiprocessing import Pool
@@ -14,7 +10,11 @@ import time
 import gc
 import signal
 import fcntl
-import matplotlib.pyplot as plt
+import h5py
+import numpy as np
+import torch
+from torch.utils.data import DataLoader, Dataset
+from torch.cuda.amp import GradScaler, autocast
 from torch.utils.tensorboard import SummaryWriter
 from test_autoencoder import test_specific_autoencoder
 
@@ -374,15 +374,14 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
     output_folder = os.path.join(H5_FOLDER, 'training_visualisations')
     os.makedirs(output_folder, exist_ok=True)
 
-    # Initialize TensorBoard writer
     writer = SummaryWriter(log_dir=os.path.join(H5_FOLDER, 'tensorboard_logs'))
 
     try:
-        for ae_index in range(0, 3):
+        for ae_index in range(3):  # Train each autoencoder separately
             print(f"Training autoencoder {ae_index}")
             
             # Move current autoencoder to GPU
-            autoencoder.autoencoders[ae_index].to(device)
+            autoencoder.autoencoders[ae_index] = autoencoder.autoencoders[ae_index].to(device)
             
             # Use appropriate dataset for each autoencoder
             if ae_index == 2:
@@ -394,9 +393,11 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
             
             start_epoch = load_training_state(autoencoder, ae_index)
             
-            # Early stopping variables
             best_loss = float('inf')
             epochs_no_improve = 0
+            
+            # Initialize GradScaler for mixed precision training
+            scaler = GradScaler()
             
             for epoch in range(start_epoch, num_epochs):
                 if interrupt_flag.value:
@@ -413,50 +414,58 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                         raise KeyboardInterrupt
 
                     if ae_index == 0:
-                        layer_batch = batch[f'layer_0']
+                        layer_batch = batch['layer_0']
                     elif ae_index == 1:
-                        layer_batch = torch.cat([batch[f'layer_1'], batch[f'layer_2']], dim=0)
+                        layer_batch = torch.cat([batch['layer_1'], batch['layer_2']], dim=0)
                     else:  # ae_index == 2
-                        layer_batch = batch[f'layer_3']
+                        layer_batch = batch['layer_3']
                     
-                    loss = autoencoder.train_step(layer_batch, ae_index)
+                    layer_batch = layer_batch.to(device)  # Move batch to GPU
                     
-                    if loss is None:  # nan loss detected
-                        continue
+                    # Zero the gradients
+                    autoencoder.optimizers[ae_index].zero_grad()
                     
-                    total_loss += loss
-                    num_batches += 1
+                    # Forward pass with autocast
+                    with autocast():
+                        outputs = autoencoder.autoencoders[ae_index](layer_batch)
+                        loss = autoencoder.custom_loss(outputs, layer_batch, ae_index)
+                    
+                    # Backward pass with scaled gradients
+                    scaler.scale(loss).backward()
+                    
+                    # Update weights with scaled gradients
+                    scaler.step(autoencoder.optimizers[ae_index])
+                    
+                    # Update the scale for next iteration
+                    scaler.update()
+                    
+                    if not torch.isnan(loss):
+                        total_loss += loss.item()
+                        num_batches += 1
+                        writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss.item(), epoch * len(dataloader) + num_batches)
 
-                    # Log batch-level metrics
-                    writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + num_batches)
-
-                    # Free up memory
-                    del layer_batch
+                    del layer_batch, outputs, loss
                     torch.cuda.empty_cache()
 
                 if num_batches > 0:
                     avg_loss = total_loss / num_batches
                     print(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
                     logging.info(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} completed. Average Loss: {avg_loss:.4f}")
-
-                    # Log epoch-level metrics
                     writer.add_scalar(f'Autoencoder_{ae_index}/Epoch_Loss', avg_loss, epoch)
 
-                    # Check for improvement
+                    autoencoder.schedulers[ae_index].step(avg_loss)
+
                     if avg_loss < best_loss - delta:
                         best_loss = avg_loss
                         epochs_no_improve = 0
-                        # Save the best model
                         autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_best.pth"))
                     else:
                         epochs_no_improve += 1
 
-                    # Check early stopping condition
                     if epochs_no_improve >= patience:
                         print(f"Early stopping triggered for autoencoder {ae_index}. No improvement for {patience} epochs.")
                         logging.info(f"Early stopping triggered for autoencoder {ae_index}. No improvement for {patience} epochs.")
                         break
-
                 else:
                     print(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} failed. All batches resulted in NaN loss.")
                     logging.warning(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} failed. All batches resulted in NaN loss.")
@@ -465,7 +474,6 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
 
                 if (epoch + 1) % 10 == 0:
                     autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_epoch_{epoch+1}.pth"))
-                    # Generate and save visualizations
                     test_specific_autoencoder(autoencoder, H5_FOLDER, output_folder, autoencoder_index=ae_index, epoch=epoch+1)
 
                 mem_percent = psutil.virtual_memory().percent
@@ -476,7 +484,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                     time.sleep(60)
 
             # Move current autoencoder back to CPU after training
-            autoencoder.autoencoders[ae_index].cpu()
+            autoencoder.autoencoders[ae_index] = autoencoder.autoencoders[ae_index].cpu()
             torch.cuda.empty_cache()
 
             print(f"Autoencoder {ae_index} training completed.")
@@ -488,7 +496,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
     finally:
         writer.close()
         autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
-        logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")        
+        logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
     
 def main():
     # Set up signal handler
