@@ -420,31 +420,14 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                     else:  # ae_index == 2
                         layer_batch = batch['layer_3']
                     
-                    layer_batch = layer_batch.to(device)  # Move batch to GPU
-                    
-                    # Zero the gradients
-                    autoencoder.optimizers[ae_index].zero_grad()
-                    
-                    # Forward pass with autocast
-                    with autocast():
-                        outputs = autoencoder.autoencoders[ae_index](layer_batch)
-                        loss = autoencoder.custom_loss(outputs, layer_batch, ae_index)
-                    
-                    # Backward pass with scaled gradients
-                    scaler.scale(loss).backward()
-                    
-                    # Update weights with scaled gradients
-                    scaler.step(autoencoder.optimizers[ae_index])
-                    
-                    # Update the scale for next iteration
-                    scaler.update()
+                    loss = autoencoder.train_step(layer_batch, ae_index)
                     
                     if not torch.isnan(loss):
-                        total_loss += loss.item()
+                        total_loss += loss
                         num_batches += 1
-                        writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss.item(), epoch * len(dataloader) + num_batches)
+                        writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + num_batches)
 
-                    del layer_batch, outputs, loss
+                    del layer_batch, loss
                     torch.cuda.empty_cache()
 
                 if num_batches > 0:

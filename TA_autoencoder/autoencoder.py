@@ -134,8 +134,10 @@ class EnvironmentAutoencoder:
         optimizer.zero_grad()
         
         with autocast():
-            outputs = ae(layer_input.unsqueeze(1)) # Add channel dim
-            loss = self.custom_loss(outputs.squeeze(1), layer_input, layer) # remove channel dim, calc loss
+            layer_input = layer_input.unsqueeze(1)
+            outputs = ae(layer_input) # Add channel dim
+            
+            loss = self.custom_loss(outputs, layer_input, layer) # remove channel dim, calc loss
         
         if torch.isnan(loss):
             print(f"NaN loss detected in layer {layer}")
