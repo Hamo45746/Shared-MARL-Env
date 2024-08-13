@@ -488,7 +488,7 @@ def main():
     
     # Configuration ranges
     seed_range = range(1, 4)
-    num_agents_range = range(12, 15)
+    num_agents_range = range(10, 15)
     num_targets_range = range(42, 45)
     num_jammers_range_low = range(0, 4)  # 0-3 jammers
     num_jammers_range_high = range(85, 90)  # 85-89 jammers
@@ -564,7 +564,7 @@ def main():
         autoencoder = EnvironmentAutoencoder(device)
 
         # Train autoencoders
-        train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, batch_size=8)
+        train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, batch_size=16)
 
         # Save the final autoencoder
         autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))

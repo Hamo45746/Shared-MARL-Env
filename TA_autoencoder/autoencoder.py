@@ -10,10 +10,12 @@ class LayerAutoencoder(nn.Module):
         self.is_map = is_map
 
         # Calculate the flattened size
-        self.flattened_size = 256 * 16 * 8  # 32,768
+        self.flattened_size = 256 * 7 * 3  # 5376
         # Encoder convolutional layers (no padding)
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, stride=2),
+            nn.Conv2d(1, 16, kernel_size=3, stride=2),
+            nn.LeakyReLU(0.2),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2),
             nn.LeakyReLU(0.2),
             nn.Conv2d(32, 64, kernel_size=3, stride=2),
             nn.LeakyReLU(0.2),
@@ -22,33 +24,35 @@ class LayerAutoencoder(nn.Module):
             nn.Conv2d(128, 256, kernel_size=3, stride=2),
             nn.LeakyReLU(0.2),
             nn.Flatten(),
-            nn.Linear(self.flattened_size, 8192),
+            nn.Linear(self.flattened_size, 4096),
             nn.LeakyReLU(0.2),
-            nn.Linear(8192, 2048),
+            nn.Linear(4096, 1024),
             nn.LeakyReLU(0.2),
-            nn.Linear(2048, 512),
+            nn.Linear(1024, 256),
             nn.LeakyReLU(0.2),
-            nn.Linear(512, 128)
+            nn.Linear(256, 128)
         )
 
         # Decoder linear layers with gradual expansion
         self.decoder = nn.Sequential(
-            nn.Linear(128, 512),
+            nn.Linear(128, 256),
             nn.LeakyReLU(0.2),
-            nn.Linear(512, 2048),
+            nn.Linear(256, 1024),
             nn.LeakyReLU(0.2),
-            nn.Linear(2048, 8192),
+            nn.Linear(1024, 4096),
             nn.LeakyReLU(0.2),
-            nn.Linear(8192, self.flattened_size),
+            nn.Linear(4096, self.flattened_size),
             nn.LeakyReLU(0.2),
-            nn.Unflatten(1, (256, 16, 8)),
+            nn.Unflatten(1, (256, 7, 3)),
             nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2),
             nn.LeakyReLU(0.2),
             nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2),
             nn.LeakyReLU(0.2),
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(32, 1, kernel_size=3, stride=2)
+            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2),
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(16, 1, kernel_size=3, stride=2)
         )
 
         self.apply(self._init_weights)
@@ -154,6 +158,7 @@ class EnvironmentAutoencoder:
         self.schedulers[layer].step(loss_value)
         del outputs
         torch.cuda.empty_cache()
+        optimizer.zero_grad(set_to_none=True)
         return loss_value
     
     def move_to_cpu(self, layer):
