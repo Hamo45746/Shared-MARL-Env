@@ -35,13 +35,8 @@ LOG_FILE = 'autoencoder_training.log'
 # Global flag to indicate interruption
 interrupt_flag = mp.Value('i', 0)
 
-LOG_FILE = os.path.join(H5_FOLDER, 'autoencoder_training.log')
-
 def setup_logging():
     try:
-        # Ensure the directory exists
-        os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-
         # Remove any existing handlers to avoid duplication
         for handler in logging.root.handlers[:]:
             logging.root.removeHandler(handler)
@@ -584,7 +579,7 @@ def main():
     completed_configs = load_progress()
     print(f"Final completed configurations: {len(completed_configs)}/{total_configs}")
     
-    if len(completed_configs) == total_configs:
+    if len(completed_configs) >= total_configs:
         print("All configurations processed. Starting autoencoder training...")
 
         # Separate h5 files for regular and high-jammer configurations
