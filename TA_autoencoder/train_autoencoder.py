@@ -406,6 +406,9 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
 
     writer = SummaryWriter(log_dir=os.path.join(H5_FOLDER, 'tensorboard_logs'))
 
+    # Set log interval
+    log_interval = 100  # Log every 100 batches
+
     try:
         for ae_index in range(3):  # Train each autoencoder separately
             print(f"Training autoencoder {ae_index}")
@@ -436,7 +439,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                 total_loss = 0
                 num_batches = 0
                 
-                for batch in tqdm(dataloader, desc=f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs}"):
+                for batch_idx, batch in enumerate(dataloader):
                     if interrupt_flag.value:
                         raise KeyboardInterrupt
 
@@ -452,7 +455,11 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                     if loss is not None:
                         total_loss += loss
                         num_batches += 1
-                        writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + num_batches)
+
+                        # Log only at specified batch intervals
+                        if batch_idx % log_interval == 0:
+                            writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + batch_idx)
+                            autoencoder.adjust_regularization_weights()
 
                     del layer_batch, loss
                     torch.cuda.empty_cache()

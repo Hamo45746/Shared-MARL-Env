@@ -4,6 +4,32 @@ import torch.nn.functional as F
 from torch.cuda.amp import GradScaler, autocast
 import numpy as np
 
+
+class SparseConv2d(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1):
+        super(SparseConv2d, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride)
+        self.mask = nn.Parameter(torch.ones_like(self.conv.weight))
+        
+    def forward(self, x):
+        sparse_weight = self.conv.weight * self.mask
+        return F.conv2d(x, sparse_weight, self.conv.bias, self.conv.stride, self.conv.padding)
+    
+    def get_mask(self):
+        return self.mask
+
+class CustomFinalUpsampling(nn.Module):
+    def __init__(self, in_channels, out_channels, target_size):
+        super(CustomFinalUpsampling, self).__init__()
+        self.target_size = target_size
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+        
+    def forward(self, x):
+        # Use nearest neighbor interpolation for initial upsampling
+        x = F.interpolate(x, size=self.target_size, mode='nearest')
+        # Apply 1x1 convolution for final adjustments
+        return self.conv(x)
+
 class LayerAutoencoder(nn.Module):
     def __init__(self, is_map=False):
         super(LayerAutoencoder, self).__init__()
@@ -13,46 +39,46 @@ class LayerAutoencoder(nn.Module):
         self.flattened_size = 256 * 7 * 3  # 5376
         # Encoder convolutional layers (no padding)
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=3, stride=2),
+            SparseConv2d(1, 16, kernel_size=3, stride=2), # 138, 77
             nn.LeakyReLU(0.2),
-            nn.Conv2d(16, 32, kernel_size=3, stride=2),
+            SparseConv2d(16, 32, kernel_size=3, stride=2), # 69, 38
             nn.LeakyReLU(0.2),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2),
+            SparseConv2d(32, 64, kernel_size=3, stride=2), # 34, 19
             nn.LeakyReLU(0.2),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2),
+            SparseConv2d(64, 128, kernel_size=3, stride=2), # 17, 9
             nn.LeakyReLU(0.2),
-            nn.Conv2d(128, 256, kernel_size=3, stride=2),
+            SparseConv2d(128, 256, kernel_size=3, stride=2), # 17, 9
             nn.LeakyReLU(0.2),
             nn.Flatten(),
             nn.Linear(self.flattened_size, 2048),
             nn.LeakyReLU(0.2),
             nn.Linear(2048, 1024),
             nn.LeakyReLU(0.2),
-            nn.Linear(1024, 256),
+            nn.Linear(1024, 512),
             nn.LeakyReLU(0.2),
-            nn.Linear(256, 128)
+            nn.Linear(512, 256)
         )
 
         # Decoder linear layers with gradual expansion
         self.decoder = nn.Sequential(
-            nn.Linear(128, 256),
+            nn.Linear(256, 512),
             nn.LeakyReLU(0.2),
-            nn.Linear(256, 1024),
+            nn.Linear(512, 1024),
             nn.LeakyReLU(0.2),
             nn.Linear(1024, 2048),
             nn.LeakyReLU(0.2),
             nn.Linear(2048, self.flattened_size),
             nn.LeakyReLU(0.2),
             nn.Unflatten(1, (256, 7, 3)),
-            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2),
+            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, output_padding=1),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2),
+            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, output_padding=1),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2),
+            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, output_padding=1),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2),
+            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, output_padding=1),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(16, 1, kernel_size=3, stride=2)
+            CustomFinalUpsampling(16, 1, (276, 155))
         )
 
         self.apply(self._init_weights)
@@ -64,20 +90,14 @@ class LayerAutoencoder(nn.Module):
                 nn.init.constant_(module.bias, 0)
 
     def forward(self, x):
-        # Encoder
         encoded = self.encoder(x)
-        # Decoder
         decoded = self.decoder(encoded)
-        # Ensure output size is 276x155 using interpolation
-        decoded = F.interpolate(decoded, size=(276, 155), mode='bilinear', align_corners=False)
-
-        torch.cuda.empty_cache()
         
         if not self.is_map:
-            # Apply thresholding to mitigate interpolation effects for continuous data
             background_mask = (decoded <= -19.9).float()
             decoded = decoded * (1 - background_mask) + (-20) * background_mask
-            decoded = torch.clamp(x, min=-20, max=0) #TODO: modify this to scale to -20:0 rather than clamp?
+            decoded = torch.clamp(decoded, min=-20, max=0)
+        
         return decoded
 
     def encode(self, x):
@@ -86,9 +106,12 @@ class LayerAutoencoder(nn.Module):
     def decode(self, x):
         decoded = self.decoder(x)
         return F.interpolate(decoded, size=(276, 155), mode='bilinear', align_corners=False)
+    
+    def get_sparse_layers(self):
+        return [layer for layer in self.encoder if isinstance(layer, SparseConv2d)]
 
 class EnvironmentAutoencoder:
-    def __init__(self, device):
+    def __init__(self, device, initial_l1_weight=1e-5, max_grad_norm=1.0, mask_regularization_weight=1e-4):
         self.device = device
         print(f"Autoencoder using device: {self.device}")
         
@@ -98,35 +121,44 @@ class EnvironmentAutoencoder:
             LayerAutoencoder()   # For layer 3
         ]
         
-        self.optimizers = [torch.optim.Adam(ae.parameters(), lr=0.0001) for ae in self.autoencoders]
+        self.optimizers = [torch.optim.Adam(ae.parameters(), lr=0.0001, weight_decay=1e-5) for ae in self.autoencoders]
         self.schedulers = [torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='min', factor=0.5, patience=5) for opt in self.optimizers]
         self.scaler = GradScaler()
+        
+        self.l1_weight = initial_l1_weight
+        self.max_grad_norm = max_grad_norm
+        self.mask_regularization_weight = mask_regularization_weight
+        self.l1_history = []
+        self.reconstruction_loss_history = []
+        self.mask_regularization_history = []
 
     def custom_loss(self, recon_x, x, layer):
         if layer == 0:  # Binary case (0/1)
-            return F.binary_cross_entropy_with_logits(recon_x, x, reduction='mean')
-            # return F.mse_loss(recon_x, x, reduction='mean')
+            reconstruction_loss = F.binary_cross_entropy_with_logits(recon_x, x, reduction='mean')
         else:  # -20 to 0 case (including jammer layer)
-            # Create masks for background and non-background values
             background_mask = (x == -20).float()
             nonbackground_mask = (x > -20).float()
-            # Calculate the proportion of non-background values
-            proportion_nonbackground = nonbackground_mask.mean()
-            # Set a minimum proportion to avoid division by zero
-            min_proportion = 1e-6
-            proportion_nonbackground = max(proportion_nonbackground, min_proportion)
-            # Calculate weights for background and non-background
-            background_weight = 1  # Small weight for background
-            nonbackground_weight = 1 / proportion_nonbackground  # Higher weight for non-background
-            # Compute MSE for background and non-background separately
+            proportion_nonbackground = max(nonbackground_mask.mean(), 1e-6)
+            
+            background_weight = 1
+            nonbackground_weight = 1 / proportion_nonbackground
+            
             background_mse = F.mse_loss(recon_x * background_mask, x * background_mask, reduction='sum')
             nonbackground_mse = F.mse_loss(recon_x * nonbackground_mask, x * nonbackground_mask, reduction='sum')
-            # Compute L1 loss for non-background to encourage sparsity and exact reconstruction
             nonbackground_l1 = F.l1_loss(recon_x * nonbackground_mask, x * nonbackground_mask, reduction='sum')
-            # Combine losses with appropriate weights
-            total_loss = (background_weight * background_mse +
+            
+            reconstruction_loss = (background_weight * background_mse +
                         nonbackground_weight * (nonbackground_mse + 10 * nonbackground_l1)) / x.numel()
-            return total_loss
+        
+        # Add L1 regularization for sparsity
+        l1_reg = sum(p.abs().sum() for p in self.autoencoders[layer].parameters())
+        
+        # Add mask regularization
+        mask_reg = sum(layer.get_mask().abs().sum() for layer in self.autoencoders[layer].get_sparse_layers())
+        
+        total_loss = reconstruction_loss + self.l1_weight * l1_reg + self.mask_regularization_weight * mask_reg
+        
+        return total_loss, reconstruction_loss, l1_reg, mask_reg
 
     def train_step(self, batch, layer):
         ae = self.autoencoders[layer]
@@ -139,9 +171,8 @@ class EnvironmentAutoencoder:
         
         with autocast():
             layer_input = layer_input.unsqueeze(1)
-            outputs = ae(layer_input) # Add channel dim
-            
-            loss = self.custom_loss(outputs, layer_input, layer) # remove channel dim, calc loss
+            outputs = ae(layer_input)
+            loss, reconstruction_loss, l1_reg, mask_reg = self.custom_loss(outputs, layer_input, layer)
         
         if torch.isnan(loss):
             print(f"NaN loss detected in layer {layer}")
@@ -152,14 +183,64 @@ class EnvironmentAutoencoder:
             return None
         
         self.scaler.scale(loss).backward()
+        
+        # Gradient clipping
+        self.scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(ae.parameters(), self.max_grad_norm)
+        
         self.scaler.step(optimizer)
         self.scaler.update()
+        
         loss_value = loss.item()
         self.schedulers[layer].step(loss_value)
+        
+        # Record losses for monitoring
+        self.reconstruction_loss_history.append(reconstruction_loss.item())
+        self.l1_history.append(l1_reg.item())
+        self.mask_regularization_history.append(mask_reg.item())
+        
         del outputs
         torch.cuda.empty_cache()
         optimizer.zero_grad(set_to_none=True)
         return loss_value
+
+    def adjust_regularization_weights(self, window_size=100):
+        if len(self.reconstruction_loss_history) < window_size:
+            return
+        
+        recent_reconstruction = np.mean(self.reconstruction_loss_history[-window_size:])
+        recent_l1 = np.mean(self.l1_history[-window_size:])
+        recent_mask_reg = np.mean(self.mask_regularization_history[-window_size:])
+        
+        # Adjust L1 weight
+        ratio_l1 = recent_reconstruction / (recent_l1 + 1e-10)
+        if ratio_l1 > 100:
+            self.l1_weight *= 2
+        elif ratio_l1 < 10:
+            self.l1_weight /= 2
+        
+        # Adjust mask regularization weight
+        ratio_mask = recent_reconstruction / (recent_mask_reg + 1e-10)
+        if ratio_mask > 100:
+            self.mask_regularization_weight *= 2
+        elif ratio_mask < 10:
+            self.mask_regularization_weight /= 2
+        
+        print(f"Adjusted L1 weight: {self.l1_weight}, Mask regularization weight: {self.mask_regularization_weight}")
+
+    def train_epoch(self, dataloader, layer):
+        total_loss = 0
+        num_batches = 0
+        for batch in dataloader:
+            loss = self.train_step(batch, layer)
+            if loss is not None:
+                total_loss += loss
+                num_batches += 1
+            
+            if num_batches % 100 == 0:
+                self.adjust_l1_weight()
+        
+        return total_loss / num_batches if num_batches > 0 else None
     
     def move_to_cpu(self, layer):
         self.autoencoders[layer] = self.autoencoders[layer].to('cpu')
