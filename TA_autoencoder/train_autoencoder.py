@@ -426,6 +426,12 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
             # Move current autoencoder to GPU
             autoencoder.autoencoders[ae_index] = autoencoder.autoencoders[ae_index].to(device)
             
+            # Move optimizer to GPU
+            for state in autoencoder.optimizers[ae_index].state.values():
+                for k, v in state.items():
+                    if isinstance(v, torch.Tensor):
+                        state[k] = v.to(device)
+            
             # Use appropriate dataset for each autoencoder
             if ae_index == 2:
                 dataset = FlattenedMultiAgentH5Dataset(h5_files_all_jammers)
@@ -470,11 +476,12 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                             # Update tqdm progress bar
                             t.set_postfix(loss=f"{loss:.4f}")
 
-                            # Log only at specified intervals
+                            # Log at specified intervals
                             if batch_idx % log_interval == 0:
+                                logging.info(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + batch_idx)
                                 writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + batch_idx)
 
-                            # Adjust regularization weights periodically
+                            # Adjust regularisation weights periodically
                             if batch_idx % 100 == 0:
                                 autoencoder.adjust_regularization_weights()
 

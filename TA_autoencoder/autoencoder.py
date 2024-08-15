@@ -13,7 +13,7 @@ class SparseConv2d(nn.Module):
         
     def forward(self, x):
         sparse_weight = self.conv.weight * self.mask
-        return F.conv2d(x, sparse_weight, self.conv.bias, self.conv.stride, self.conv.padding)
+        return F.conv2d(x, sparse_weight.to(x.dtype), self.conv.bias.to(x.dtype), self.conv.stride, self.conv.padding)
     
     def get_mask(self):
         return self.mask
@@ -28,7 +28,7 @@ class CustomFinalUpsampling(nn.Module):
         # Use nearest neighbor interpolation for initial upsampling
         x = F.interpolate(x, size=self.target_size, mode='nearest')
         # Apply 1x1 convolution for final adjustments
-        return self.conv(x)
+        return self.conv(x.to(self.conv.weight.dtype))
 
 class LayerAutoencoder(nn.Module):
     def __init__(self, is_map=False):
@@ -37,7 +37,7 @@ class LayerAutoencoder(nn.Module):
 
         # Calculate the flattened size
         self.flattened_size = 256 * 7 * 3  # 5376
-        # Encoder convolutional layers (no padding)
+        # Encoder
         self.encoder = nn.Sequential(
             SparseConv2d(1, 16, kernel_size=3, stride=2), # 138, 77
             nn.LeakyReLU(0.2),
@@ -47,7 +47,7 @@ class LayerAutoencoder(nn.Module):
             nn.LeakyReLU(0.2),
             SparseConv2d(64, 128, kernel_size=3, stride=2), # 17, 9
             nn.LeakyReLU(0.2),
-            SparseConv2d(128, 256, kernel_size=3, stride=2), # 17, 9
+            SparseConv2d(128, 256, kernel_size=3, stride=2), # 7, 3 # Unsure why it doesn't go to 8, 4
             nn.LeakyReLU(0.2),
             nn.Flatten(),
             nn.Linear(self.flattened_size, 2048),
@@ -59,7 +59,7 @@ class LayerAutoencoder(nn.Module):
             nn.Linear(512, 256)
         )
 
-        # Decoder linear layers with gradual expansion
+        # Decoder
         self.decoder = nn.Sequential(
             nn.Linear(256, 512),
             nn.LeakyReLU(0.2),
@@ -111,7 +111,7 @@ class LayerAutoencoder(nn.Module):
         return [layer for layer in self.encoder if isinstance(layer, SparseConv2d)]
 
 class EnvironmentAutoencoder:
-    def __init__(self, device, initial_l1_weight=1e-5, max_grad_norm=1.0, mask_regularization_weight=1e-4):
+    def __init__(self, device, initial_l1_weight=1e-5, max_grad_norm=1.0, mask_regularisation_weight=1e-4):
         self.device = device
         print(f"Autoencoder using device: {self.device}")
         
@@ -127,10 +127,10 @@ class EnvironmentAutoencoder:
         
         self.l1_weight = initial_l1_weight
         self.max_grad_norm = max_grad_norm
-        self.mask_regularization_weight = mask_regularization_weight
+        self.mask_regularisation_weight = mask_regularisation_weight
         self.l1_history = []
         self.reconstruction_loss_history = []
-        self.mask_regularization_history = []
+        self.mask_regularisation_history = []
 
     def custom_loss(self, recon_x, x, layer):
         if layer == 0:  # Binary case (0/1)
@@ -150,13 +150,13 @@ class EnvironmentAutoencoder:
             reconstruction_loss = (background_weight * background_mse +
                         nonbackground_weight * (nonbackground_mse + 10 * nonbackground_l1)) / x.numel()
         
-        # Add L1 regularization for sparsity
+        # Add L1 regularisation for sparsity
         l1_reg = sum(p.abs().sum() for p in self.autoencoders[layer].parameters())
         
-        # Add mask regularization
+        # Add mask regularisation
         mask_reg = sum(layer.get_mask().abs().sum() for layer in self.autoencoders[layer].get_sparse_layers())
         
-        total_loss = reconstruction_loss + self.l1_weight * l1_reg + self.mask_regularization_weight * mask_reg
+        total_loss = reconstruction_loss + self.l1_weight * l1_reg + self.mask_regularisation_weight * mask_reg
         
         return total_loss, reconstruction_loss, l1_reg, mask_reg
 
@@ -171,6 +171,7 @@ class EnvironmentAutoencoder:
         
         with autocast():
             layer_input = layer_input.unsqueeze(1)
+            layer_input = layer_input.to(torch.float32) # Ensure input is float32 before processing
             outputs = ae(layer_input)
             loss, reconstruction_loss, l1_reg, mask_reg = self.custom_loss(outputs, layer_input, layer)
         
@@ -197,20 +198,20 @@ class EnvironmentAutoencoder:
         # Record losses for monitoring
         self.reconstruction_loss_history.append(reconstruction_loss.item())
         self.l1_history.append(l1_reg.item())
-        self.mask_regularization_history.append(mask_reg.item())
+        self.mask_regularisation_history.append(mask_reg.item())
         
         del outputs
         torch.cuda.empty_cache()
         optimizer.zero_grad(set_to_none=True)
         return loss_value
 
-    def adjust_regularization_weights(self, window_size=100):
+    def adjust_regularisation_weights(self, window_size=100):
         if len(self.reconstruction_loss_history) < window_size:
             return
         
         recent_reconstruction = np.mean(self.reconstruction_loss_history[-window_size:])
         recent_l1 = np.mean(self.l1_history[-window_size:])
-        recent_mask_reg = np.mean(self.mask_regularization_history[-window_size:])
+        recent_mask_reg = np.mean(self.mask_regularisation_history[-window_size:])
         
         # Adjust L1 weight
         ratio_l1 = recent_reconstruction / (recent_l1 + 1e-10)
@@ -219,14 +220,14 @@ class EnvironmentAutoencoder:
         elif ratio_l1 < 10:
             self.l1_weight /= 2
         
-        # Adjust mask regularization weight
+        # Adjust mask regularisation weight
         ratio_mask = recent_reconstruction / (recent_mask_reg + 1e-10)
         if ratio_mask > 100:
-            self.mask_regularization_weight *= 2
+            self.mask_regularisation_weight *= 2
         elif ratio_mask < 10:
-            self.mask_regularization_weight /= 2
+            self.mask_regularisation_weight /= 2
         
-        # print(f"Adjusted L1 weight: {self.l1_weight}, Mask regularization weight: {self.mask_regularization_weight}")
+        # print(f"Adjusted L1 weight: {self.l1_weight}, Mask regularisation weight: {self.mask_regularisation_weight}")
 
     def train_epoch(self, dataloader, layer):
         total_loss = 0
