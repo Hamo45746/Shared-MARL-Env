@@ -207,29 +207,27 @@ def release_lock(lock_fd):
     fcntl.flock(lock_fd, fcntl.LOCK_UN)
     lock_fd.close()
 
-def load_progress():
+def load_progress(file_list):
     progress_file = os.path.join(H5_FOLDER, H5_PROGRESS_FILE)
     lock_file = f"{progress_file}.lock"
     lock_fd = acquire_lock(lock_file)
     try:
         progress = set()
-        if os.path.exists(progress_file):
-            with open(progress_file, 'r') as f:
-                file_list = f.read().splitlines()
-            
-            for filename in file_list:
-                filepath = os.path.join(H5_FOLDER, filename)
-                if os.path.exists(filepath) and is_dataset_complete(filepath, STEPS_PER_EPISODE):
-                    progress.add(filename)
-                else:
-                    print(f"Warning: File in progress list is missing or incomplete: {filename}")
+
+        # for filename in progress file - this isn't fully what is was (readline in prog file)
+        for filename in file_list:
+            filepath = os.path.join(H5_FOLDER, filename)
+            if os.path.exists(filepath) and is_dataset_complete(filepath, STEPS_PER_EPISODE):
+                progress.add(filename)
+            else:
+                print(f"Warning: File in progress list is missing or incomplete: {filename}")
         
         # Check for any completed files not in the progress file
-        for filename in os.listdir(H5_FOLDER):
-            if filename.endswith('.h5'):
-                filepath = os.path.join(H5_FOLDER, filename)
-                if is_dataset_complete(filepath, STEPS_PER_EPISODE) and filename not in progress:
-                    progress.add(filename)
+        # for filename in file_list:
+        #     if filename.endswith('.h5'):
+        #         filepath = os.path.join(H5_FOLDER, filename)
+        #         if is_dataset_complete(filepath, STEPS_PER_EPISODE) and filename not in progress:
+        #             progress.add(filename)
         
         # Update the progress file
         with open(progress_file, 'w') as f:
@@ -344,7 +342,7 @@ def process_config(args):
                 if full_state.shape[0] != 4:
                     logging.error(f"Incorrect number of layers in {filepath}: expected 4, got {full_state.shape[0]}")
                     return None
-            progress = load_progress()
+            progress = load_progress(filepath)
             progress.add(os.path.basename(filepath))
             save_progress(progress)
             return filepath
@@ -440,7 +438,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
             
             dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
             
-            start_epoch = load_training_state(autoencoder, ae_index)
+            start_epoch = 1 #load_training_state(autoencoder, ae_index)
             
             best_loss = float('inf')
             epochs_no_improve = 0
@@ -483,7 +481,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
 
                             # Adjust regularisation weights periodically
                             if batch_idx % 100 == 0:
-                                autoencoder.adjust_regularization_weights()
+                                autoencoder.adjust_regularisation_weights()
 
                         del layer_batch, loss
                         torch.cuda.empty_cache()
@@ -549,10 +547,10 @@ def main():
     setup_logging()
     
     # Configuration ranges
-    seed_range = range(1, 4)
-    num_agents_range = range(12, 15)
-    num_targets_range = range(42, 45)
-    num_jammers_range_low = range(0, 4)  # 0-3 jammers
+    seed_range = range(1, 2)
+    num_agents_range = range(12, 13)
+    num_targets_range = range(42, 43)
+    num_jammers_range_low = range(0, 1)  # 0-3 jammers
     num_jammers_range_high = range(85, 90)  # 85-89 jammers
     
     map_paths = ['city_image_1.npy', 'city_image_2.npy', 'city_image_3.npy']
