@@ -219,20 +219,28 @@ def load_progress(all_configs):
     return progress
 
 def process_config(args):
+    config, config_path, h5_folder, steps_per_episode = args
+    lock_fd = None
     try:
-        config, config_path, h5_folder, steps_per_episode = args
         map_name = os.path.splitext(os.path.basename(config['map_path']))[0]
         filename = f"data_m{map_name}_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
         filepath = os.path.join(h5_folder, filename)
-        
+        lock_file = f"{filepath}.lock"
+
+        # Try to acquire the lock
+        lock_fd = acquire_lock(lock_file)
+        if lock_fd is None:
+            print(f"File {filename} is being processed by another worker. Skipping.")
+            return None
+
         # Check if the file already exists and is complete
         if os.path.exists(filepath) and is_dataset_complete(filepath, steps_per_episode):
             print(f"File {filename} already exists and is complete. Skipping.")
             return filepath
-        
+
         # If the file doesn't exist or is incomplete, collect the data
         filepath = collect_data_for_config(config, config_path, steps_per_episode, h5_folder)
-        
+
         if is_dataset_complete(filepath, steps_per_episode):
             # Verify that the file contains data for all 4 layers
             with h5py.File(filepath, 'r') as f:
@@ -245,9 +253,15 @@ def process_config(args):
             return filepath
         else:
             return None
+
     except Exception as e:
         logging.error(f"Error processing config {config}: {str(e)}")
         return None
+
+    finally:
+        # Always release the lock if it was acquired
+        if lock_fd is not None:
+            release_lock(lock_fd)
 
 def save_progress(completed_configs):
     progress_file = os.path.join(H5_FOLDER, H5_PROGRESS_FILE)
@@ -458,7 +472,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
 
                             # Log at specified intervals
                             if batch_idx % log_interval == 0:
-                                logging.info(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + batch_idx)
+                                # logging.info(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + batch_idx)
                                 writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + batch_idx)
 
                             # Adjust regularisation weights periodically
