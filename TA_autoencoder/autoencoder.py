@@ -113,6 +113,7 @@ class LayerAutoencoder(nn.Module):
 class EnvironmentAutoencoder:
     def __init__(self, device, initial_l1_weight=1e-5, max_grad_norm=1.0, mask_regularisation_weight=1e-4):
         self.device = device
+        self.dtype = torch.float32
         print(f"Autoencoder using device: {self.device}")
         
         self.autoencoders = [
@@ -165,13 +166,13 @@ class EnvironmentAutoencoder:
         optimizer = self.optimizers[layer]
         ae.train()
 
-        layer_input = batch.to(self.device)
+        layer_input = batch.to(self.device, dtype=self.dtype) 
         
         optimizer.zero_grad(set_to_none=True)
         
         with autocast():
             layer_input = layer_input.unsqueeze(1)
-            layer_input = layer_input.to(torch.float32) # Ensure input is float32 before processing
+            layer_input = layer_input.to(self.device, dtype=self.dtype) # Ensure input is float32 before processing
             outputs = ae(layer_input)
             loss, reconstruction_loss, l1_reg, mask_reg = self.custom_loss(outputs, layer_input, layer)
         
@@ -244,12 +245,12 @@ class EnvironmentAutoencoder:
         return total_loss / num_batches if num_batches > 0 else None
     
     def move_to_cpu(self, layer):
-        self.autoencoders[layer] = self.autoencoders[layer].to('cpu')
+        self.autoencoders[layer] = self.autoencoders[layer].cpu()
         torch.cuda.empty_cache()
 
     def encode_state(self, state):
         with torch.no_grad():
-            state_tensor = torch.FloatTensor(state).unsqueeze(1)  # Add channel dimension
+            state_tensor = torch.tensor(state, dtype=self.dtype).unsqueeze(1)  # Add channel dimension
             encoded_layers = []
             for i in range(4):  # We have 4 layers in the state
                 if i == 0:
@@ -261,12 +262,12 @@ class EnvironmentAutoencoder:
                 ae = self.autoencoders[ae_index]
                 ae.eval()
                 ae.to(self.device)
-                layer_input = state_tensor[i].unsqueeze(0).to(self.device)  # Add batch dimension and move to GPU
+                layer_input = state_tensor[i].unsqueeze(0).to(self.device, dtype=self.dtype)  # Add batch dimension and move to GPU
                 encoded_layer = ae.encode(layer_input)
                 encoded_layers.append(encoded_layer.cpu().numpy().squeeze())
-                ae.to('cpu')
+                ae.cpu()
                 torch.cuda.empty_cache()
-        return np.array(encoded_layers)
+            return np.array(encoded_layers)
 
     def decode_state(self, encoded_state):
         with torch.no_grad():
@@ -281,17 +282,17 @@ class EnvironmentAutoencoder:
                 ae = self.autoencoders[ae_index]
                 ae.eval()
                 ae.to(self.device)
-                encoded_layer = torch.FloatTensor(encoded_state[i]).unsqueeze(0).unsqueeze(0).to(self.device)
+                encoded_layer = torch.tensor(encoded_state[i], dtype=self.dtype).unsqueeze(0).unsqueeze(0).to(self.device)
                 decoded_layer = ae.decoder(encoded_layer)
                 decoded_layers.append(decoded_layer.cpu().numpy().squeeze())
-                ae.to('cpu')
+                ae.cpu()
                 torch.cuda.empty_cache()
-        return np.array(decoded_layers)
-    
+            return np.array(decoded_layers)
+
     def save(self, path):
         torch.save({
             'model_state_dicts': [ae.cpu().state_dict() for ae in self.autoencoders],
-            'optimizer_state_dicts': [opt.state_dict() for opt in self.optimizers],
+            'optimizer_state_dicts': [self.cpu_state_dict(opt) for opt in self.optimizers],
             'scheduler_state_dicts': [sch.state_dict() for sch in self.schedulers],
             'scaler': self.scaler.state_dict(),
         }, path)
@@ -300,6 +301,25 @@ class EnvironmentAutoencoder:
         checkpoint = torch.load(path, map_location='cpu')
         for i, ae in enumerate(self.autoencoders):
             ae.load_state_dict(checkpoint['model_state_dicts'][i])
-            self.optimizers[i].load_state_dict(checkpoint['optimizer_state_dicts'][i])
-            self.schedulers[i].load_state_dict(checkpoint['scheduler_state_dicts'][i])
+            ae.to(self.device, dtype=self.dtype)
+        
+        for i, opt in enumerate(self.optimizers):
+            opt.load_state_dict(checkpoint['optimizer_state_dicts'][i])
+            self.move_optimizer_to_device(opt, self.device)
+        
+        for i, sch in enumerate(self.schedulers):
+            sch.load_state_dict(checkpoint['scheduler_state_dicts'][i])
+        
         self.scaler.load_state_dict(checkpoint['scaler'])
+
+    @staticmethod
+    def cpu_state_dict(optimizer):
+        return {k: v.cpu() if isinstance(v, torch.Tensor) else v
+                for k, v in optimizer.state_dict().items()}
+
+    @staticmethod
+    def move_optimizer_to_device(optimizer, device):
+        for state in optimizer.state.values():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor):
+                    state[k] = v.to(device)

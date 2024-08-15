@@ -78,12 +78,13 @@ def setup_logging():
         )
 
 class FlattenedMultiAgentH5Dataset(Dataset):
-    def __init__(self, h5_files):
+    def __init__(self, h5_files, dtype=torch.float32):
         self.h5_files = h5_files
         self.file_indices = []
         self.step_indices = []
         self.agent_indices = []
         self.cumulative_lengths = [0]
+        self.dtype = dtype
         
         for file_idx, h5_file in enumerate(self.h5_files):
             with h5py.File(h5_file, 'r') as f:
@@ -117,7 +118,7 @@ class FlattenedMultiAgentH5Dataset(Dataset):
             full_state = agent_data['full_state'][()]
             
             # Convert to torch tensor and ensure it's float32
-            full_state_tensor = torch.from_numpy(full_state).float()
+            full_state_tensor = torch.from_numpy(full_state).to(self.dtype)
             
             # Ensure we have all 4 layers
             if full_state_tensor.shape[0] != 4:
@@ -340,35 +341,32 @@ def process_config_wrapper(args):
         return None
 
 def save_training_state(autoencoder, layer, epoch):
+    ae_index = 1 if layer == 2 else layer
     state = {
         'epoch': epoch,
-        'model_state_dict': autoencoder.autoencoders[layer].state_dict(),
-        'optimizer_state_dict': autoencoder.optimizers[layer].state_dict(),
-        'scheduler_state_dict': autoencoder.schedulers[layer].state_dict(),
+        'model_state_dict': autoencoder.autoencoders[ae_index].cpu().state_dict(),
+        'optimizer_state_dict': autoencoder.cpu_state_dict(autoencoder.optimizers[ae_index]),
+        'scheduler_state_dict': autoencoder.schedulers[ae_index].state_dict(),
         'scaler': autoencoder.scaler.state_dict(),
     }
-    torch.save(state, os.path.join(H5_FOLDER, f"training_state_layer_{layer}.pth"))
+    torch.save(state, os.path.join(H5_FOLDER, f"training_state_layer_{ae_index}.pth"))
+    # Move the autoencoder back to the original device
+    autoencoder.autoencoders[ae_index].to(autoencoder.device)
 
 def load_training_state(autoencoder, layer):
-    # Map layer 2 to use autoencoder 1
     ae_index = 1 if layer == 2 else layer
-    
     state_path = os.path.join(H5_FOLDER, f"training_state_layer_{ae_index}.pth")
     if os.path.exists(state_path):
         state = torch.load(state_path, map_location='cpu')  # Always load to CPU first
         
         autoencoder.autoencoders[ae_index].load_state_dict(state['model_state_dict'])
+        autoencoder.autoencoders[ae_index].to(autoencoder.device, dtype=autoencoder.dtype)
+        
         autoencoder.optimizers[ae_index].load_state_dict(state['optimizer_state_dict'])
+        autoencoder.move_optimizer_to_device(autoencoder.optimizers[ae_index], autoencoder.device)
+        
         autoencoder.schedulers[ae_index].load_state_dict(state['scheduler_state_dict'])
         
-        # Move model and optimizer to the correct device
-        autoencoder.autoencoders[ae_index].to(autoencoder.device)
-        for state in autoencoder.optimizers[ae_index].state.values():
-            for k, v in state.items():
-                if isinstance(v, torch.Tensor):
-                    state[k] = v.to(autoencoder.device)
-        
-        # Load scaler state if it exists (for backwards compatibility)
         if 'scaler' in state:
             autoencoder.scaler.load_state_dict(state['scaler'])
         
@@ -398,7 +396,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
     device = autoencoder.device
     output_folder = os.path.join(H5_FOLDER, 'training_visualisations')
     os.makedirs(output_folder, exist_ok=True)
-
+    dtype = autoencoder.dtype
     writer = SummaryWriter(log_dir=os.path.join(H5_FOLDER, 'tensorboard_logs'))
 
     # Set log interval
@@ -409,19 +407,16 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
             print(f"Training autoencoder {ae_index}")
             
             # Move current autoencoder to GPU
-            autoencoder.autoencoders[ae_index] = autoencoder.autoencoders[ae_index].to(device)
+            autoencoder.autoencoders[ae_index] = autoencoder.autoencoders[ae_index].to(device, dtype=dtype)
             
             # Move optimizer to GPU
-            for state in autoencoder.optimizers[ae_index].state.values():
-                for k, v in state.items():
-                    if isinstance(v, torch.Tensor):
-                        state[k] = v.to(device)
+            autoencoder.move_optimizer_to_device(autoencoder.optimizers[ae_index], device)
             
             # Use appropriate dataset for each autoencoder
             if ae_index == 2:
-                dataset = FlattenedMultiAgentH5Dataset(h5_files_all_jammers)
+                dataset = FlattenedMultiAgentH5Dataset(h5_files_all_jammers, dtype=dtype)
             else:
-                dataset = FlattenedMultiAgentH5Dataset(h5_files_low_jammers)
+                dataset = FlattenedMultiAgentH5Dataset(h5_files_low_jammers, dtype=dtype)
             
             dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
             
