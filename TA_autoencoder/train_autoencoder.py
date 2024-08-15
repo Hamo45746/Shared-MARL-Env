@@ -59,13 +59,6 @@ def setup_logging():
             datefmt='%Y-%m-%d %H:%M:%S'
         )
 
-        # Add console logging
-        console = logging.StreamHandler(sys.stdout)
-        console.setLevel(logging.INFO)
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        console.setFormatter(formatter)
-        logging.getLogger('').addHandler(console)
-
         # Test logging
         logging.info(f"Logging initialized. Log file: {log_file_path}")
     except Exception as e:
@@ -458,7 +451,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
 
                             # Log at specified intervals
                             if batch_idx % log_interval == 0:
-                                logging.info(f'Autoencoder {ae_index} Batch: {batch_idx}, Loss: {loss}')
+                                # logging.info(f'Autoencoder {ae_index} Batch: {batch_idx}, Loss: {loss}')
                                 writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + batch_idx)
 
                             # Adjust regularisation weights periodically
@@ -532,7 +525,7 @@ def main():
     seed_range = range(1, 4)
     num_agents_range = range(12, 15)
     num_targets_range = range(42, 45)
-    num_jammers_range_low = range(0, 1)  # 0-3 jammers
+    num_jammers_range_low = range(0, 1)  # 0 jammers
     num_jammers_range_high = range(85, 90)  # 85-89 jammers
     
     map_paths = ['city_image_1.npy', 'city_image_2.npy', 'city_image_3.npy']
