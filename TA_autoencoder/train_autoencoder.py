@@ -582,7 +582,7 @@ def main():
     all_configs = configs + configs_high_jammers
     
     total_configs = len(all_configs)
-    initial_completed = len(load_progress())
+    initial_completed = len(load_progress(all_configs))
     print(f"Initial completed configurations: {initial_completed}/{total_configs}")
     
     configs_to_process = []
@@ -610,7 +610,7 @@ def main():
             pool.terminate()
             pool.join()
     
-    completed_configs = load_progress()
+    completed_configs = load_progress(all_configs)
     print(f"Final completed configurations: {len(completed_configs)}/{total_configs}")
     
     if len(completed_configs) >= total_configs:
