@@ -226,7 +226,7 @@ class EnvironmentAutoencoder:
         elif ratio_mask < 10:
             self.mask_regularization_weight /= 2
         
-        print(f"Adjusted L1 weight: {self.l1_weight}, Mask regularization weight: {self.mask_regularization_weight}")
+        # print(f"Adjusted L1 weight: {self.l1_weight}, Mask regularization weight: {self.mask_regularization_weight}")
 
     def train_epoch(self, dataloader, layer):
         total_loss = 0
