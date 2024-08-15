@@ -2,6 +2,7 @@ import numpy as np
 from discrete_agent import DiscreteAgent
 # from gymnasium import spaces
 from gym import spaces # for MARLlib
+import gc
 
 class TaskAllocationAgent(DiscreteAgent):
     def __init__(
@@ -51,13 +52,13 @@ class TaskAllocationAgent(DiscreteAgent):
         
         if self.path:
             next_pos = self.path.pop(0)
-            print(f"Current pos: {self.current_pos}. Next pos: {next_pos}. Via action: {self.motion_range[action]}")
+            # print(f"Current pos: {self.current_pos}. Next pos: {next_pos}. Via action: {self.motion_range[action]}")
             discrete_action = self.determine_action(tuple(self.current_pos), next_pos)
             self.current_pos = super().step(discrete_action)
         
         # After moving, update the agent's own trail
         self.update_own_trail()
-        
+        gc.collect()
         return self.current_pos
 
     def compute_path(self, start, goal):

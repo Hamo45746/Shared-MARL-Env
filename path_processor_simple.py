@@ -1,5 +1,6 @@
 import numpy as np
 from heapq import heappush, heappop
+import gc
 
 class PathProcessor:
     def __init__(self, map_matrix, width, height):
@@ -38,7 +39,7 @@ class PathProcessor:
                     g_score[neighbor] = tentative_g_score
                     f_score[neighbor] = tentative_g_score + self._heuristic(neighbor, goal)
                     heappush(heap, (f_score[neighbor], neighbor))
-        
+        gc.collect()
         return []
 
     def _get_neighbors(self, pos):

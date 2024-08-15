@@ -2,12 +2,10 @@ import gym # needed for MARLlib
 # import gymnasium as gym
 import numpy as np
 import sys
-import random
 import yaml
 import agent_utils
 import jammer_utils
 import target_utils
-import heapq
 import pygame
 import gc
 from skimage.transform import resize
@@ -980,6 +978,6 @@ def print_env_state_summary(step, global_state):
         print(f"    Num -20: {np.sum(layer_data == -20)}")
     sys.stdout.flush()
 
-config_path = 'config.yaml' 
-env = Environment(config_path)
-Environment.run_simulation(env, max_steps=2)
+# config_path = 'config.yaml' 
+# env = Environment(config_path)
+# Environment.run_simulation(env, max_steps=2)

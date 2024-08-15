@@ -30,12 +30,47 @@ H5_PROGRESS_FILE = 'h5_collection_progress.txt'
 AUTOENCODER_FILE = 'trained_autoencoder.pth'
 TRAINING_STATE_FILE = 'training_state.pth'
 STEPS_PER_EPISODE = 100
-
-logging.basicConfig(filename='autoencoder_training.log', level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+LOG_FILE = 'autoencoder_training.log'
 
 # Global flag to indicate interruption
 interrupt_flag = mp.Value('i', 0)
+
+LOG_FILE = os.path.join(H5_FOLDER, 'autoencoder_training.log')
+
+def setup_logging():
+    try:
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+
+        # Remove any existing handlers to avoid duplication
+        for handler in logging.root.handlers[:]:
+            logging.root.removeHandler(handler)
+
+        # Set up file logging
+        logging.basicConfig(
+            filename=LOG_FILE,
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+
+        # Add console logging
+        console = logging.StreamHandler(sys.stdout)
+        console.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        console.setFormatter(formatter)
+        logging.getLogger('').addHandler(console)
+
+        # Test logging
+        logging.info(f"Logging initialized. Log file: {LOG_FILE}")
+    except Exception as e:
+        print(f"Error setting up logging: {e}")
+        print(f"Will log to console only.")
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
 
 class FlattenedMultiAgentH5Dataset(Dataset):
     def __init__(self, h5_files):
@@ -485,10 +520,11 @@ def main():
     
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
     original_config = load_config(config_path)
+    setup_logging()
     
     # Configuration ranges
     seed_range = range(1, 4)
-    num_agents_range = range(10, 15)
+    num_agents_range = range(12, 15)
     num_targets_range = range(42, 45)
     num_jammers_range_low = range(0, 4)  # 0-3 jammers
     num_jammers_range_high = range(85, 90)  # 85-89 jammers

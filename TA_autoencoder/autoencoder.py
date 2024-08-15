@@ -77,7 +77,7 @@ class LayerAutoencoder(nn.Module):
             # Apply thresholding to mitigate interpolation effects for continuous data
             background_mask = (decoded <= -19.9).float()
             decoded = decoded * (1 - background_mask) + (-20) * background_mask
-            decoded = torch.clamp(x, min=-20, max=0) #TODO: modify this to scale to -20-0 rather than clamp?
+            decoded = torch.clamp(x, min=-20, max=0) #TODO: modify this to scale to -20:0 rather than clamp?
         return decoded
 
     def encode(self, x):
