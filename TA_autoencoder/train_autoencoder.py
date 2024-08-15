@@ -32,18 +32,28 @@ TRAINING_STATE_FILE = 'training_state.pth'
 STEPS_PER_EPISODE = 100
 LOG_FILE = 'autoencoder_training.log'
 
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Complete path to the log file in the Shared-MARL-Env folder
+log_file_path = os.path.join(parent_dir, LOG_FILE)
+
 # Global flag to indicate interruption
 interrupt_flag = mp.Value('i', 0)
 
 def setup_logging():
     try:
+        # Ensure the directory exists
+        log_dir = os.path.dirname(log_file_path)
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+
         # Remove any existing handlers to avoid duplication
         for handler in logging.root.handlers[:]:
             logging.root.removeHandler(handler)
 
         # Set up file logging
         logging.basicConfig(
-            filename=LOG_FILE,
+            filename=log_file_path,
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
@@ -57,7 +67,7 @@ def setup_logging():
         logging.getLogger('').addHandler(console)
 
         # Test logging
-        logging.info(f"Logging initialized. Log file: {LOG_FILE}")
+        logging.info(f"Logging initialized. Log file: {log_file_path}")
     except Exception as e:
         print(f"Error setting up logging: {e}")
         print(f"Will log to console only.")
