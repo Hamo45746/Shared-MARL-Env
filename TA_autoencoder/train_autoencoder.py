@@ -207,36 +207,64 @@ def release_lock(lock_fd):
     fcntl.flock(lock_fd, fcntl.LOCK_UN)
     lock_fd.close()
 
-def load_progress(file_list):
+def load_progress(all_configs):
     progress_file = os.path.join(H5_FOLDER, H5_PROGRESS_FILE)
     lock_file = f"{progress_file}.lock"
     lock_fd = acquire_lock(lock_file)
     try:
         progress = set()
-
-        # for filename in progress file - this isn't fully what is was (readline in prog file)
-        for filename in file_list:
-            filepath = os.path.join(H5_FOLDER, filename)
-            if os.path.exists(filepath) and is_dataset_complete(filepath, STEPS_PER_EPISODE):
-                progress.add(filename)
-            else:
-                print(f"Warning: File in progress list is missing or incomplete: {filename}")
-        
-        # Check for any completed files not in the progress file
-        # for filename in file_list:
-        #     if filename.endswith('.h5'):
-        #         filepath = os.path.join(H5_FOLDER, filename)
-        #         if is_dataset_complete(filepath, STEPS_PER_EPISODE) and filename not in progress:
-        #             progress.add(filename)
-        
-        # Update the progress file
-        with open(progress_file, 'w') as f:
-            for filename in progress:
-                f.write(f"{filename}\n")
-        
+        if os.path.exists(progress_file):
+            with open(progress_file, 'r') as f:
+                file_list = f.read().splitlines()
+            
+            # Create a set of desired filenames based on all_configs
+            desired_filenames = set()
+            for config in all_configs:
+                map_name = os.path.splitext(os.path.basename(config['map_path']))[0]
+                filename = f"data_m{map_name}_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
+                desired_filenames.add(filename)
+            
+            for filename in file_list:
+                if filename in desired_filenames:
+                    filepath = os.path.join(H5_FOLDER, filename)
+                    if os.path.exists(filepath) and is_dataset_complete(filepath, STEPS_PER_EPISODE):
+                        progress.add(filename)
+                    else:
+                        print(f"Warning: File in progress list is missing or incomplete: {filename}")
         return progress
     finally:
         release_lock(lock_fd)
+
+def process_config(args):
+    try:
+        config, config_path, h5_folder, steps_per_episode = args
+        map_name = os.path.splitext(os.path.basename(config['map_path']))[0]
+        filename = f"data_m{map_name}_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
+        filepath = os.path.join(h5_folder, filename)
+        
+        # Check if the file already exists and is complete
+        if os.path.exists(filepath) and is_dataset_complete(filepath, steps_per_episode):
+            print(f"File {filename} already exists and is complete. Skipping.")
+            return filepath
+        
+        # If the file doesn't exist or is incomplete, collect the data
+        filepath = collect_data_for_config(config, config_path, steps_per_episode, h5_folder)
+        
+        if is_dataset_complete(filepath, steps_per_episode):
+            # Verify that the file contains data for all 4 layers
+            with h5py.File(filepath, 'r') as f:
+                first_step = f['data']['0']
+                first_agent = first_step[list(first_step.keys())[0]]
+                full_state = first_agent['full_state'][()]
+                if full_state.shape[0] != 4:
+                    logging.error(f"Incorrect number of layers in {filepath}: expected 4, got {full_state.shape[0]}")
+                    return None
+            return filepath
+        else:
+            return None
+    except Exception as e:
+        logging.error(f"Error processing config {config}: {str(e)}")
+        return None
 
 def save_progress(completed_configs):
     progress_file = os.path.join(H5_FOLDER, H5_PROGRESS_FILE)
@@ -327,29 +355,6 @@ def process_config_wrapper(args):
             return None
         return process_config(args)
     except KeyboardInterrupt:
-        return None
-
-def process_config(args):
-    try:
-        config, config_path, h5_folder, steps_per_episode = args
-        filepath = collect_data_for_config(config, config_path, steps_per_episode, h5_folder)
-        if is_dataset_complete(filepath, steps_per_episode):
-            # Verify that the file contains data for all 4 layers
-            with h5py.File(filepath, 'r') as f:
-                first_step = f['data']['0']
-                first_agent = first_step[list(first_step.keys())[0]]
-                full_state = first_agent['full_state'][()]
-                if full_state.shape[0] != 4:
-                    logging.error(f"Incorrect number of layers in {filepath}: expected 4, got {full_state.shape[0]}")
-                    return None
-            progress = load_progress(filepath)
-            progress.add(os.path.basename(filepath))
-            save_progress(progress)
-            return filepath
-        else:
-            return None
-    except Exception as e:
-        logging.error(f"Error processing config {config}: {str(e)}")
         return None
 
 def save_training_state(autoencoder, layer, epoch):
