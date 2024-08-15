@@ -208,32 +208,14 @@ def release_lock(lock_fd):
     lock_fd.close()
 
 def load_progress(all_configs):
-    progress_file = os.path.join(H5_FOLDER, H5_PROGRESS_FILE)
-    lock_file = f"{progress_file}.lock"
-    lock_fd = acquire_lock(lock_file)
-    try:
-        progress = set()
-        if os.path.exists(progress_file):
-            with open(progress_file, 'r') as f:
-                file_list = f.read().splitlines()
-            
-            # Create a set of desired filenames based on all_configs
-            desired_filenames = set()
-            for config in all_configs:
-                map_name = os.path.splitext(os.path.basename(config['map_path']))[0]
-                filename = f"data_m{map_name}_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
-                desired_filenames.add(filename)
-            
-            for filename in file_list:
-                if filename in desired_filenames:
-                    filepath = os.path.join(H5_FOLDER, filename)
-                    if os.path.exists(filepath) and is_dataset_complete(filepath, STEPS_PER_EPISODE):
-                        progress.add(filename)
-                    else:
-                        print(f"Warning: File in progress list is missing or incomplete: {filename}")
-        return progress
-    finally:
-        release_lock(lock_fd)
+    progress = set()
+    for config in all_configs:
+        map_name = os.path.splitext(os.path.basename(config['map_path']))[0]
+        filename = f"data_m{map_name}_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
+        filepath = os.path.join(H5_FOLDER, filename)
+        if os.path.exists(filepath) and is_dataset_complete(filepath, STEPS_PER_EPISODE):
+            progress.add(filename)
+    return progress
 
 def process_config(args):
     try:
