@@ -392,7 +392,7 @@ def load_training_state(autoencoder, layer):
 
 
         
-def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=1, delta=0.01):
+def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=2, delta=0.01):
     device = autoencoder.device
     output_folder = os.path.join(H5_FOLDER, 'training_visualisations')
     os.makedirs(output_folder, exist_ok=True)
@@ -420,7 +420,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
             
             dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
             
-            start_epoch = 1 #load_training_state(autoencoder, ae_index)
+            start_epoch = load_training_state(autoencoder, ae_index)
             
             best_loss = float('inf')
             epochs_no_improve = 0
@@ -458,7 +458,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
 
                             # Log at specified intervals
                             if batch_idx % log_interval == 0:
-                                logging.info(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + batch_idx)
+                                logging.info(f'Autoencoder {ae_index} Batch: {batch_idx}, Loss: {loss}')
                                 writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + batch_idx)
 
                             # Adjust regularisation weights periodically
@@ -476,12 +476,12 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
 
                     autoencoder.schedulers[ae_index].step(avg_loss)
 
-                    if avg_loss < best_loss - delta:
-                        best_loss = avg_loss
+                    if abs(avg_loss - best_loss) <= delta:
+                        epochs_no_improve += 1
+                    else:
+                        best_loss = min(avg_loss, best_loss)
                         epochs_no_improve = 0
                         autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_best.pth"))
-                    else:
-                        epochs_no_improve += 1
 
                     if epochs_no_improve >= patience:
                         print(f"Early stopping triggered for autoencoder {ae_index}. No improvement for {patience} epochs.")
@@ -529,9 +529,9 @@ def main():
     setup_logging()
     
     # Configuration ranges
-    seed_range = range(1, 2)
-    num_agents_range = range(12, 13)
-    num_targets_range = range(42, 43)
+    seed_range = range(1, 4)
+    num_agents_range = range(12, 15)
+    num_targets_range = range(42, 45)
     num_jammers_range_low = range(0, 1)  # 0-3 jammers
     num_jammers_range_high = range(85, 90)  # 85-89 jammers
     
