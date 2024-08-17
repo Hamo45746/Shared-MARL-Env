@@ -286,26 +286,27 @@ def get_cpu_temperature():
 
 def process_config_wrapper(args):
     global temp_flag
+    if temp_flag.value:
+        return None
     try:
-        if temp_flag.value:
-            return None
         return process_config(args)
     except Exception as e:
-        logging.error(f"Error in process_config_wrapper: {e}")
+        logging.error(f"Error in process_config: {e}")
         return None
 
 def process_configs_with_temp_management(configs_to_process, config_path, h5_folder, steps_per_episode, 
-                                         max_processes=24, min_processes=4, temp_threshold=80, cool_down_time=60):
-    num_processes = min(max_processes, max(min_processes, cpu_count() * 3 // 4))
+                                         max_processes=None, min_processes=1, temp_threshold=80, cool_down_time=60):
+    if max_processes is None:
+        max_processes = max(1, mp.cpu_count() - 1)
+    num_processes = max_processes
+
     logging.info(f"Starting with {num_processes} processes")
 
-    completed = 0
-    total = len(configs_to_process)
-    shared_temp_flag = Value('i', 0)
+    completed_configs = set()
 
-    with tqdm(total=total, disable=False) as pbar:
+    with tqdm(total=len(configs_to_process), disable=interrupt_flag.value) as pbar:
         while configs_to_process:
-            with Pool(processes=num_processes, initializer=init_worker_with_temp_flag, initargs=(shared_temp_flag,)) as pool:
+            with Pool(processes=num_processes, initializer=init_worker) as pool:
                 try:
                     results = pool.imap_unordered(process_config_wrapper, 
                                                   [(config, config_path, h5_folder, steps_per_episode) 
@@ -313,19 +314,19 @@ def process_configs_with_temp_management(configs_to_process, config_path, h5_fol
                     for result in results:
                         pbar.update(1)
                         if result is not None:
-                            completed += 1
+                            completed_configs.add(result)
                             logging.info(f"Successfully processed config: {result}")
                         
                         temp = get_cpu_temperature()
                         if temp is not None and temp > temp_threshold:
                             logging.warning(f"CPU temperature too high ({temp}°C). Pausing for cool-down...")
-                            shared_temp_flag.value = 1
+                            temp_flag.value = 1
                             pool.close()
                             pool.join()
                             time.sleep(cool_down_time)
                             num_processes = max(min_processes, num_processes - 1)
                             logging.info(f"Reducing to {num_processes} processes")
-                            shared_temp_flag.value = 0
+                            temp_flag.value = 0
                             break
                         
                         if interrupt_flag.value:
@@ -334,9 +335,7 @@ def process_configs_with_temp_management(configs_to_process, config_path, h5_fol
                 except KeyboardInterrupt:
                     logging.info("Caught KeyboardInterrupt, terminating workers")
                     pool.terminate()
-                    return completed
-                except Exception as e:
-                    logging.error(f"Error in processing: {e}")
+                    return completed_configs
                 finally:
                     pool.close()
                     pool.join()
@@ -354,8 +353,8 @@ def process_configs_with_temp_management(configs_to_process, config_path, h5_fol
             
             time.sleep(5)  # Short pause between batches
 
-    logging.info(f"All processing completed. Total configs processed: {completed}")
-    return completed
+    logging.info(f"All processing completed. Total configs processed: {len(completed_configs)}")
+    return completed_configs
 
 def is_config_processed(config, h5_folder, steps_per_episode):
     map_name = os.path.splitext(os.path.basename(config['map_path']))[0]
