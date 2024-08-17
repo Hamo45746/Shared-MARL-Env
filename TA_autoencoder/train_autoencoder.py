@@ -268,53 +268,83 @@ def process_config(args):
         if lock_fd is not None:
             release_lock(lock_fd)
             
-def process_configs_with_temp_management(configs_to_process, max_processes=24, min_processes=4, temp_threshold=80, cool_down_time=60):
+import psutil
+import time
+from multiprocessing import Pool, Value
+
+def get_cpu_temperature():
+    try:
+        temps = psutil.sensors_temperatures()
+        if 'coretemp' in temps:
+            return max(temp.current for temp in temps['coretemp'])
+        return None
+    except:
+        return None
+
+def process_config_wrapper(args):
+    config, config_path, h5_folder, steps_per_episode, temp_flag = args
+    try:
+        if temp_flag.value:
+            return None
+        # Call the original process_config function
+        return process_config((config, config_path, h5_folder, steps_per_episode))
+    except KeyboardInterrupt:
+        return None
+
+def process_configs_with_temp_management(configs_to_process, config_path, h5_folder, steps_per_episode, 
+                                         max_processes=24, min_processes=4, temp_threshold=80, cool_down_time=60):
     num_processes = min(max_processes, max(min_processes, psutil.cpu_count() * 3 // 4))
     print(f"Starting with {num_processes} processes")
 
     completed = 0
     total = len(configs_to_process)
+    temp_flag = Value('i', 0)
 
     with tqdm(total=total, disable=interrupt_flag.value) as pbar:
         while configs_to_process:
+            current_batch = configs_to_process[:num_processes * 2]
             with Pool(processes=num_processes, initializer=init_worker) as pool:
                 try:
-                    for result in pool.imap_unordered(process_config_wrapper, configs_to_process[:num_processes * 2]):
+                    results = pool.imap_unordered(process_config_wrapper, 
+                                                  [(config, config_path, h5_folder, steps_per_episode, temp_flag) 
+                                                   for config in current_batch])
+                    for result in results:
                         if result is not None:
                             completed += 1
                             pbar.update(1)
                         
-                        temp = get_cpu_temp()
-                        if temp is not None:
-                            if temp > temp_threshold:
-                                print(f"CPU temperature too high ({temp}°C). Pausing for cool-down...")
-                                pool.terminate()
-                                pool.join()
-                                time.sleep(cool_down_time)
-                                num_processes = max(min_processes, num_processes - 2)
-                                print(f"Reducing to {num_processes} processes")
-                                break
-                            elif temp < temp_threshold - 5 and num_processes < max_processes:
-                                num_processes = min(num_processes + 2, max_processes)
-                                print(f"Temperature stable ({temp}°C). Increasing to {num_processes} processes")
-                                pool.terminate()
-                                pool.join()
-                                break
+                        temp = get_cpu_temperature()
+                        if temp is not None and temp > temp_threshold:
+                            print(f"CPU temperature too high ({temp}°C). Pausing for cool-down...")
+                            temp_flag.value = 1
+                            pool.close()
+                            pool.join()
+                            time.sleep(cool_down_time)
+                            num_processes = max(min_processes, num_processes - 2)
+                            print(f"Reducing to {num_processes} processes")
+                            temp_flag.value = 0
+                            break
                         
                         if interrupt_flag.value:
                             raise KeyboardInterrupt
 
                 except KeyboardInterrupt:
                     print("Caught KeyboardInterrupt, terminating workers")
-                    break
-                finally:
                     pool.terminate()
+                    return completed
+                finally:
+                    pool.close()
                     pool.join()
 
-            configs_to_process = configs_to_process[num_processes * 2:]
+            configs_to_process = configs_to_process[len(current_batch):]
             
             if not configs_to_process:
                 break
+            
+            temp = get_cpu_temperature()
+            if temp is not None and temp < temp_threshold - 5 and num_processes < max_processes:
+                num_processes = min(num_processes + 2, max_processes)
+                print(f"Temperature stable ({temp}°C). Increasing to {num_processes} processes")
             
             time.sleep(5)  # Short pause between batches
 
@@ -404,10 +434,11 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
     return filepath
 
 def process_config_wrapper(args):
+    config, config_path, h5_folder, steps_per_episode, temp_flag = args
     try:
-        if interrupt_flag.value:
+        if temp_flag.value:
             return None
-        return process_config(args)
+        return process_config((config, config_path, h5_folder, steps_per_episode))
     except KeyboardInterrupt:
         return None
 
@@ -641,7 +672,15 @@ def main():
     print(f"Configurations to process: {len(configs_to_process)}")
     
     # Process configurations
-    completed_configs = process_configs_with_temp_management(configs_to_process, min_processes=4, max_processes=28, temp_threshold=80)
+    completed_configs = process_configs_with_temp_management(
+        configs_to_process, 
+        config_path=config_path,
+        h5_folder=H5_FOLDER,
+        steps_per_episode=STEPS_PER_EPISODE,
+        max_processes=24, 
+        min_processes=4, 
+        temp_threshold=80
+    )
     print(f"Completed configurations: {completed_configs}/{total_configs}")
     
     if len(completed_configs) >= total_configs:
