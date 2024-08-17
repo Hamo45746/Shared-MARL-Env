@@ -16,6 +16,8 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from torch.cuda.amp import GradScaler, autocast
 from torch.utils.tensorboard import SummaryWriter
+from functools import partial
+from multiprocessing import Pool, Value, cpu_count
 # from test_autoencoder import test_specific_autoencoder
 
 # Add the parent directory to the Python path
@@ -267,10 +269,6 @@ def process_config(args):
         # Always release the lock if it was acquired
         if lock_fd is not None:
             release_lock(lock_fd)
-            
-import psutil
-import time
-from multiprocessing import Pool, Value
 
 def get_cpu_temperature():
     try:
@@ -281,18 +279,19 @@ def get_cpu_temperature():
     except:
         return None
 
-def process_config_wrapper(args):
-    config, config_path, h5_folder, steps_per_episode, temp_flag = args
+def process_config_wrapper(temp_flag, args):
+    config, config_path, h5_folder, steps_per_episode = args
     try:
         if temp_flag.value:
             return None
+        # Call the original process_config function
         return process_config((config, config_path, h5_folder, steps_per_episode))
     except KeyboardInterrupt:
         return None
 
 def process_configs_with_temp_management(configs_to_process, config_path, h5_folder, steps_per_episode, 
                                          max_processes=24, min_processes=4, temp_threshold=80, cool_down_time=60):
-    num_processes = min(max_processes, max(min_processes, psutil.cpu_count() * 3 // 4))
+    num_processes = min(max_processes, max(min_processes, cpu_count() * 3 // 4))
     print(f"Starting with {num_processes} processes")
 
     completed = 0
@@ -304,8 +303,9 @@ def process_configs_with_temp_management(configs_to_process, config_path, h5_fol
             current_batch = configs_to_process[:num_processes * 2]
             with Pool(processes=num_processes, initializer=init_worker) as pool:
                 try:
-                    results = pool.imap_unordered(process_config_wrapper, 
-                                                  [(config, config_path, h5_folder, steps_per_episode, temp_flag) 
+                    wrapped_process_config = partial(process_config_wrapper, temp_flag)
+                    results = pool.imap_unordered(wrapped_process_config, 
+                                                  [(config, config_path, h5_folder, steps_per_episode) 
                                                    for config in current_batch])
                     for result in results:
                         if result is not None:
