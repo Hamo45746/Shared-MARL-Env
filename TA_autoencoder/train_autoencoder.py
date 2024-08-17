@@ -268,8 +268,8 @@ def process_config(args):
         if lock_fd is not None:
             release_lock(lock_fd)
             
-def process_configs_with_temp_management(configs_to_process, max_processes=24, temp_threshold=80, cool_down_time=30):
-    num_processes = min(max_processes, max(1, psutil.cpu_count() // 2))
+def process_configs_with_temp_management(configs_to_process, max_processes=24, min_processes=4, temp_threshold=80, cool_down_time=60):
+    num_processes = min(max_processes, max(min_processes, psutil.cpu_count() * 3 // 4))
     print(f"Starting with {num_processes} processes")
 
     completed = 0
@@ -279,20 +279,27 @@ def process_configs_with_temp_management(configs_to_process, max_processes=24, t
         while configs_to_process:
             with Pool(processes=num_processes, initializer=init_worker) as pool:
                 try:
-                    for result in pool.imap_unordered(process_config_wrapper, configs_to_process[:num_processes]):
+                    for result in pool.imap_unordered(process_config_wrapper, configs_to_process[:num_processes * 2]):
                         if result is not None:
                             completed += 1
                             pbar.update(1)
                         
                         temp = get_cpu_temp()
-                        if temp is not None and temp > temp_threshold:
-                            print(f"CPU temperature too high ({temp}°C). Pausing for cool-down...")
-                            pool.terminate()
-                            pool.join()
-                            time.sleep(cool_down_time)
-                            num_processes = max(1, num_processes - 1)
-                            print(f"Reducing to {num_processes} processes")
-                            break
+                        if temp is not None:
+                            if temp > temp_threshold:
+                                print(f"CPU temperature too high ({temp}°C). Pausing for cool-down...")
+                                pool.terminate()
+                                pool.join()
+                                time.sleep(cool_down_time)
+                                num_processes = max(min_processes, num_processes - 2)
+                                print(f"Reducing to {num_processes} processes")
+                                break
+                            elif temp < temp_threshold - 5 and num_processes < max_processes:
+                                num_processes = min(num_processes + 2, max_processes)
+                                print(f"Temperature stable ({temp}°C). Increasing to {num_processes} processes")
+                                pool.terminate()
+                                pool.join()
+                                break
                         
                         if interrupt_flag.value:
                             raise KeyboardInterrupt
@@ -304,16 +311,11 @@ def process_configs_with_temp_management(configs_to_process, max_processes=24, t
                     pool.terminate()
                     pool.join()
 
-            configs_to_process = configs_to_process[num_processes:]
+            configs_to_process = configs_to_process[num_processes * 2:]
             
             if not configs_to_process:
                 break
             
-            temp = get_cpu_temp()
-            if temp is not None and temp < temp_threshold - 10:
-                num_processes = min(num_processes + 1, max_processes)
-                print(f"Temperature stable. Increasing to {num_processes} processes")
-
             time.sleep(5)  # Short pause between batches
 
     return completed
@@ -645,7 +647,7 @@ def main():
     print(f"Configurations to process: {len(configs_to_process)}")
     
     # Process configurations
-    completed_configs = process_configs_with_temp_management(configs_to_process, max_processes=4, temp_threshold=80)
+    completed_configs = process_configs_with_temp_management(configs_to_process, min_processes=4, max_processes=28, temp_threshold=80)
     print(f"Completed configurations: {completed_configs}/{total_configs}")
     
     if len(completed_configs) >= total_configs:
