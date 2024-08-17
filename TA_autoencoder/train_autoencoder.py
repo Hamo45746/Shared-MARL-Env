@@ -38,7 +38,7 @@ parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 log_file_path = os.path.join(parent_dir, LOG_FILE)
 
 # Global flag to indicate interruption
-interrupt_flag = mp.Value('i', 0)
+interrupt_flag = None
 
 def setup_logging():
     try:
@@ -121,11 +121,14 @@ class FlattenedMultiAgentH5Dataset(Dataset):
             return {f'layer_{i}': full_state_tensor[i] for i in range(full_state_tensor.shape[0])}
 
 def init_worker():
+    global interrupt_flag
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 def signal_handler(signum, frame):
+    global interrupt_flag
     print("Interrupt received, stopping processes...")
-    interrupt_flag.value = 1
+    if interrupt_flag is not None:
+        interrupt_flag.value = 1
 
 def cleanup_resources():
     active_children = mp.active_children()
@@ -380,6 +383,7 @@ def load_training_state(autoencoder, layer):
         return state['epoch']
     return 0
 
+
 # def load_training_state(autoencoder, layer):
 #     state_path = os.path.join(H5_FOLDER, f"training_state_layer_{layer}.pth")
 #     if os.path.exists(state_path):
@@ -396,7 +400,6 @@ def load_training_state(autoencoder, layer):
         
 #         return state['epoch']
 #     return 0
-
 
         
 def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=2, delta=0.01):
@@ -471,6 +474,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                             # Adjust regularisation weights periodically
                             if batch_idx % 100 == 0:
                                 autoencoder.adjust_regularisation_weights()
+                                autoencoder.adjust_l1_weight()
 
                         del layer_batch, loss
                         torch.cuda.empty_cache()
@@ -502,7 +506,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
 
                 if (epoch + 1) % 10 == 0:
                     autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_epoch_{epoch+1}.pth"))
-                    test_specific_autoencoder(autoencoder, H5_FOLDER, output_folder, autoencoder_index=ae_index, epoch=epoch+1)
+                    # test_specific_autoencoder(autoencoder, H5_FOLDER, output_folder, autoencoder_index=ae_index, epoch=epoch+1)
 
                 torch.cuda.empty_cache()
                 mem_percent = psutil.virtual_memory().percent
@@ -527,6 +531,8 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
         logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
     
 def main():
+    global interrupt_flag
+    interrupt_flag = mp.Value('i', 0)
     # Set up signal handler
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -536,9 +542,9 @@ def main():
     setup_logging()
     
     # Configuration ranges
-    seed_range = range(1, 4)
-    num_agents_range = range(12, 15)
-    num_targets_range = range(42, 45)
+    seed_range = range(1, 2) # 1-20 seed
+    num_agents_range = range(15, 16) # 15 agents
+    num_targets_range = range(90, 91) # 90 targets
     num_jammers_range_low = range(0, 1)  # 0 jammers
     num_jammers_range_high = range(85, 90)  # 85-89 jammers
     
