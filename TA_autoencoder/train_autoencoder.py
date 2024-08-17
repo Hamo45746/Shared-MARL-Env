@@ -40,7 +40,7 @@ parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 log_file_path = os.path.join(parent_dir, LOG_FILE)
 
 # Global flag to indicate interruption
-interrupt_flag = None
+interrupt_flag = Value('i', 0)
 temp_flag = None
 
 def setup_logging():
@@ -286,16 +286,12 @@ def get_cpu_temperature():
 
 def process_config_wrapper(args):
     global temp_flag
-    config, config_path, h5_folder, steps_per_episode = args
     try:
         if temp_flag.value:
             return None
-        # Call the original process_config function
-        result = process_config((config, config_path, h5_folder, steps_per_episode))
-        logging.info(f"Processed config: {config}")
-        return result
+        return process_config(args)
     except Exception as e:
-        logging.error(f"Error processing config {config}: {e}")
+        logging.error(f"Error in process_config_wrapper: {e}")
         return None
 
 def process_configs_with_temp_management(configs_to_process, config_path, h5_folder, steps_per_episode, 
@@ -309,27 +305,25 @@ def process_configs_with_temp_management(configs_to_process, config_path, h5_fol
 
     with tqdm(total=total, disable=False) as pbar:
         while configs_to_process:
-            current_batch = configs_to_process[:num_processes * 2]
-            logging.info(f"Processing batch of {len(current_batch)} configs")
             with Pool(processes=num_processes, initializer=init_worker_with_temp_flag, initargs=(shared_temp_flag,)) as pool:
                 try:
                     results = pool.imap_unordered(process_config_wrapper, 
                                                   [(config, config_path, h5_folder, steps_per_episode) 
-                                                   for config in current_batch])
+                                                   for config in configs_to_process])
                     for result in results:
+                        pbar.update(1)
                         if result is not None:
                             completed += 1
-                            pbar.update(1)
+                            logging.info(f"Successfully processed config: {result}")
                         
                         temp = get_cpu_temperature()
-                        logging.info(f"Current CPU temperature: {temp}°C")
                         if temp is not None and temp > temp_threshold:
                             logging.warning(f"CPU temperature too high ({temp}°C). Pausing for cool-down...")
                             shared_temp_flag.value = 1
                             pool.close()
                             pool.join()
                             time.sleep(cool_down_time)
-                            num_processes = max(min_processes, num_processes - 2)
+                            num_processes = max(min_processes, num_processes - 1)
                             logging.info(f"Reducing to {num_processes} processes")
                             shared_temp_flag.value = 0
                             break
@@ -342,26 +336,32 @@ def process_configs_with_temp_management(configs_to_process, config_path, h5_fol
                     pool.terminate()
                     return completed
                 except Exception as e:
-                    logging.error(f"Error in processing batch: {e}")
+                    logging.error(f"Error in processing: {e}")
                 finally:
                     pool.close()
                     pool.join()
 
-            configs_to_process = configs_to_process[len(current_batch):]
-            logging.info(f"Completed batch. Remaining configs: {len(configs_to_process)}")
+            configs_to_process = [config for config in configs_to_process if not is_config_processed(config, h5_folder, steps_per_episode)]
+            logging.info(f"Remaining configs: {len(configs_to_process)}")
             
             if not configs_to_process:
                 break
             
             temp = get_cpu_temperature()
             if temp is not None and temp < temp_threshold - 5 and num_processes < max_processes:
-                num_processes = min(num_processes + 2, max_processes)
+                num_processes = min(num_processes + 1, max_processes)
                 logging.info(f"Temperature stable ({temp}°C). Increasing to {num_processes} processes")
             
             time.sleep(5)  # Short pause between batches
 
     logging.info(f"All processing completed. Total configs processed: {completed}")
     return completed
+
+def is_config_processed(config, h5_folder, steps_per_episode):
+    map_name = os.path.splitext(os.path.basename(config['map_path']))[0]
+    filename = f"data_m{map_name}_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
+    filepath = os.path.join(h5_folder, filename)
+    return os.path.exists(filepath) and is_dataset_complete(filepath, steps_per_episode)
 
 def save_progress(completed_configs):
     progress_file = os.path.join(H5_FOLDER, H5_PROGRESS_FILE)
