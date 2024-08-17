@@ -41,6 +41,7 @@ log_file_path = os.path.join(parent_dir, LOG_FILE)
 
 # Global flag to indicate interruption
 interrupt_flag = None
+temp_flag = None
 
 def setup_logging():
     try:
@@ -134,6 +135,10 @@ def get_cpu_temp():
 def init_worker():
     global interrupt_flag
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+    
+def init_worker_with_temp_flag(flag):
+    global temp_flag
+    temp_flag = flag
 
 def signal_handler(signum, frame):
     global interrupt_flag
@@ -279,7 +284,8 @@ def get_cpu_temperature():
     except:
         return None
 
-def process_config_wrapper(temp_flag, args):
+def process_config_wrapper(args):
+    global temp_flag
     config, config_path, h5_folder, steps_per_episode = args
     try:
         if temp_flag.value:
@@ -296,15 +302,14 @@ def process_configs_with_temp_management(configs_to_process, config_path, h5_fol
 
     completed = 0
     total = len(configs_to_process)
-    temp_flag = Value('i', 0)
+    shared_temp_flag = Value('i', 0)
 
     with tqdm(total=total, disable=interrupt_flag.value) as pbar:
         while configs_to_process:
             current_batch = configs_to_process[:num_processes * 2]
-            with Pool(processes=num_processes, initializer=init_worker) as pool:
+            with Pool(processes=num_processes, initializer=init_worker_with_temp_flag, initargs=(shared_temp_flag,)) as pool:
                 try:
-                    wrapped_process_config = partial(process_config_wrapper, temp_flag)
-                    results = pool.imap_unordered(wrapped_process_config, 
+                    results = pool.imap_unordered(process_config_wrapper, 
                                                   [(config, config_path, h5_folder, steps_per_episode) 
                                                    for config in current_batch])
                     for result in results:
@@ -315,13 +320,13 @@ def process_configs_with_temp_management(configs_to_process, config_path, h5_fol
                         temp = get_cpu_temperature()
                         if temp is not None and temp > temp_threshold:
                             print(f"CPU temperature too high ({temp}°C). Pausing for cool-down...")
-                            temp_flag.value = 1
+                            shared_temp_flag.value = 1
                             pool.close()
                             pool.join()
                             time.sleep(cool_down_time)
                             num_processes = max(min_processes, num_processes - 2)
                             print(f"Reducing to {num_processes} processes")
-                            temp_flag.value = 0
+                            shared_temp_flag.value = 0
                             break
                         
                         if interrupt_flag.value:
