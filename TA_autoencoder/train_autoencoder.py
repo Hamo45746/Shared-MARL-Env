@@ -230,50 +230,50 @@ def load_progress(all_configs):
             progress.add(filename)
     return progress
 
-# def process_config(args):
-#     config, config_path, h5_folder, steps_per_episode = args
-#     lock_fd = None
-#     try:
-#         map_name = os.path.splitext(os.path.basename(config['map_path']))[0]
-#         filename = f"data_m{map_name}_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
-#         filepath = os.path.join(h5_folder, filename)
-#         lock_file = f"{filepath}.lock"
+def process_config(args):
+    config, config_path, h5_folder, steps_per_episode = args
+    lock_fd = None
+    try:
+        map_name = os.path.splitext(os.path.basename(config['map_path']))[0]
+        filename = f"data_m{map_name}_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
+        filepath = os.path.join(h5_folder, filename)
+        lock_file = f"{filepath}.lock"
 
-#         # Try to acquire the lock
-#         lock_fd = acquire_lock(lock_file)
-#         if lock_fd is None:
-#             print(f"File {filename} is being processed by another worker. Skipping.")
-#             return None
+        # Try to acquire the lock
+        lock_fd = acquire_lock(lock_file)
+        if lock_fd is None:
+            print(f"File {filename} is being processed by another worker. Skipping.")
+            return None
 
-#         # Check if the file already exists and is complete
-#         if os.path.exists(filepath) and is_dataset_complete(filepath, steps_per_episode):
-#             print(f"File {filename} already exists and is complete. Skipping.")
-#             return filepath
+        # Check if the file already exists and is complete
+        if os.path.exists(filepath) and is_dataset_complete(filepath, steps_per_episode):
+            print(f"File {filename} already exists and is complete. Skipping.")
+            return filepath
 
-#         # If the file doesn't exist or is incomplete, collect the data
-#         filepath = collect_data_for_config(config, config_path, steps_per_episode, h5_folder)
+        # If the file doesn't exist or is incomplete, collect the data
+        filepath = collect_data_for_config(config, config_path, steps_per_episode, h5_folder)
 
-#         if is_dataset_complete(filepath, steps_per_episode):
-#             # Verify that the file contains data for all 4 layers
-#             with h5py.File(filepath, 'r') as f:
-#                 first_step = f['data']['0']
-#                 first_agent = first_step[list(first_step.keys())[0]]
-#                 full_state = first_agent['full_state'][()]
-#                 if full_state.shape[0] != 4:
-#                     logging.error(f"Incorrect number of layers in {filepath}: expected 4, got {full_state.shape[0]}")
-#                     return None
-#             return filepath
-#         else:
-#             return None
+        if is_dataset_complete(filepath, steps_per_episode):
+            # Verify that the file contains data for all 4 layers
+            with h5py.File(filepath, 'r') as f:
+                first_step = f['data']['0']
+                first_agent = first_step[list(first_step.keys())[0]]
+                full_state = first_agent['full_state'][()]
+                if full_state.shape[0] != 4:
+                    logging.error(f"Incorrect number of layers in {filepath}: expected 4, got {full_state.shape[0]}")
+                    return None
+            return filepath
+        else:
+            return None
 
-#     except Exception as e:
-#         logging.error(f"Error processing config {config}: {str(e)}")
-#         return None
+    except Exception as e:
+        logging.error(f"Error processing config {config}: {str(e)}")
+        return None
 
-#     finally:
-#         # Always release the lock if it was acquired
-#         if lock_fd is not None:
-#             release_lock(lock_fd)
+    finally:
+        # Always release the lock if it was acquired
+        if lock_fd is not None:
+            release_lock(lock_fd)
 
 def get_cpu_temperature():
     try:
@@ -286,7 +286,7 @@ def get_cpu_temperature():
 
 def process_config_wrapper(args):
     try:
-        if interrupt_flag.value or temp_flag.value:
+        if interrupt_flag.value:
             return None
         return process_config(args)
     except KeyboardInterrupt:
@@ -315,67 +315,67 @@ def process_config(args):
         logging.error(f"Error processing config {config}: {str(e)}")
         return None
 
-def process_configs_with_temp_management(configs_to_process, config_path, h5_folder, steps_per_episode, 
-                                         max_processes=None, min_processes=1, temp_threshold=80, cool_down_time=60):
-    if max_processes is None:
-        max_processes = max(1, mp.cpu_count() - 1)
-    num_processes = max_processes
+# def process_configs_with_temp_management(configs_to_process, config_path, h5_folder, steps_per_episode, 
+#                                          max_processes=None, min_processes=1, temp_threshold=80, cool_down_time=60):
+#     if max_processes is None:
+#         max_processes = max(1, mp.cpu_count() - 1)
+#     num_processes = max_processes
 
-    logging.info(f"Starting with {num_processes} processes")
+#     logging.info(f"Starting with {num_processes} processes")
 
-    completed_configs = set()
+#     completed_configs = set()
 
-    with tqdm(total=len(configs_to_process), disable=interrupt_flag.value) as pbar:
-        while configs_to_process:
-            with Pool(processes=num_processes, initializer=init_worker) as pool:
-                try:
-                    results = pool.imap_unordered(process_config_wrapper, 
-                                                  [(config, config_path, h5_folder, steps_per_episode) 
-                                                   for config in configs_to_process])
-                    for result in results:
-                        pbar.update(1)
-                        if result is not None:
-                            completed_configs.add(result)
-                            logging.info(f"Successfully processed config: {result}")
+#     with tqdm(total=len(configs_to_process), disable=interrupt_flag.value) as pbar:
+#         while configs_to_process:
+#             with Pool(processes=num_processes, initializer=init_worker) as pool:
+#                 try:
+#                     results = pool.imap_unordered(process_config_wrapper, 
+#                                                   [(config, config_path, h5_folder, steps_per_episode) 
+#                                                    for config in configs_to_process])
+#                     for result in results:
+#                         pbar.update(1)
+#                         if result is not None:
+#                             completed_configs.add(result)
+#                             logging.info(f"Successfully processed config: {result}")
                         
-                        temp = get_cpu_temperature()
-                        if temp is not None and temp > temp_threshold:
-                            logging.warning(f"CPU temperature too high ({temp}°C). Pausing for cool-down...")
-                            temp_flag.value = 1
-                            pool.close()
-                            pool.join()
-                            time.sleep(cool_down_time)
-                            num_processes = max(min_processes, num_processes - 1)
-                            logging.info(f"Reducing to {num_processes} processes")
-                            temp_flag.value = 0
-                            break
+#                         temp = get_cpu_temperature()
+#                         if temp is not None and temp > temp_threshold:
+#                             logging.warning(f"CPU temperature too high ({temp}°C). Pausing for cool-down...")
+#                             temp_flag.value = 1
+#                             pool.close()
+#                             pool.join()
+#                             time.sleep(cool_down_time)
+#                             num_processes = max(min_processes, num_processes - 1)
+#                             logging.info(f"Reducing to {num_processes} processes")
+#                             temp_flag.value = 0
+#                             break
                         
-                        if interrupt_flag.value:
-                            raise KeyboardInterrupt
+#                         if interrupt_flag.value:
+#                             raise KeyboardInterrupt
 
-                except KeyboardInterrupt:
-                    logging.info("Caught KeyboardInterrupt, terminating workers")
-                    pool.terminate()
-                    return completed_configs
-                finally:
-                    pool.close()
-                    pool.join()
+#                 except KeyboardInterrupt:
+#                     logging.info("Caught KeyboardInterrupt, terminating workers")
+#                     pool.terminate()
+#                     return completed_configs
+#                 finally:
+#                     pool.close()
+#                     pool.join()
 
-            configs_to_process = [config for config in configs_to_process if not is_config_processed(config, h5_folder, steps_per_episode)]
-            logging.info(f"Remaining configs: {len(configs_to_process)}")
+#             configs_to_process = [config for config in configs_to_process if not is_config_processed(config, h5_folder, steps_per_episode)]
+#             logging.info(f"Remaining configs: {len(configs_to_process)}")
             
-            if not configs_to_process:
-                break
+#             if not configs_to_process:
+#                 break
             
-            temp = get_cpu_temperature()
-            if temp is not None and temp < temp_threshold - 5 and num_processes < max_processes:
-                num_processes = min(num_processes + 1, max_processes)
-                logging.info(f"Temperature stable ({temp}°C). Increasing to {num_processes} processes")
+#             temp = get_cpu_temperature()
+#             if temp is not None and temp < temp_threshold - 5 and num_processes < max_processes:
+#                 num_processes = min(num_processes + 1, max_processes)
+#                 logging.info(f"Temperature stable ({temp}°C). Increasing to {num_processes} processes")
             
-            time.sleep(5)  # Short pause between batches
+#             time.sleep(5)  # Short pause between batches
 
-    logging.info(f"All processing completed. Total configs processed: {len(completed_configs)}")
-    return completed_configs
+#     logging.info(f"All processing completed. Total configs processed: {len(completed_configs)}")
+#     return completed_configs
 
 def is_config_processed(config, h5_folder, steps_per_episode):
     map_name = os.path.splitext(os.path.basename(config['map_path']))[0]
@@ -696,15 +696,21 @@ def main():
     print(f"Configurations to process: {len(configs_to_process)}")
     
     # Process configurations
-    completed_configs = process_configs_with_temp_management(
-        configs_to_process, 
-        config_path=config_path,
-        h5_folder=H5_FOLDER,
-        steps_per_episode=STEPS_PER_EPISODE,
-        max_processes=24, 
-        min_processes=4, 
-        temp_threshold=80
-    )
+    num_processes = max(1, mp.cpu_count() // 2 )
+    with Pool(processes=num_processes, initializer=init_worker) as pool:
+        try:
+            results = list(tqdm(
+                pool.imap_unordered(process_config_wrapper, configs_to_process),
+                total=len(configs_to_process),
+                disable=interrupt_flag.value
+            ))
+        except KeyboardInterrupt:
+            print("Caught KeyboardInterrupt, terminating workers")
+        finally:
+            pool.terminate()
+            pool.join()
+    
+    completed_configs = load_progress(all_configs)
     print(f"Completed configurations: {completed_configs}/{total_configs}")
     
     if len(completed_configs) >= total_configs:
