@@ -291,22 +291,26 @@ def process_config_wrapper(args):
         if temp_flag.value:
             return None
         # Call the original process_config function
-        return process_config((config, config_path, h5_folder, steps_per_episode))
-    except KeyboardInterrupt:
+        result = process_config((config, config_path, h5_folder, steps_per_episode))
+        logging.info(f"Processed config: {config}")
+        return result
+    except Exception as e:
+        logging.error(f"Error processing config {config}: {e}")
         return None
 
 def process_configs_with_temp_management(configs_to_process, config_path, h5_folder, steps_per_episode, 
                                          max_processes=24, min_processes=4, temp_threshold=80, cool_down_time=60):
     num_processes = min(max_processes, max(min_processes, cpu_count() * 3 // 4))
-    print(f"Starting with {num_processes} processes")
+    logging.info(f"Starting with {num_processes} processes")
 
     completed = 0
     total = len(configs_to_process)
     shared_temp_flag = Value('i', 0)
 
-    with tqdm(total=total, disable=interrupt_flag.value) as pbar:
+    with tqdm(total=total, disable=False) as pbar:
         while configs_to_process:
             current_batch = configs_to_process[:num_processes * 2]
+            logging.info(f"Processing batch of {len(current_batch)} configs")
             with Pool(processes=num_processes, initializer=init_worker_with_temp_flag, initargs=(shared_temp_flag,)) as pool:
                 try:
                     results = pool.imap_unordered(process_config_wrapper, 
@@ -318,14 +322,15 @@ def process_configs_with_temp_management(configs_to_process, config_path, h5_fol
                             pbar.update(1)
                         
                         temp = get_cpu_temperature()
+                        logging.info(f"Current CPU temperature: {temp}°C")
                         if temp is not None and temp > temp_threshold:
-                            print(f"CPU temperature too high ({temp}°C). Pausing for cool-down...")
+                            logging.warning(f"CPU temperature too high ({temp}°C). Pausing for cool-down...")
                             shared_temp_flag.value = 1
                             pool.close()
                             pool.join()
                             time.sleep(cool_down_time)
                             num_processes = max(min_processes, num_processes - 2)
-                            print(f"Reducing to {num_processes} processes")
+                            logging.info(f"Reducing to {num_processes} processes")
                             shared_temp_flag.value = 0
                             break
                         
@@ -333,14 +338,17 @@ def process_configs_with_temp_management(configs_to_process, config_path, h5_fol
                             raise KeyboardInterrupt
 
                 except KeyboardInterrupt:
-                    print("Caught KeyboardInterrupt, terminating workers")
+                    logging.info("Caught KeyboardInterrupt, terminating workers")
                     pool.terminate()
                     return completed
+                except Exception as e:
+                    logging.error(f"Error in processing batch: {e}")
                 finally:
                     pool.close()
                     pool.join()
 
             configs_to_process = configs_to_process[len(current_batch):]
+            logging.info(f"Completed batch. Remaining configs: {len(configs_to_process)}")
             
             if not configs_to_process:
                 break
@@ -348,10 +356,11 @@ def process_configs_with_temp_management(configs_to_process, config_path, h5_fol
             temp = get_cpu_temperature()
             if temp is not None and temp < temp_threshold - 5 and num_processes < max_processes:
                 num_processes = min(num_processes + 2, max_processes)
-                print(f"Temperature stable ({temp}°C). Increasing to {num_processes} processes")
+                logging.info(f"Temperature stable ({temp}°C). Increasing to {num_processes} processes")
             
             time.sleep(5)  # Short pause between batches
 
+    logging.info(f"All processing completed. Total configs processed: {completed}")
     return completed
 
 def save_progress(completed_configs):
