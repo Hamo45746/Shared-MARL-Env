@@ -286,7 +286,6 @@ def process_config_wrapper(args):
     try:
         if temp_flag.value:
             return None
-        # Call the original process_config function
         return process_config((config, config_path, h5_folder, steps_per_episode))
     except KeyboardInterrupt:
         return None
@@ -432,15 +431,6 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
 
     logging.info(f"Data collection complete. File saved: {filepath}")
     return filepath
-
-def process_config_wrapper(args):
-    config, config_path, h5_folder, steps_per_episode, temp_flag = args
-    try:
-        if temp_flag.value:
-            return None
-        return process_config((config, config_path, h5_folder, steps_per_episode))
-    except KeyboardInterrupt:
-        return None
 
 def save_training_state(autoencoder, layer, epoch):
     ae_index = 1 if layer == 2 else layer
