@@ -570,12 +570,6 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                     # test_specific_autoencoder(autoencoder, H5_FOLDER, output_folder, autoencoder_index=ae_index, epoch=epoch+1)
 
                 torch.cuda.empty_cache()
-                mem_percent = psutil.virtual_memory().percent
-                logging.info(f"Memory usage: {mem_percent}%")
-
-                if mem_percent > 90:
-                    logging.warning("High memory usage detected. Pausing for 60 seconds.")
-                    time.sleep(60)
 
             # After finishing all epochs for an autoencoder, move it back to CPU
             autoencoder.move_to_cpu(ae_index)
@@ -603,8 +597,8 @@ def main():
     setup_logging()
     
     # Configuration ranges
-    seed_range = range(1, 2) # 1-20 seed
-    num_agents_range = range(15, 16) # 15 agents
+    seed_range = range(1, 41) # 1-40 seed
+    num_agents_range = range(10, 11) # 10 agents
     num_targets_range = range(90, 91) # 90 targets
     num_jammers_range_low = range(0, 1)  # 0 jammers
     num_jammers_range_high = range(85, 90)  # 85-89 jammers
