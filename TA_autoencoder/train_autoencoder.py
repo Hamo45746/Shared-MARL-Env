@@ -16,7 +16,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from torch.cuda.amp import GradScaler, autocast
 from torch.utils.tensorboard import SummaryWriter
-from test_autoencoder import test_specific_autoencoder
+# from test_autoencoder import test_specific_autoencoder
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -119,6 +119,15 @@ class FlattenedMultiAgentH5Dataset(Dataset):
             
             # Create a dictionary with each layer as a separate item
             return {f'layer_{i}': full_state_tensor[i] for i in range(full_state_tensor.shape[0])}
+
+def get_cpu_temp():
+    try:
+        temps = psutil.sensors_temperatures()
+        if 'coretemp' in temps:
+            return max(temp.current for temp in temps['coretemp'])
+        return None
+    except:
+        return None
 
 def init_worker():
     global interrupt_flag
@@ -258,6 +267,56 @@ def process_config(args):
         # Always release the lock if it was acquired
         if lock_fd is not None:
             release_lock(lock_fd)
+            
+def process_configs_with_temp_management(configs_to_process, max_processes=24, temp_threshold=80, cool_down_time=30):
+    num_processes = min(max_processes, max(1, psutil.cpu_count() // 2))
+    print(f"Starting with {num_processes} processes")
+
+    completed = 0
+    total = len(configs_to_process)
+
+    with tqdm(total=total, disable=interrupt_flag.value) as pbar:
+        while configs_to_process:
+            with Pool(processes=num_processes, initializer=init_worker) as pool:
+                try:
+                    for result in pool.imap_unordered(process_config_wrapper, configs_to_process[:num_processes]):
+                        if result is not None:
+                            completed += 1
+                            pbar.update(1)
+                        
+                        temp = get_cpu_temp()
+                        if temp is not None and temp > temp_threshold:
+                            print(f"CPU temperature too high ({temp}°C). Pausing for cool-down...")
+                            pool.terminate()
+                            pool.join()
+                            time.sleep(cool_down_time)
+                            num_processes = max(1, num_processes - 1)
+                            print(f"Reducing to {num_processes} processes")
+                            break
+                        
+                        if interrupt_flag.value:
+                            raise KeyboardInterrupt
+
+                except KeyboardInterrupt:
+                    print("Caught KeyboardInterrupt, terminating workers")
+                    break
+                finally:
+                    pool.terminate()
+                    pool.join()
+
+            configs_to_process = configs_to_process[num_processes:]
+            
+            if not configs_to_process:
+                break
+            
+            temp = get_cpu_temp()
+            if temp is not None and temp < temp_threshold - 10:
+                num_processes = min(num_processes + 1, max_processes)
+                print(f"Temperature stable. Increasing to {num_processes} processes")
+
+            time.sleep(5)  # Short pause between batches
+
+    return completed
 
 def save_progress(completed_configs):
     progress_file = os.path.join(H5_FOLDER, H5_PROGRESS_FILE)
@@ -586,22 +645,8 @@ def main():
     print(f"Configurations to process: {len(configs_to_process)}")
     
     # Process configurations
-    num_processes = max(1, mp.cpu_count() - 1)
-    with Pool(processes=num_processes, initializer=init_worker) as pool:
-        try:
-            results = list(tqdm(
-                pool.imap_unordered(process_config_wrapper, configs_to_process),
-                total=len(configs_to_process),
-                disable=interrupt_flag.value
-            ))
-        except KeyboardInterrupt:
-            print("Caught KeyboardInterrupt, terminating workers")
-        finally:
-            pool.terminate()
-            pool.join()
-    
-    completed_configs = load_progress(all_configs)
-    print(f"Final completed configurations: {len(completed_configs)}/{total_configs}")
+    completed_configs = process_configs_with_temp_management(configs_to_process, max_processes=4, temp_threshold=80)
+    print(f"Completed configurations: {completed_configs}/{total_configs}")
     
     if len(completed_configs) >= total_configs:
         print("All configurations processed. Starting autoencoder training...")
