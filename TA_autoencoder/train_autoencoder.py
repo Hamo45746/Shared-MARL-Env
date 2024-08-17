@@ -230,50 +230,50 @@ def load_progress(all_configs):
             progress.add(filename)
     return progress
 
-def process_config(args):
-    config, config_path, h5_folder, steps_per_episode = args
-    lock_fd = None
-    try:
-        map_name = os.path.splitext(os.path.basename(config['map_path']))[0]
-        filename = f"data_m{map_name}_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
-        filepath = os.path.join(h5_folder, filename)
-        lock_file = f"{filepath}.lock"
+# def process_config(args):
+#     config, config_path, h5_folder, steps_per_episode = args
+#     lock_fd = None
+#     try:
+#         map_name = os.path.splitext(os.path.basename(config['map_path']))[0]
+#         filename = f"data_m{map_name}_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
+#         filepath = os.path.join(h5_folder, filename)
+#         lock_file = f"{filepath}.lock"
 
-        # Try to acquire the lock
-        lock_fd = acquire_lock(lock_file)
-        if lock_fd is None:
-            print(f"File {filename} is being processed by another worker. Skipping.")
-            return None
+#         # Try to acquire the lock
+#         lock_fd = acquire_lock(lock_file)
+#         if lock_fd is None:
+#             print(f"File {filename} is being processed by another worker. Skipping.")
+#             return None
 
-        # Check if the file already exists and is complete
-        if os.path.exists(filepath) and is_dataset_complete(filepath, steps_per_episode):
-            print(f"File {filename} already exists and is complete. Skipping.")
-            return filepath
+#         # Check if the file already exists and is complete
+#         if os.path.exists(filepath) and is_dataset_complete(filepath, steps_per_episode):
+#             print(f"File {filename} already exists and is complete. Skipping.")
+#             return filepath
 
-        # If the file doesn't exist or is incomplete, collect the data
-        filepath = collect_data_for_config(config, config_path, steps_per_episode, h5_folder)
+#         # If the file doesn't exist or is incomplete, collect the data
+#         filepath = collect_data_for_config(config, config_path, steps_per_episode, h5_folder)
 
-        if is_dataset_complete(filepath, steps_per_episode):
-            # Verify that the file contains data for all 4 layers
-            with h5py.File(filepath, 'r') as f:
-                first_step = f['data']['0']
-                first_agent = first_step[list(first_step.keys())[0]]
-                full_state = first_agent['full_state'][()]
-                if full_state.shape[0] != 4:
-                    logging.error(f"Incorrect number of layers in {filepath}: expected 4, got {full_state.shape[0]}")
-                    return None
-            return filepath
-        else:
-            return None
+#         if is_dataset_complete(filepath, steps_per_episode):
+#             # Verify that the file contains data for all 4 layers
+#             with h5py.File(filepath, 'r') as f:
+#                 first_step = f['data']['0']
+#                 first_agent = first_step[list(first_step.keys())[0]]
+#                 full_state = first_agent['full_state'][()]
+#                 if full_state.shape[0] != 4:
+#                     logging.error(f"Incorrect number of layers in {filepath}: expected 4, got {full_state.shape[0]}")
+#                     return None
+#             return filepath
+#         else:
+#             return None
 
-    except Exception as e:
-        logging.error(f"Error processing config {config}: {str(e)}")
-        return None
+#     except Exception as e:
+#         logging.error(f"Error processing config {config}: {str(e)}")
+#         return None
 
-    finally:
-        # Always release the lock if it was acquired
-        if lock_fd is not None:
-            release_lock(lock_fd)
+#     finally:
+#         # Always release the lock if it was acquired
+#         if lock_fd is not None:
+#             release_lock(lock_fd)
 
 def get_cpu_temperature():
     try:
@@ -285,13 +285,34 @@ def get_cpu_temperature():
         return None
 
 def process_config_wrapper(args):
-    global temp_flag
-    if temp_flag.value:
-        return None
     try:
+        if interrupt_flag.value or temp_flag.value:
+            return None
         return process_config(args)
+    except KeyboardInterrupt:
+        return None
+
+def process_config(args):
+    try:
+        config, config_path, h5_folder, steps_per_episode = args
+        filepath = collect_data_for_config(config, config_path, steps_per_episode, h5_folder)
+        if is_dataset_complete(filepath, steps_per_episode):
+            # Verify that the file contains data for all 4 layers
+            with h5py.File(filepath, 'r') as f:
+                first_step = f['data']['0']
+                first_agent = first_step[list(first_step.keys())[0]]
+                full_state = first_agent['full_state'][()]
+                if full_state.shape[0] != 4:
+                    logging.error(f"Incorrect number of layers in {filepath}: expected 4, got {full_state.shape[0]}")
+                    return None
+            progress = load_progress()
+            progress.add(os.path.basename(filepath))
+            save_progress(progress)
+            return filepath
+        else:
+            return None
     except Exception as e:
-        logging.error(f"Error in process_config: {e}")
+        logging.error(f"Error processing config {config}: {str(e)}")
         return None
 
 def process_configs_with_temp_management(configs_to_process, config_path, h5_folder, steps_per_episode, 
