@@ -2,7 +2,6 @@ import os
 import sys
 import yaml
 import multiprocessing as mp
-from multiprocessing import Pool
 from tqdm import tqdm
 import logging
 import psutil
@@ -219,6 +218,7 @@ def acquire_lock(lock_file):
 def release_lock(lock_fd):
     fcntl.flock(lock_fd, fcntl.LOCK_UN)
     lock_fd.close()
+    os.remove(lock_fd)
 
 def load_progress(all_configs):
     progress = set()
@@ -305,7 +305,7 @@ def process_config(args):
                 if full_state.shape[0] != 4:
                     logging.error(f"Incorrect number of layers in {filepath}: expected 4, got {full_state.shape[0]}")
                     return None
-            progress = load_progress()
+            progress = load_progress(config)
             progress.add(os.path.basename(filepath))
             save_progress(progress)
             return filepath
@@ -711,7 +711,7 @@ def main():
             pool.join()
     
     completed_configs = load_progress(all_configs)
-    print(f"Completed configurations: {completed_configs}/{total_configs}")
+    print(f"Completed configurations: {len(completed_configs)}/{total_configs}")
     
     if len(completed_configs) >= total_configs:
         print("All configurations processed. Starting autoencoder training...")
