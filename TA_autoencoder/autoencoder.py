@@ -4,16 +4,35 @@ import torch.nn.functional as F
 from torch.cuda.amp import GradScaler, autocast
 import numpy as np
 
+class SpatialAttention2D(nn.Module):
+    def __init__(self, in_channels):
+        super(SpatialAttention2D, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, in_channels // 8, kernel_size=1)
+        self.conv2 = nn.Conv2d(in_channels // 8, 1, kernel_size=3, padding=0)
+        
+    def forward(self, x):
+        attn = self.conv1(x)
+        attn = F.relu(attn)
+        attn = self.conv2(attn)
+        attn = torch.sigmoid(attn)
+        
+        # Adjust x to match the size of attn
+        x = x[:, :, 1:-1, 1:-1]
+        
+        return x * attn, attn
 
 class SparseConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1):
         super(SparseConv2d, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride)
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=0)
         self.mask = nn.Parameter(torch.ones_like(self.conv.weight))
+        self.attention = SpatialAttention2D(out_channels)
         
     def forward(self, x):
         sparse_weight = self.conv.weight * self.mask
-        return F.conv2d(x, sparse_weight.to(x.dtype), self.conv.bias.to(x.dtype), self.conv.stride, self.conv.padding)
+        x = F.conv2d(x, sparse_weight, self.conv.bias, self.conv.stride, padding=0)
+        x, attn = self.attention(x)
+        return x
     
     def get_mask(self):
         return self.mask
@@ -96,7 +115,7 @@ class LayerAutoencoder(nn.Module):
         if not self.is_map:
             background_mask = (decoded <= -19.9).float()
             decoded = decoded * (1 - background_mask) + (-20) * background_mask
-            decoded = torch.clamp(decoded, min=-20, max=0)
+            # decoded = torch.clamp(decoded, min=-20, max=0)
         
         return decoded
 
