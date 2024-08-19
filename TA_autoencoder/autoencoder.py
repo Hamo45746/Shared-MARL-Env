@@ -24,13 +24,13 @@ class SpatialAttention2D(nn.Module):
 class SparseConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1):
         super(SparseConv2d, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=0)
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=kernel_size//2)
         self.mask = nn.Parameter(torch.ones_like(self.conv.weight))
         self.attention = SpatialAttention2D(out_channels)
         
     def forward(self, x):
         sparse_weight = self.conv.weight * self.mask
-        x = F.conv2d(x, sparse_weight, self.conv.bias, self.conv.stride, padding=0)
+        x = F.conv2d(x, sparse_weight, self.conv.bias, self.conv.stride, padding=self.conv.padding)
         x, attn = self.attention(x)
         return x
     
