@@ -73,20 +73,24 @@ def setup_logging():
             datefmt='%Y-%m-%d %H:%M:%S'
         )
         
-def log_error():
+def log_error(depth=2):
     exc_type, exc_value, exc_traceback = sys.exc_info()
     tb = traceback.extract_tb(exc_traceback)
     
-    # Get the two outermost frames, excluding the current function
-    outer_frames = tb[:-3:-1]  # This gets the last two frames in reverse order
+    # Filter to only include frames from files in the current directory or its subdirectories
+    current_dir = os.path.abspath(os.getcwd())
+    relevant_frames = [frame for frame in tb if os.path.commonpath([current_dir, frame.filename]) == current_dir]
+    
+    # Take the outermost 'depth' number of frames
+    outer_frames = relevant_frames[:depth]
     
     error_msgs = []
-    for frame in outer_frames:
-        filename, line, func, text = frame
-        error_msg = f"Error traced to file '{filename}', line {line}, in {func}"
+    for frame in reversed(outer_frames):  # Reverse to show outermost first
+        error_msg = f"Error in file '{frame.filename}', line {frame.lineno}, in {frame.name}"
         error_msgs.append(error_msg)
     
     error_msg = " | ".join(error_msgs) + f": {exc_type.__name__}: {exc_value}"
+
     logging.error(error_msg)
     return error_msg
 
