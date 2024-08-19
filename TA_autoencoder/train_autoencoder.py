@@ -76,8 +76,17 @@ def setup_logging():
 def log_error():
     exc_type, exc_value, exc_traceback = sys.exc_info()
     tb = traceback.extract_tb(exc_traceback)
-    filename, line, func, text = tb[-1]
-    error_msg = f"An error occurred in file '{filename}', line {line}, in {func}: {exc_value}"
+    
+    # Get the two outermost frames, excluding the current function
+    outer_frames = tb[:-3:-1]  # This gets the last two frames in reverse order
+    
+    error_msgs = []
+    for frame in outer_frames:
+        filename, line, func, text = frame
+        error_msg = f"Error traced to file '{filename}', line {line}, in {func}"
+        error_msgs.append(error_msg)
+    
+    error_msg = " | ".join(error_msgs) + f": {exc_type.__name__}: {exc_value}"
     logging.error(error_msg)
     return error_msg
 
