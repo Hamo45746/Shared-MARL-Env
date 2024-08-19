@@ -8,18 +8,14 @@ class SpatialAttention2D(nn.Module):
     def __init__(self, in_channels):
         super(SpatialAttention2D, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, in_channels // 8, kernel_size=1)
-        self.conv2 = nn.Conv2d(in_channels // 8, 1, kernel_size=3, padding=0)
+        self.conv2 = nn.Conv2d(in_channels // 8, 1, kernel_size=3, padding=1)
         
     def forward(self, x):
         attn = self.conv1(x)
         attn = F.relu(attn)
         attn = self.conv2(attn)
         attn = torch.sigmoid(attn)
-        
-        # Adjust x to match the size of attn
-        x = x[:, :, 1:-1, 1:-1]
-        
-        return x * attn, attn
+        return x * attn
 
 class SparseConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1):
@@ -30,8 +26,8 @@ class SparseConv2d(nn.Module):
         
     def forward(self, x):
         sparse_weight = self.conv.weight * self.mask
-        x = F.conv2d(x, sparse_weight, self.conv.bias, self.conv.stride, padding=self.conv.padding)
-        x, attn = self.attention(x)
+        x = F.conv2d(x, sparse_weight, self.conv.bias, self.conv.stride, self.conv.padding)
+        x = self.attention(x)
         return x
     
     def get_mask(self):
@@ -55,7 +51,7 @@ class LayerAutoencoder(nn.Module):
         self.is_map = is_map
 
         # Calculate the flattened size
-        self.flattened_size = 256 * 7 * 3  # 5376
+        self.flattened_size = 256 * 9 * 5  # 5376
         # Encoder
         self.encoder = nn.Sequential(
             SparseConv2d(1, 16, kernel_size=3, stride=2), # 138, 77
@@ -88,7 +84,7 @@ class LayerAutoencoder(nn.Module):
             nn.LeakyReLU(0.2),
             nn.Linear(2048, self.flattened_size),
             nn.LeakyReLU(0.2),
-            nn.Unflatten(1, (256, 7, 3)),
+            nn.Unflatten(1, (256, 9, 5)),
             nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, output_padding=1),
             nn.LeakyReLU(0.2),
             nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, output_padding=1),
