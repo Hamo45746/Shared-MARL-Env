@@ -228,7 +228,21 @@ class EnvironmentAutoencoder:
         elif ratio_mask < 10:
             self.mask_regularisation_weight /= 2
         
-        # print(f"Adjusted L1 weight: {self.l1_weight}, Mask regularisation weight: {self.mask_regularisation_weight}")
+        
+    def adjust_l1_weight(self, window_size=100):
+        if len(self.reconstruction_loss_history) < window_size:
+            return
+        
+        recent_reconstruction = np.mean(self.reconstruction_loss_history[-window_size:])
+        recent_l1 = np.mean(self.l1_history[-window_size:])
+        
+        # Adjust L1 weight
+        ratio_l1 = recent_reconstruction / (recent_l1 + 1e-10)
+        if ratio_l1 > 100:
+            self.l1_weight *= 2
+        elif ratio_l1 < 10:
+            self.l1_weight /= 2
+        
 
     def train_epoch(self, dataloader, layer):
         total_loss = 0
