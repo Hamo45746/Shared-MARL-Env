@@ -109,10 +109,14 @@ class LayerAutoencoder(nn.Module):
         decoded = self.decoder(encoded)
         
         if not self.is_map:
-            background_mask = (decoded <= -19.9).float()
+            # Scale the output to be between -20 and 0
+            decoded = -20 + 20 * torch.sigmoid(decoded)   
+            # Apply background mask
+            background_mask = (decoded <= -19.8).float()
             decoded = decoded * (1 - background_mask) + (-20) * background_mask
-            # decoded = torch.clamp(decoded, min=-20, max=0)
-        
+        else:
+            # For the map layer, we keep the binary output
+            decoded = torch.sigmoid(decoded)
         return decoded
 
     def encode(self, x):

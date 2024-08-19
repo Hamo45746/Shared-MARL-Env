@@ -97,7 +97,7 @@ def load_autoencoder_for_layer(path, input_shape, device, layer, epoch):
         logging.error(f"Error loading autoencoder: {str(e)}")
         raise
 
-def visualise_data(filepath, step=0, agent=0):
+def visualise_data(filepath, savepath, step=0, agent=0):
     full_state = load_data_from_h5(filepath)
 
     fig, axes = plt.subplots(1, 4, figsize=(20, 10))
@@ -116,6 +116,7 @@ def visualise_data(filepath, step=0, agent=0):
             axes[layer].set_title('Jammers')
         plt.colorbar(im_input, ax=axes[layer], fraction=0.046, pad=0.04)
     plt.tight_layout()
+    plt.savefig(savepath, dpi=300, bbox_inches='tight')
     plt.plot()
 
 
@@ -204,8 +205,10 @@ def test_specific_autoencoder(autoencoder, h5_folder, output_folder, autoencoder
 def main_test_data():
     H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
     H5_FILE = 'data_mcity_image_2_s1_t90_j0_a15.h5'
+    OUTPUT_FILE = 'data_test_vis.png'
+    savepath = os.path.join(H5_FOLDER, OUTPUT_FILE)
     path = os.path.join(H5_FOLDER, H5_FILE)
-    visualise_data(path, step = 50)
+    visualise_data(path, savepath, step = 50)
 
 
 def main_test_specific():
