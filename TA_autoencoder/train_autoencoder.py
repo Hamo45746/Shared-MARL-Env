@@ -17,6 +17,7 @@ from torch.cuda.amp import GradScaler, autocast
 from torch.utils.tensorboard import SummaryWriter
 from functools import partial
 from multiprocessing import Pool, Value, cpu_count
+import traceback
 # from test_autoencoder import test_specific_autoencoder
 
 # Add the parent directory to the Python path
@@ -71,6 +72,14 @@ def setup_logging():
             format='%(asctime)s - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
+        
+def log_error():
+    exc_type, exc_value, exc_traceback = sys.exc_info()
+    tb = traceback.extract_tb(exc_traceback)
+    filename, line, func, text = tb[-1]
+    error_msg = f"An error occurred in file '{filename}', line {line}, in {func}: {exc_value}"
+    logging.error(error_msg)
+    return error_msg
 
 class FlattenedMultiAgentH5Dataset(Dataset):
     def __init__(self, h5_files, dtype=torch.float32):
@@ -268,6 +277,7 @@ def process_config(args):
 
     except Exception as e:
         logging.error(f"Error processing config {config}: {str(e)}")
+        log_error()
         return None
 
     finally:
@@ -313,6 +323,7 @@ def process_config(args):
             return None
     except Exception as e:
         logging.error(f"Error processing config {config}: {str(e)}")
+        log_error()
         return None
 
 # def process_configs_with_temp_management(configs_to_process, config_path, h5_folder, steps_per_episode, 
@@ -634,6 +645,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
 
     except Exception as e:
         logging.error(f"Error during training: {str(e)}")
+        log_error()
         raise
     finally:
         writer.close()
@@ -746,6 +758,7 @@ if __name__ == "__main__":
         print("Keyboard interrupt received. Cleaning up...")
     except Exception as e:
         print(f"An error occurred: {e}")
+        log_error()
     finally:
         print("Cleaning up...")
         cleanup_resources()
