@@ -156,7 +156,7 @@ class EnvironmentAutoencoder:
 
     def custom_loss(self, recon_x, x, layer):
         if layer == 0:  # Binary case (0/1)
-            reconstruction_loss = F.binary_cross_entropy_with_logits(recon_x, x, reduction='mean')
+            total_loss = F.binary_cross_entropy_with_logits(recon_x, x, reduction='mean')
         else:  # -20 to 0 case (including jammer layer)
         #     background_mask = (x == -20).float()
         #     nonbackground_mask = (x > -20).float()

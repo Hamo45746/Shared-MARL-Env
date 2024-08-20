@@ -553,7 +553,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
     log_interval = 100  # Log every 100 batches
 
     try:
-        for ae_index in range(1, 3):  # Train each autoencoder separately - skip map layer
+        for ae_index in range(0, 3):  # Train each autoencoder separately - skip map layer
             print(f"Training autoencoder {ae_index}")
             
             # Move current autoencoder to GPU

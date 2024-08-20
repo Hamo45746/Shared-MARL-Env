@@ -133,6 +133,19 @@ class Environment(gym.core.Env):
     def reset(self, seed=None):
         gc.collect()
         super().reset(seed=seed)
+
+        # Initialize environment parameters
+        self.D = self.config['grid_size']['D']
+        self.obs_range = self.config['obs_range']
+        self.pixel_scale = self.config['pixel_scale']
+        self.map_scale = self.config['map_scale']
+        self.seed_value = self.config['seed']
+        self.comm_range = self.config['comm_range']
+        self.seed(self.seed_value)
+
+        # Load and process the map
+        self.map_matrix = self.load_map()
+
         if seed is not None:
             self.seed_value = seed
         self.seed(self.seed_value)

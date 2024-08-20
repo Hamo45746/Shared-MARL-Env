@@ -16,7 +16,7 @@ AUTOENCODER_FILE = 'trained_autoencoder.pth'
 def find_suitable_h5_file(h5_folder):
     logging.info("Searching for suitable H5 file...")
     for filename in os.listdir(h5_folder):
-        if filename.endswith('.h5') and 't90' in filename:
+        if filename.endswith('.h5') and 't90' in filename and 'image_3' in filename:
             logging.info(f"Found suitable file: {filename}")
             return os.path.join(h5_folder, filename)
     raise FileNotFoundError("No suitable H5 file found.")
