@@ -141,7 +141,6 @@ class Environment(gym.core.Env):
         self.map_scale = self.config['map_scale']
         self.seed_value = self.config['seed']
         self.comm_range = self.config['comm_range']
-        self.seed(self.seed_value)
 
         # Load and process the map
         self.map_matrix = self.load_map()

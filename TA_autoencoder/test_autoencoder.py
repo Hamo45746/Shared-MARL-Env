@@ -16,7 +16,7 @@ AUTOENCODER_FILE = 'trained_autoencoder.pth'
 def find_suitable_h5_file(h5_folder):
     logging.info("Searching for suitable H5 file...")
     for filename in os.listdir(h5_folder):
-        if filename.endswith('.h5') and 't90' in filename and 'image_3' in filename:
+        if filename.endswith('.h5') and 't90' in filename and 'image_2' in filename:
             logging.info(f"Found suitable file: {filename}")
             return os.path.join(h5_folder, filename)
     raise FileNotFoundError("No suitable H5 file found.")
@@ -126,8 +126,10 @@ def test_specific_autoencoder(autoencoder, h5_folder, output_folder, autoencoder
 
     try:
         # Find a suitable H5 file
-        h5_file = find_suitable_h5_file(h5_folder)
-        full_state = load_data_from_h5(h5_file, step=30)
+        # h5_file = find_suitable_h5_file(h5_folder)
+        filename = 'data_mcity_image_2_s5_t90_j89_a10.h5'
+        h5_file = os.path.join(h5_folder, filename)
+        full_state = load_data_from_h5(h5_file, step=30, agent=1)
 
         input_shape = full_state.shape
         logging.info(f"Full input shape: {input_shape}")
@@ -155,7 +157,10 @@ def test_specific_autoencoder(autoencoder, h5_folder, output_folder, autoencoder
             fig.suptitle(f'Layer {layer} - Autoencoder Test')
 
             # Input
-            im_input = axes[0].imshow(input_data, cmap='viridis')
+            if layer == 0:
+                im_input = axes[0].imshow(input_data, cmap='viridis', vmin=0, vmax=1)
+            else:
+                im_input = axes[0].imshow(input_data, cmap='viridis', vmin=-20, vmax=0)
             axes[0].set_title('Input')
             plt.colorbar(im_input, ax=axes[0], fraction=0.046, pad=0.04)
 
@@ -170,8 +175,10 @@ def test_specific_autoencoder(autoencoder, h5_folder, output_folder, autoencoder
                 
                 decoded = decoded.squeeze().cpu().numpy()
                 logging.info(f"Layer {layer} - Final decoded shape: {decoded.shape}")
-
-            im_output = axes[1].imshow(decoded, cmap='viridis')
+            if layer == 0:
+                im_output = axes[1].imshow(decoded, cmap='viridis', vmin=-0, vmax=1)
+            else:
+                im_output = axes[1].imshow(decoded, cmap='viridis', vmin=-20, vmax=0)
             axes[1].set_title('Reconstructed Output')
             plt.colorbar(im_output, ax=axes[1], fraction=0.046, pad=0.04)
 
@@ -213,14 +220,14 @@ def main_test_data():
 
 def main_test_specific():
     H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
-    AUTOENCODER_FILE = 'autoencoder_1_best.pth'  # Update this to the Autoencoder to test
+    AUTOENCODER_FILE = 'autoencoder_0_best.pth'  # Update this to the Autoencoder to test
     OUTPUT_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data/training_visualisations'  # Update this path
 
     autoencoder_path = os.path.join(H5_FOLDER, AUTOENCODER_FILE)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     autoencoder = EnvironmentAutoencoder(device)
     autoencoder.load(autoencoder_path)
-    test_specific_autoencoder(autoencoder, H5_FOLDER, OUTPUT_FOLDER, autoencoder_index=1)
+    test_specific_autoencoder(autoencoder, H5_FOLDER, OUTPUT_FOLDER, autoencoder_index=0)
 
 def main():
     start_time = time.time()
@@ -277,5 +284,5 @@ def main():
 
 if __name__ == "__main__":
     # main()
-    # main_test_specific()
-    main_test_data()
+    main_test_specific()
+    # main_test_data()
