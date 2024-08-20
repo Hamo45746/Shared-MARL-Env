@@ -16,7 +16,7 @@ AUTOENCODER_FILE = 'trained_autoencoder.pth'
 def find_suitable_h5_file(h5_folder):
     logging.info("Searching for suitable H5 file...")
     for filename in os.listdir(h5_folder):
-        if filename.endswith('.h5') and 'a14' in filename:
+        if filename.endswith('.h5') and 't90' in filename:
             logging.info(f"Found suitable file: {filename}")
             return os.path.join(h5_folder, filename)
     raise FileNotFoundError("No suitable H5 file found.")
@@ -213,14 +213,14 @@ def main_test_data():
 
 def main_test_specific():
     H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
-    AUTOENCODER_FILE = 'autoencoder_1_best.pth'  # Update this to the file you want to test
+    AUTOENCODER_FILE = 'autoencoder_2_best.pth'  # Update this to the Autoencoder to test
     OUTPUT_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data/training_visualisations'  # Update this path
 
     autoencoder_path = os.path.join(H5_FOLDER, AUTOENCODER_FILE)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     autoencoder = EnvironmentAutoencoder(device)
     autoencoder.load(autoencoder_path)
-    test_specific_autoencoder(autoencoder, H5_FOLDER, OUTPUT_FOLDER, autoencoder_index=1)
+    test_specific_autoencoder(autoencoder, H5_FOLDER, OUTPUT_FOLDER, autoencoder_index=2)
 
 def main():
     start_time = time.time()
@@ -277,5 +277,5 @@ def main():
 
 if __name__ == "__main__":
     # main()
-    # main_test_specific()
-    main_test_data()
+    main_test_specific()
+    # main_test_data()

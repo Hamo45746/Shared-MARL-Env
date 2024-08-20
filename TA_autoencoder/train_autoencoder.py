@@ -576,11 +576,11 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
             epochs_no_improve = 0
             
             for epoch in range(start_epoch, num_epochs):
-                if interrupt_flag.value:
-                    print(f"Interrupt detected. Saving progress for autoencoder {ae_index}...")
-                    save_training_state(autoencoder, ae_index, epoch)
-                    writer.flush()
-                    return
+                # if interrupt_flag.value:
+                #     print(f"Interrupt detected. Saving progress for autoencoder {ae_index}...")
+                #     # save_training_state(autoencoder, ae_index, epoch)
+                #     writer.flush()
+                #     return
 
                 total_loss = 0
                 num_batches = 0
@@ -644,11 +644,11 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
 
                 save_training_state(autoencoder, ae_index, epoch)
 
-                if (epoch + 1) % 10 == 0:
-                    autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_epoch_{epoch+1}.pth"))
+                # if (epoch + 1) % 10 == 0:
+                #     autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_epoch_{epoch+1}.pth"))
                     # test_specific_autoencoder(autoencoder, H5_FOLDER, output_folder, autoencoder_index=ae_index, epoch=epoch+1)
 
-                torch.cuda.empty_cache()
+                # torch.cuda.empty_cache()
 
             # After finishing all epochs for an autoencoder, move it back to CPU
             autoencoder.move_to_cpu(ae_index)

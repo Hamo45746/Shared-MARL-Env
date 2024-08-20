@@ -85,15 +85,16 @@ class LayerAutoencoder(nn.Module):
             nn.Linear(2048, self.flattened_size),
             nn.LeakyReLU(0.2),
             nn.Unflatten(1, (256, 9, 5)),
-            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, output_padding=1),
+            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, output_padding=0),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, output_padding=1),
+            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, output_padding=0),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, output_padding=1),
+            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, output_padding=0),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, output_padding=1),
+            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, output_padding=0),
             nn.LeakyReLU(0.2),
             CustomFinalUpsampling(16, 1, (276, 155))
+            # nn.ConvTranspose2d(16, 1, kernel_size=3, stride=2, output_padding=0)
         )
 
         self.apply(self._init_weights)
@@ -114,6 +115,7 @@ class LayerAutoencoder(nn.Module):
             # Apply background mask
             background_mask = (decoded <= -19.8).float()
             decoded = decoded * (1 - background_mask) + (-20) * background_mask
+            # decoded = F.interpolate(decoded, size=(276, 155), mode='bilinear', align_corners=False)
         else:
             # For the map layer, we keep the binary output
             decoded = torch.sigmoid(decoded)
@@ -179,6 +181,8 @@ class EnvironmentAutoencoder:
         total_loss = reconstruction_loss + self.l1_weight * l1_reg + self.mask_regularisation_weight * mask_reg
         
         return total_loss, reconstruction_loss, l1_reg, mask_reg
+        #     total_loss = F.mse_loss(recon_x, x)
+        # return total_loss
 
     def train_step(self, batch, layer):
         ae = self.autoencoders[layer]
@@ -194,6 +198,7 @@ class EnvironmentAutoencoder:
             layer_input = layer_input.to(self.device, dtype=self.dtype) # Ensure input is float32 before processing
             outputs = ae(layer_input)
             loss, reconstruction_loss, l1_reg, mask_reg = self.custom_loss(outputs, layer_input, layer)
+            # loss = self.custom_loss(outputs, layer_input, layer)
         
         if torch.isnan(loss):
             print(f"NaN loss detected in layer {layer}")
