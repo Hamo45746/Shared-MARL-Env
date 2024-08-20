@@ -503,8 +503,7 @@ def save_training_state(autoencoder, layer, epoch):
     # Move the autoencoder back to the original device
     autoencoder.autoencoders[ae_index].to(autoencoder.device)
 
-def load_training_state(autoencoder, layer):
-    ae_index = 1 if layer == 2 else layer
+def load_training_state(autoencoder, ae_index):
     state_path = os.path.join(H5_FOLDER, f"training_state_layer_{ae_index}.pth")
     if os.path.exists(state_path):
         state = torch.load(state_path, map_location='cpu')  # Always load to CPU first

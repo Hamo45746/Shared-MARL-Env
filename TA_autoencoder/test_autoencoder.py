@@ -117,7 +117,7 @@ def visualise_data(filepath, savepath, step=0, agent=0):
         plt.colorbar(im_input, ax=axes[layer], fraction=0.046, pad=0.04)
     plt.tight_layout()
     plt.savefig(savepath, dpi=300, bbox_inches='tight')
-    plt.plot()
+    plt.close(fig)
 
 
 def test_specific_autoencoder(autoencoder, h5_folder, output_folder, autoencoder_index=None, epoch=None):
@@ -277,5 +277,5 @@ def main():
 
 if __name__ == "__main__":
     # main()
-    main_test_specific()
-    # main_test_data()
+    # main_test_specific()
+    main_test_data()
