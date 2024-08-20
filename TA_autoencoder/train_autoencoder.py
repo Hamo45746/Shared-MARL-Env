@@ -612,9 +612,9 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
                                 writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + batch_idx)
 
                             # Adjust regularisation weights periodically
-                            if batch_idx % 100 == 0:
-                                autoencoder.adjust_regularisation_weights()
-                                autoencoder.adjust_l1_weight()
+                            # if batch_idx % 100 == 0:
+                            #     autoencoder.adjust_regularisation_weights()
+                            #     autoencoder.adjust_l1_weight()
 
                         del layer_batch, loss
                         torch.cuda.empty_cache()

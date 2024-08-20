@@ -150,39 +150,39 @@ class EnvironmentAutoencoder:
         self.l1_weight = initial_l1_weight
         self.max_grad_norm = max_grad_norm
         self.mask_regularisation_weight = mask_regularisation_weight
-        self.l1_history = []
-        self.reconstruction_loss_history = []
-        self.mask_regularisation_history = []
+        # self.l1_history = []
+        # self.reconstruction_loss_history = []
+        # self.mask_regularisation_history = []
 
     def custom_loss(self, recon_x, x, layer):
         if layer == 0:  # Binary case (0/1)
             reconstruction_loss = F.binary_cross_entropy_with_logits(recon_x, x, reduction='mean')
         else:  # -20 to 0 case (including jammer layer)
-            background_mask = (x == -20).float()
-            nonbackground_mask = (x > -20).float()
-            proportion_nonbackground = max(nonbackground_mask.mean(), 1e-6)
+        #     background_mask = (x == -20).float()
+        #     nonbackground_mask = (x > -20).float()
+        #     proportion_nonbackground = max(nonbackground_mask.mean(), 1e-6)
             
-            background_weight = 1
-            nonbackground_weight = 1 / proportion_nonbackground
+        #     background_weight = 1
+        #     nonbackground_weight = 1 / proportion_nonbackground
             
-            background_mse = F.mse_loss(recon_x * background_mask, x * background_mask, reduction='sum')
-            nonbackground_mse = F.mse_loss(recon_x * nonbackground_mask, x * nonbackground_mask, reduction='sum')
-            nonbackground_l1 = F.l1_loss(recon_x * nonbackground_mask, x * nonbackground_mask, reduction='sum')
+        #     background_mse = F.mse_loss(recon_x * background_mask, x * background_mask, reduction='sum')
+        #     nonbackground_mse = F.mse_loss(recon_x * nonbackground_mask, x * nonbackground_mask, reduction='sum')
+        #     nonbackground_l1 = F.l1_loss(recon_x * nonbackground_mask, x * nonbackground_mask, reduction='sum')
             
-            reconstruction_loss = (background_weight * background_mse +
-                        nonbackground_weight * (nonbackground_mse + 10 * nonbackground_l1)) / x.numel()
+        #     reconstruction_loss = (background_weight * background_mse +
+        #                 nonbackground_weight * (nonbackground_mse + 10 * nonbackground_l1)) / x.numel()
         
-        # Add L1 regularisation for sparsity
-        l1_reg = sum(p.abs().sum() for p in self.autoencoders[layer].parameters())
+        # # Add L1 regularisation for sparsity
+        # l1_reg = sum(p.abs().sum() for p in self.autoencoders[layer].parameters())
         
-        # Add mask regularisation
-        mask_reg = sum(layer.get_mask().abs().sum() for layer in self.autoencoders[layer].get_sparse_layers())
+        # # Add mask regularisation
+        # mask_reg = sum(layer.get_mask().abs().sum() for layer in self.autoencoders[layer].get_sparse_layers())
         
-        total_loss = reconstruction_loss + self.l1_weight * l1_reg + self.mask_regularisation_weight * mask_reg
+        # total_loss = reconstruction_loss + self.l1_weight * l1_reg + self.mask_regularisation_weight * mask_reg
         
-        return total_loss, reconstruction_loss, l1_reg, mask_reg
-        #     total_loss = F.mse_loss(recon_x, x)
-        # return total_loss
+        # return total_loss, reconstruction_loss, l1_reg, mask_reg
+            total_loss = F.mse_loss(recon_x, x)
+        return total_loss
 
     def train_step(self, batch, layer):
         ae = self.autoencoders[layer]
@@ -197,8 +197,8 @@ class EnvironmentAutoencoder:
             layer_input = layer_input.unsqueeze(1)
             layer_input = layer_input.to(self.device, dtype=self.dtype) # Ensure input is float32 before processing
             outputs = ae(layer_input)
-            loss, reconstruction_loss, l1_reg, mask_reg = self.custom_loss(outputs, layer_input, layer)
-            # loss = self.custom_loss(outputs, layer_input, layer)
+            # loss, reconstruction_loss, l1_reg, mask_reg = self.custom_loss(outputs, layer_input, layer)
+            loss = self.custom_loss(outputs, layer_input, layer)
         
         if torch.isnan(loss):
             print(f"NaN loss detected in layer {layer}")
@@ -221,9 +221,9 @@ class EnvironmentAutoencoder:
         self.schedulers[layer].step(loss_value)
         
         # Record losses for monitoring
-        self.reconstruction_loss_history.append(reconstruction_loss.item())
-        self.l1_history.append(l1_reg.item())
-        self.mask_regularisation_history.append(mask_reg.item())
+        # self.reconstruction_loss_history.append(reconstruction_loss.item())
+        # self.l1_history.append(l1_reg.item())
+        # self.mask_regularisation_history.append(mask_reg.item())
         
         del outputs
         torch.cuda.empty_cache()
