@@ -220,14 +220,14 @@ def main_test_data():
 
 def main_test_specific():
     H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
-    AUTOENCODER_FILE = 'autoencoder_0_best.pth'  # Update this to the Autoencoder to test
+    AUTOENCODER_FILE = 'autoencoder_1_best.pth'  # Update this to the Autoencoder to test
     OUTPUT_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data/training_visualisations'  # Update this path
 
     autoencoder_path = os.path.join(H5_FOLDER, AUTOENCODER_FILE)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     autoencoder = EnvironmentAutoencoder(device)
     autoencoder.load(autoencoder_path)
-    test_specific_autoencoder(autoencoder, H5_FOLDER, OUTPUT_FOLDER, autoencoder_index=0)
+    test_specific_autoencoder(autoencoder, H5_FOLDER, OUTPUT_FOLDER, autoencoder_index=1)
 
 def main():
     start_time = time.time()

@@ -143,8 +143,8 @@ class EnvironmentAutoencoder:
             LayerAutoencoder()   # For layer 3
         ]
         
-        self.optimizers = [torch.optim.Adam(ae.parameters(), lr=0.0001, weight_decay=1e-5) for ae in self.autoencoders]
-        self.schedulers = [torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='min', factor=0.5, patience=5) for opt in self.optimizers]
+        self.optimizers = [torch.optim.Adam(ae.parameters(), lr=0.0001) for ae in self.autoencoders]
+        self.schedulers = [torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='min', factor=0.4, patience=8, min_lr=1e-5) for opt in self.optimizers]
         self.scaler = GradScaler()
         
         self.l1_weight = initial_l1_weight
