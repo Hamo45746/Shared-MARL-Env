@@ -211,7 +211,7 @@ class EnvironmentAutoencoder:
         self.scaler.scale(loss).backward()
         
         # Gradient clipping
-        self.scaler.unscale_(optimizer)
+        # self.scaler.unscale_(optimizer)
         # torch.nn.utils.clip_grad_norm_(ae.parameters(), self.max_grad_norm)
         
         self.scaler.step(optimizer)
