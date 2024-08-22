@@ -98,7 +98,8 @@ class LayerAutoencoder(nn.Module):
         x = encoded.view(encoded.size(0), -1) # Flattening
         z = self.latent_space(x)
         z = self.latent_to_decoder_input_size(z)
-        decoded = self.decoder(z)
+        decoder_input = z.view(z.size(0), 512, 17, 9)
+        decoded = self.decoder(decoder_input)
         
         if not self.is_map:
             # Scale the output to be between -20 and 0
