@@ -534,7 +534,7 @@ def load_training_state(autoencoder, ae_index):
             return 0
     return 0
         
-def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=2, delta=0.01):
+def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=2, delta=0.01, load_previous=None, load_optimizer=False):
     device = autoencoder.device
     output_folder = os.path.join(H5_FOLDER, 'training_visualisations')
     os.makedirs(output_folder, exist_ok=True)
@@ -549,9 +549,28 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
             print(f"Training autoencoder {ae_index}")
             if ae_index == 0:
                 delta = 0.001
+            # load from previous save if specified
+            if load_previous and ae_index in load_previous:
+                previous_save_path = os.path.join(H5_FOLDER, f"AE_save_22_08/autoencoder_{ae_index}_best.pth") # Change prev AE path here
+                if os.path.exists(previous_save_path):
+                    logging.info(f"Loading previous weights for autoencoder {ae_index}")
+                    checkpoint = torch.load(previous_save_path, map_location=device)
+                    autoencoder.autoencoders[ae_index].load_state_dict(checkpoint['model_state_dicts'][ae_index])
+                    
+                    if load_optimizer:
+                        logging.info(f"Loading previous optimizer and scheduler states for autoencoder {ae_index}")
+                        autoencoder.optimizers[ae_index].load_state_dict(checkpoint['optimizer_state_dicts'][ae_index])
+                        autoencoder.schedulers[ae_index].load_state_dict(checkpoint['scheduler_state_dicts'][ae_index])
+                    else:
+                        logging.info(f"Resetting optimizer and scheduler for autoencoder {ae_index}")
+                        autoencoder.optimizers[ae_index] = torch.optim.Adam(autoencoder.autoencoders[ae_index].parameters(), lr=0.0001)
+                        autoencoder.schedulers[ae_index] = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                            autoencoder.optimizers[ae_index], mode='min', factor=0.4, patience=8, min_lr=1e-5
+                        )
+                else:
+                    logging.info(f"No previous save found for autoencoder {ae_index}")
             # Move current autoencoder to GPU
             autoencoder.autoencoders[ae_index] = autoencoder.autoencoders[ae_index].to(device, dtype=dtype)
-            
             # Move optimizer to GPU
             autoencoder.move_optimizer_to_device(autoencoder.optimizers[ae_index], device)
             
