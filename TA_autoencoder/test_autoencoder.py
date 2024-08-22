@@ -127,9 +127,9 @@ def test_specific_autoencoder(autoencoder, h5_folder, output_folder, autoencoder
     try:
         # Find a suitable H5 file
         # h5_file = find_suitable_h5_file(h5_folder)
-        filename = 'data_mcity_image_2_s5_t90_j89_a10.h5'
+        filename = 'data_mcity_image_1_s5_t90_j0_a10.h5'
         h5_file = os.path.join(h5_folder, filename)
-        full_state = load_data_from_h5(h5_file, step=30, agent=1)
+        full_state = load_data_from_h5(h5_file, step=30, agent=8)
 
         input_shape = full_state.shape
         logging.info(f"Full input shape: {input_shape}")
@@ -148,7 +148,9 @@ def test_specific_autoencoder(autoencoder, h5_folder, output_folder, autoencoder
 
         # Test and visualize each layer
         for layer in layers_to_visualize:
-            ae_index = min(layer, 2)  # 0 for layer 0, 1 for layers 1 and 2, 2 for layer 3
+            ae_index = layer
+            if layer == 2:
+                ae_index = 1
             input_data = full_state[layer]
 
             logging.info(f"Layer {layer} - Input shape: {input_data.shape}")

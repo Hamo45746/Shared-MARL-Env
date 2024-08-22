@@ -106,7 +106,7 @@ class LayerAutoencoder(nn.Module):
         
         if not self.is_map:
             # Scale the output to be between -20 and 0
-            decoded = -20 + 20 * torch.sigmoid(decoded)   
+            decoded = -20 + 20 * torch.sigmoid(decoded)
             # Apply background mask
             background_mask = (decoded <= -19.8).float()
             decoded = decoded * (1 - background_mask) + (-20) * background_mask
