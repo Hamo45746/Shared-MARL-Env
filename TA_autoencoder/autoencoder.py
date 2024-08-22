@@ -110,7 +110,7 @@ class LayerAutoencoder(nn.Module):
         else:
             # For the map layer, we keep the binary output
             decoded = torch.sigmoid(decoded)
-        # decoded = F.interpolate(decoded, size=(276, 155), mode='bilinear', align_corners=False)
+        decoded = F.interpolate(decoded, size=(276, 155), mode='bilinear', align_corners=False)
         return decoded
 
     def encode(self, x):
