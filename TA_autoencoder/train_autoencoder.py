@@ -490,56 +490,49 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
     logging.info(f"Data collection complete. File saved: {filepath}")
     return filepath
 
-def save_training_state(autoencoder, layer, epoch):
-    ae_index = 1 if layer == 2 else layer
-    state = {
-        'epoch': epoch,
-        'model_state_dict': autoencoder.autoencoders[ae_index].cpu().state_dict(),
-        'optimizer_state_dict': autoencoder.cpu_state_dict(autoencoder.optimizers[ae_index]),
-        'scheduler_state_dict': autoencoder.schedulers[ae_index].state_dict(),
-        'scaler': autoencoder.scaler.state_dict(),
-    }
-    torch.save(state, os.path.join(H5_FOLDER, f"training_state_layer_{ae_index}.pth"))
-    # Move the autoencoder back to the original device
-    autoencoder.autoencoders[ae_index].to(autoencoder.device)
+def save_training_state(autoencoder, ae_index, epoch):
+    try:
+        state = {
+            'epoch': epoch,
+            'model_state_dict': autoencoder.autoencoders[ae_index].cpu().state_dict(),
+            'optimizer_state_dict': autoencoder.cpu_state_dict(autoencoder.optimizers[ae_index]),
+            'scheduler_state_dict': autoencoder.schedulers[ae_index].state_dict(),
+            'scaler': autoencoder.scaler.state_dict(),
+        }
+        save_path = os.path.join(H5_FOLDER, f"training_state_layer_{ae_index}.pth")
+        torch.save(state, save_path)
+        logging.info(f"Saved training state for autoencoder {ae_index} at epoch {epoch} to {save_path}")
+        
+        # Move the autoencoder back to the original device
+        autoencoder.autoencoders[ae_index].to(autoencoder.device)
+    except Exception as e:
+        logging.error(f"Error saving training state for autoencoder {ae_index}: {str(e)}")
+        logging.error(traceback.format_exc())
 
 def load_training_state(autoencoder, ae_index):
     state_path = os.path.join(H5_FOLDER, f"training_state_layer_{ae_index}.pth")
     if os.path.exists(state_path):
-        state = torch.load(state_path, map_location='cpu')  # Always load to CPU first
-        
-        autoencoder.autoencoders[ae_index].load_state_dict(state['model_state_dict'])
-        autoencoder.autoencoders[ae_index].to(autoencoder.device, dtype=autoencoder.dtype)
-        
-        autoencoder.optimizers[ae_index].load_state_dict(state['optimizer_state_dict'])
-        autoencoder.move_optimizer_to_device(autoencoder.optimizers[ae_index], autoencoder.device)
-        
-        autoencoder.schedulers[ae_index].load_state_dict(state['scheduler_state_dict'])
-        
-        if 'scaler' in state:
-            autoencoder.scaler.load_state_dict(state['scaler'])
-        
-        return state['epoch']
+        try:
+            state = torch.load(state_path, map_location='cpu')
+            
+            autoencoder.autoencoders[ae_index].load_state_dict(state['model_state_dict'])
+            autoencoder.autoencoders[ae_index].to(autoencoder.device)
+            
+            autoencoder.optimizers[ae_index].load_state_dict(state['optimizer_state_dict'])
+            autoencoder.move_optimizer_to_device(autoencoder.optimizers[ae_index], autoencoder.device)
+            
+            autoencoder.schedulers[ae_index].load_state_dict(state['scheduler_state_dict'])
+            
+            if 'scaler' in state:
+                autoencoder.scaler.load_state_dict(state['scaler'])
+            
+            logging.info(f"Loaded training state for autoencoder {ae_index} from {state_path}")
+            return state['epoch']
+        except Exception as e:
+            logging.error(f"Error loading training state for autoencoder {ae_index}: {str(e)}")
+            logging.error(traceback.format_exc())
+            return 0
     return 0
-
-
-# def load_training_state(autoencoder, layer):
-#     state_path = os.path.join(H5_FOLDER, f"training_state_layer_{layer}.pth")
-#     if os.path.exists(state_path):
-#         state = torch.load(state_path, map_location='cpu')  # Always load to CPU first
-#         autoencoder.autoencoders[layer].load_state_dict(state['model_state_dicts'][layer])
-#         autoencoder.optimizers[layer].load_state_dict(state['optimizer_state_dicts'][layer])
-        
-#         # Move model and optimizer to the correct device
-#         autoencoder.autoencoders[layer].to(autoencoder.device)
-#         for state in autoencoder.optimizers[layer].state.values():
-#             for k, v in state.items():
-#                 if isinstance(v, torch.Tensor):
-#                     state[k] = v.to(autoencoder.device)
-        
-#         return state['epoch']
-#     return 0
-
         
 def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=2, delta=0.01):
     device = autoencoder.device
