@@ -129,7 +129,7 @@ def test_specific_autoencoder(autoencoder, h5_folder, output_folder, autoencoder
         # h5_file = find_suitable_h5_file(h5_folder)
         filename = 'data_mcity_image_1_s5_t90_j0_a10.h5'
         h5_file = os.path.join(h5_folder, filename)
-        full_state = load_data_from_h5(h5_file, step=30, agent=8)
+        full_state = load_data_from_h5(h5_file, step=30, agent=0)
 
         input_shape = full_state.shape
         logging.info(f"Full input shape: {input_shape}")
