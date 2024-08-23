@@ -5,9 +5,7 @@ import yaml
 import agent_utils
 import jammer_utils
 import target_utils
-import heapq
 import pygame
-import torch
 from skimage.transform import resize
 from layer import AgentLayer, JammerLayer, TargetLayer
 from gymnasium.utils import seeding
@@ -16,7 +14,10 @@ from Continuous_controller.reward import calculate_continuous_reward
 from gymnasium import spaces
 from path_processor import PathProcessor
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from Continuous_autoencoder.autoencoder import EnvironmentAutoencoder, ConvAutoencoder
+from Continuous_autoencoder.autoencoder import EnvironmentAutoencoder
+from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.policy.policy import Policy
+from ray.tune.registry import register_env
 
 class Environment(MultiAgentEnv):
     def __init__(self, config_path, render_mode="human"):
@@ -138,8 +139,6 @@ class Environment(MultiAgentEnv):
             for i, layer in enumerate(["map_view", "agent", "target", "jammer"]):
                 encoded_layer = self.autoencoder.encode_state({layer: map_layers[i]})
                 encoded_map.append(encoded_layer[layer]['encoded'])
-            # Stack the encoded map without flattening
-            encoded_map = np.stack(encoded_map, axis=-1)
             encoded_observations[agent_id] = {
                     "encoded_map": np.stack(encoded_map),
                     "velocity": obs['velocity'],
@@ -315,16 +314,16 @@ class Environment(MultiAgentEnv):
         # Collect final local states and calculate rewards
         local_states, rewards = self.collect_local_states_and_rewards()
         encoded_observations = self.encode_observation(observations)
+        decoded_obs = self.decode_observation(encoded_observations)
         
         self.current_step += 1
         
         terminated = {agent_id: self.is_episode_done() for agent_id in range(self.num_agents)}
-        truncated = {agent_id: self.is_episode_done() for agent_id in range(self.num_agents)}
+        truncated = {agent_id: False for agent_id in range(self.num_agents)}
         info = {}
 
         terminated["__all__"] = self.is_episode_done()
-        truncated["__all__"] = self.is_episode_done()
-
+        truncated["__all__"] = False
         np.set_printoptions(threshold=2000, suppress=True, precision=1, linewidth=2000)
     
         # print("Raw Observations")
@@ -338,7 +337,6 @@ class Environment(MultiAgentEnv):
         #     print(f"Agent {agent_id}: {encoded_obs[agent_id]}")
         
         # print("Decoded Observations")
-        # decoded_obs = self.decode_observation(encoded_observations)
         # for agent_id, obs in decoded_obs.items():
         #     decoded_obs[agent_id] = obs["map"]
         #     print(f"Agent {agent_id}: {decoded_obs[agent_id]}")
@@ -897,7 +895,67 @@ class Environment(MultiAgentEnv):
             self.render()  
             step_count += 1
 
-            if terminated or truncated:
+            if terminated.get("__all__", False) or truncated.get("__all__", False):
+                print("here")
+                break
+
+        pygame.image.save(self.screen, "outputs/environment_snapshot.png")
+        self.reset()
+        pygame.quit()
+
+        return collected_data
+    
+    def run_simulation_with_policy(self, checkpoint_path, max_steps=100):
+        # Load the trained policy configuration
+        with open("marl_config.yaml", "r") as file:
+            config = yaml.safe_load(file)
+
+        # Correctly set up the policy mapping and spaces in the config
+        num_agents = 5
+        obs_shape = (4, 32)
+        action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
+        obs_space = spaces.Dict({
+            "encoded_map": spaces.Box(low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32),
+            "velocity": spaces.Box(low=-10.0, high=10.0, shape=(2,), dtype=np.float32),
+            "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32)
+        })
+
+        config["multiagent"] = {
+            "policies": {
+                "policy_0": (None, obs_space, action_space, {})
+            },
+            "policy_mapping_fn": lambda agent_id, episode, worker, **kwargs: "policy_0"
+        }
+
+        register_env("custom_multi_agent_env", lambda config: Environment(config_path=config["config_path"], render_mode=config.get("render_mode", "human")))
+
+        # Initialize the trainer with the config and restore the checkpoint
+        trainer = PPO(config=config)
+        trainer.restore(checkpoint_path)
+        policy = trainer.get_policy("policy_0")  # one shared policy
+
+        running = True
+        step_count = 0
+        collected_data = []
+
+        while running and step_count < max_steps:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+
+            # Generate actions for all agents using the trained policy
+            action_dict = {}
+            for agent_id in range(self.num_agents):
+                obs = self.safely_observe(agent_id)
+                action = policy.compute_single_action(obs)[0]
+                action_dict[agent_id] = action
+
+            observations, rewards, terminated, truncated, self.info = self.step(action_dict)
+            collected_data.append(observations)
+            self.render()
+            step_count += 1
+
+            if terminated.get("__all__", False) or truncated.get("__all__", False):
                 break
 
         pygame.image.save(self.screen, "outputs/environment_snapshot.png")

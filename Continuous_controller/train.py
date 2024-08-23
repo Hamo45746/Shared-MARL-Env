@@ -1,10 +1,11 @@
 import os
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+os.environ['MKL_DEBUG_CPU_TYPE'] = '5'
 import numpy as np
-import gymnasium as gym
 import sys
 import yaml
-from ray.tune.logger import UnifiedLogger, TBXLoggerCallback
+from ray.tune.logger import TBXLoggerCallback, JsonLoggerCallback, CSVLoggerCallback
+from ray.tune.logger import TBXLogger
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "/Users/alexandramartinwallace/Documents/Uni/METR4911/Working/Shared-MARL-Env")))
 from rllib_env import Environment
 from ray.rllib.algorithms.ppo import PPO
@@ -27,7 +28,7 @@ def policy_mapping_fn(agent_id, episode, worker, **kwargs):
 
 # Update the policies in the config
 num_agents = 5  # Example, adjust based on your environment
-obs_shape = (32, 4) #NEED TO ADJUST TO ENCODED OBSERVATION SPACE
+obs_shape = (4, 32) #NEED TO ADJUST TO ENCODED OBSERVATION SPACE
 action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
 obs_space = spaces.Dict({
     "encoded_map": spaces.Box(low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32),
@@ -39,12 +40,15 @@ config["multiagent"]["policies"] = {
 }
 config["multiagent"]["policy_mapping_fn"] = policy_mapping_fn
 
-# Add TensorBoard logger callback
-logdir = "./logs"
+#Add TensorBoard logger callback
+logdir = "./custom_ray_results"
 config["logger_config"] = {
-    "loggers": [UnifiedLogger, TBXLoggerCallback],
+    "loggers": [TBXLogger],
     "logdir": logdir
 }
+
+# Set up custom location for ray_results
+config["local_dir"] = logdir
 
 # Initialize the PPO trainer
 trainer = PPO(config=config)
@@ -53,12 +57,15 @@ trainer = PPO(config=config)
 for i in range(100):
     print(i)
     result = trainer.train()
-    print(f"Iteration: {i}, Results: {result}")
-    # Check if 'episode_reward_mean' is in the result
-    if 'episode_reward_mean' in result:
-        print(f"Iteration: {i}, Reward: {result['episode_reward_mean']}")
-    else:
-        print(f"Iteration: {i}, 'episode_reward_mean' not found in result")
+    print(f"Iteration: {i}, "
+          f"Episode Reward Mean: {result['env_runners']['episode_reward_mean']}, "
+          f"Episode Length Mean: {result['env_runners']['episode_len_mean']}, "
+          f"Policy Loss: {result['info']['learner']['policy_0']['learner_stats']['policy_loss']}, "
+          f"Entropy: {result['info']['learner']['policy_0']['learner_stats']['entropy']}")
+    
+    if (i + 10) % 1 == 0:
+        checkpoint_dir = trainer.save(logdir)
 
-# Ensure TensorBoard logs are being written
-trainer.save(logdir)
+
+#Ensure TensorBoard logs are being written
+final_checkpoint_dir = trainer.save(logdir)

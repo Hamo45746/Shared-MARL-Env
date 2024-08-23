@@ -23,7 +23,7 @@ n_targets: 10
 n_jammers: 4
 jamming_radius: 20 #This is radius, in comparison to comms_range. That is why it is a smaller value then comms_range, but looks bigger relitivly.  
 
-seed: 10
+seed: 9
 
 # Example locations
 #agent_positions:

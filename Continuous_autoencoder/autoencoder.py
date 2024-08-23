@@ -5,6 +5,7 @@ import torch.optim as optim
 import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn.functional as F
+from sklearn.model_selection import train_test_split
 
 class ScaledSigmoid(nn.Module):
     def __init__(self, min_val, max_val):
@@ -101,38 +102,105 @@ class EnvironmentAutoencoder:
         self.optimizers[layer_name] = optim.Adam(self.autoencoders[layer_name].parameters(), lr=0.001)
         self.schedulers[layer_name] = optim.lr_scheduler.ReduceLROnPlateau(self.optimizers[layer_name], 'min', patience=8, factor=0.4, min_lr=1e-5)
 
-    def train(self, data, layer_name, epochs=10, batch_size=32):
-        dataloader = torch.utils.data.DataLoader(data[layer_name], batch_size=batch_size, shuffle=True)
-        print(f"Training on data for layers: {layer_name}")
-        losses = []
+    def train(self, data, layer_name, epochs=10, batch_size=32, validation_split=0.2):
+        # Split data into training and validation sets
+        train_data, val_data = train_test_split(data[layer_name], test_size=validation_split, random_state=42)
+        
+        train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
+        val_loader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False)
+        
+        print(f"Training on data for layer: {layer_name} with {len(train_loader)} batches. Validation set has {len(val_loader)} batches.")
+        train_losses = []
+        val_losses = []
 
         for epoch in range(epochs):
-            total_loss = 0
-            for batch in dataloader:
+            self.autoencoders[layer_name].train()
+            total_train_loss = 0
+            for batch in train_loader:
                 batch = batch.to(self.device)
                 self.optimizers[layer_name].zero_grad()
                 encoded, decoded = self.autoencoders[layer_name](batch)
-                # loss = self.criterion(decoded, batch)
                 if layer_name == "map_view":
                     loss = self.criterion_standard(decoded, batch)
                 else:
                     loss = self.criterion_custom(decoded, batch)
                 loss.backward()
                 self.optimizers[layer_name].step()
-                total_loss += loss.item()
+                total_train_loss += loss.item()
             
-            average_loss = total_loss / len(dataloader)
-            losses.append(average_loss)
-            self.schedulers[layer_name].step(average_loss)
+            average_train_loss = total_train_loss / len(train_loader)
+            train_losses.append(average_train_loss)
+
+            # Validation phase
+            self.autoencoders[layer_name].eval()
+            total_val_loss = 0
+            with torch.no_grad():
+                for val_batch in val_loader:
+                    val_batch = val_batch.to(self.device)
+                    _, decoded = self.autoencoders[layer_name](val_batch)
+                    if layer_name == "map_view":
+                        val_loss = self.criterion_standard(decoded, val_batch)
+                    else:
+                        val_loss = self.criterion_custom(decoded, val_batch)
+                    total_val_loss += val_loss.item()
+
+            average_val_loss = total_val_loss / len(val_loader)
+            val_losses.append(average_val_loss)
+            
+            self.schedulers[layer_name].step(average_val_loss)
 
             if (epoch + 1) % 20 == 0:
-                print(f"Epoch [{epoch+1}/{epochs}], Loss: {average_loss:.6f}")
+                print(f"Epoch [{epoch+1}/{epochs}], Training Loss: {average_train_loss:.6f}, Validation Loss: {average_val_loss:.6f}")
+     
+            if (epoch + 1) % 60 == 0:
+                self.visualize_reconstructions(val_loader, layer_name, epoch)
 
-            if (epoch + 1) % 100 == 0:
-                self.visualize_reconstructions(dataloader, layer_name, epoch)
+        # Plot the training and validation losses
+        self.plot_loss(train_losses, val_losses, layer_name)
 
-        # Plot the training loss
-        self.plot_loss(losses, layer_name)
+    def plot_loss(self, train_losses, val_losses, layer_name):
+        plt.figure(figsize=(10, 5))
+        plt.plot(train_losses, label='Training Loss')
+        plt.plot(val_losses, label='Validation Loss')
+        plt.title(f'Training and Validation Loss for {layer_name}')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.legend()
+        plt.grid(True)
+        plot_path = os.path.join('outputs/plots', f'lossplot_{layer_name}.png')
+        plt.savefig(plot_path)
+
+    # def train(self, data, layer_name, epochs=10, batch_size=32):
+    #     dataloader = torch.utils.data.DataLoader(data[layer_name], batch_size=batch_size, shuffle=True)
+    #     print(f"Training on data for layers: {layer_name}")
+    #     losses = []
+
+    #     for epoch in range(epochs):
+    #         total_loss = 0
+    #         for batch in dataloader:
+    #             batch = batch.to(self.device)
+    #             self.optimizers[layer_name].zero_grad()
+    #             encoded, decoded = self.autoencoders[layer_name](batch)
+    #             if layer_name == "map_view":
+    #                 loss = self.criterion_standard(decoded, batch)
+    #             else:
+    #                 loss = self.criterion_custom(decoded, batch)
+    #             loss.backward()
+    #             self.optimizers[layer_name].step()
+    #             total_loss += loss.item()
+            
+    #         average_loss = total_loss / len(dataloader)
+    #         losses.append(average_loss)
+    #         self.schedulers[layer_name].step(average_loss)
+
+    #         if (epoch + 1) % 20 == 0:
+    #             print(f"Epoch [{epoch+1}/{epochs}], Loss: {average_loss:.6f}")
+
+    #         if (epoch + 1) % 100 == 0:
+    #             self.visualize_reconstructions(dataloader, layer_name, epoch)
+
+    #     # Plot the training loss
+    #     self.plot_loss(losses, layer_name)
 
     def encode_state(self, state):
         encoded_state = {}
@@ -159,16 +227,16 @@ class EnvironmentAutoencoder:
 
         return decoded_state
 
-    def plot_loss(self, losses, layer_name):
-        plt.figure(figsize=(10, 5))
-        plt.plot(losses, label='Training Loss')
-        plt.title(f'Training Loss for {layer_name}')
-        plt.xlabel('Epoch')
-        plt.ylabel('Loss')
-        plt.legend()
-        plt.grid(True)
-        plot_path = os.path.join('outputs/plots', f'lossplot_{layer_name}.png')
-        plt.savefig(plot_path)
+    # def plot_loss(self, losses, layer_name):
+    #     plt.figure(figsize=(10, 5))
+    #     plt.plot(losses, label='Training Loss')
+    #     plt.title(f'Training Loss for {layer_name}')
+    #     plt.xlabel('Epoch')
+    #     plt.ylabel('Loss')
+    #     plt.legend()
+    #     plt.grid(True)
+    #     plot_path = os.path.join('outputs/plots', f'lossplot_{layer_name}.png')
+    #     plt.savefig(plot_path)
 
     def visualize_reconstructions(self, dataloader, layer_name, epoch):
         self.autoencoders[layer_name].eval()
