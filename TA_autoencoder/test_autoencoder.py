@@ -3,9 +3,10 @@ import h5py
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
-from autoencoder import EnvironmentAutoencoder
+from autoencoder import EnvironmentAutoencoder, LayerAutoencoder
 import time
 import logging
+import tqdm
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -127,9 +128,9 @@ def test_specific_autoencoder(autoencoder, h5_folder, output_folder, autoencoder
     try:
         # Find a suitable H5 file
         # h5_file = find_suitable_h5_file(h5_folder)
-        filename = 'data_mcity_image_1_s5_t90_j0_a10.h5'
+        filename = 'data_mcity_image_1_s5_t90_j89_a10.h5'
         h5_file = os.path.join(h5_folder, filename)
-        full_state = load_data_from_h5(h5_file, step=30, agent=0)
+        full_state = load_data_from_h5(h5_file, step=30, agent=1)
 
         input_shape = full_state.shape
         logging.info(f"Full input shape: {input_shape}")
@@ -230,6 +231,97 @@ def main_test_specific():
     autoencoder = EnvironmentAutoencoder(device)
     autoencoder.load(autoencoder_path)
     test_specific_autoencoder(autoencoder, H5_FOLDER, OUTPUT_FOLDER, autoencoder_index=1)
+    
+    
+def main_test_autoencoder_performance():
+    # Constants
+    H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
+    AE_SAVE_FOLDER = 'AE_save_23_08'
+    TEST_SET_SIZE = 10  # Number of H5 files to use for testing
+    TRAIN_SET_SIZE = 20  # Number of H5 files to use for training comparison
+    SAMPLES_PER_FILE = 100  # Number of samples to take from each file
+
+    def calculate_mse(original, reconstructed):
+        return np.mean((original - reconstructed) ** 2)
+
+    def load_autoencoders(device):
+        autoencoders = []
+        for i in range(3):  # Load the three separate autoencoders
+            ae_path = os.path.join(H5_FOLDER, AE_SAVE_FOLDER, f"autoencoder_{i}_best.pth")
+            checkpoint = torch.load(ae_path, map_location=device)
+            ae = LayerAutoencoder(is_map=(i == 0)).to(device)
+            ae.load_state_dict(checkpoint['model_state_dicts'][i])
+            ae.eval()
+            autoencoders.append(ae)
+        return autoencoders
+
+    def process_file(file_path, autoencoders, device):
+        with h5py.File(file_path, 'r') as f:
+            data = f['data']
+            steps = list(data.keys())
+            selected_steps = np.random.choice(steps, min(len(steps), SAMPLES_PER_FILE), replace=False)
+            
+            mse_losses = {0: [], 1: [], 2: [], 3: []}
+            
+            for step in selected_steps:
+                step_data = data[step]
+                agent = list(step_data.keys())[0]  # Take the first agent
+                full_state = step_data[agent]['full_state'][()]
+                
+                for layer in range(4):
+                    ae_index = min(layer, 2)
+                    with torch.no_grad():
+                        input_tensor = torch.FloatTensor(full_state[layer]).unsqueeze(0).unsqueeze(0).to(device)
+                        reconstructed = autoencoders[ae_index](input_tensor).cpu().numpy().squeeze()
+                    
+                    mse = calculate_mse(full_state[layer], reconstructed)
+                    mse_losses[layer].append(mse)
+            
+            return {layer: np.mean(losses) for layer, losses in mse_losses.items()}
+
+    # Load the trained autoencoders
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    autoencoders = load_autoencoders(device)
+
+    # Get all H5 files
+    all_h5_files = [f for f in os.listdir(H5_FOLDER) if f.endswith('.h5')]
+
+    # Randomly select files for test and train sets
+    np.random.shuffle(all_h5_files)
+    test_files = all_h5_files[:TEST_SET_SIZE]
+    train_files = all_h5_files[TEST_SET_SIZE:TEST_SET_SIZE + TRAIN_SET_SIZE]
+
+    # Process test set
+    print("Processing test set...")
+    test_results = {0: [], 1: [], 2: [], 3: []}
+    for file in tqdm(test_files):
+        file_path = os.path.join(H5_FOLDER, file)
+        file_results = process_file(file_path, autoencoders, device)
+        for layer, mse in file_results.items():
+            test_results[layer].append(mse)
+
+    # Process train set
+    print("Processing train set...")
+    train_results = {0: [], 1: [], 2: [], 3: []}
+    for file in tqdm(train_files):
+        file_path = os.path.join(H5_FOLDER, file)
+        file_results = process_file(file_path, autoencoders, device)
+        for layer, mse in file_results.items():
+            train_results[layer].append(mse)
+
+    # Calculate and print average MSE for each layer
+    print("\nAverage MSE Results:")
+    logging.info("\nAverage MSE Results:")
+    print("Layer | Test Set | Train Set")
+    logging.info("Layer | Test Set | Train Set")
+    print("------|----------|----------")
+    logging.info("------|----------|----------")
+    for layer in range(4):
+        test_mse = np.mean(test_results[layer])
+        train_mse = np.mean(train_results[layer])
+        print(f"{layer}     | {test_mse:.6f} | {train_mse:.6f}")
+        logging.info(f"{layer}     | {test_mse:.6f} | {train_mse:.6f}")
+    
 
 def main():
     start_time = time.time()

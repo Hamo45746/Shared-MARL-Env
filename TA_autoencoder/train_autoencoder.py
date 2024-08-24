@@ -775,10 +775,65 @@ def main():
         print(f"Not all configurations are complete. {len(completed_configs)}/{total_configs} configurations are ready.")
         print("Please run the script again to process the remaining configurations.")
 
+
+def main_collect_test_data():
+    # Constants
+    H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
+    TEST_FOLDER = os.path.join(H5_FOLDER, 'test_data')
+    CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
+    STEPS_PER_EPISODE = 100
+    NUM_TEST_CONFIGS = 10  # Number of test configurations to generate
+
+    os.makedirs(TEST_FOLDER, exist_ok=True)
+
+    # Load the original config
+    original_config = load_config(CONFIG_PATH)
+
+    # Generate test configurations
+    test_configs = []
+    map_paths = ['city_image_1.npy', 'city_image_2.npy', 'city_image_3.npy']
+    
+    for _ in range(NUM_TEST_CONFIGS):
+        config = original_config.copy()
+        config.update({
+            'map_path': np.random.choice(map_paths),
+            'seed': np.random.randint(1000, 2000),  # Use a different seed range
+            'n_agents': np.random.randint(5, 15),
+            'n_targets': np.random.randint(10, 100),
+            'n_jammers': np.random.randint(0, 100)
+        })
+        test_configs.append(config)
+
+    # Prepare configurations for processing
+    configs_to_process = [
+        (config, CONFIG_PATH, TEST_FOLDER, STEPS_PER_EPISODE) for config in test_configs
+    ]
+
+    # Process configurations
+    num_processes = max(1, os.cpu_count() // 2)
+    with Pool(processes=num_processes, initializer=init_worker) as pool:
+        try:
+            results = list(tqdm(
+                pool.imap_unordered(process_config_wrapper, configs_to_process),
+                total=len(configs_to_process),
+                desc="Collecting test data"
+            ))
+        except KeyboardInterrupt:
+            print("Caught KeyboardInterrupt, terminating workers")
+        finally:
+            pool.terminate()
+            pool.join()
+
+    # Count successfully collected configurations
+    completed_configs = [result for result in results if result is not None]
+    print(f"Completed test configurations: {len(completed_configs)}/{NUM_TEST_CONFIGS}")
+    print(f"Test data collection complete. New configurations saved in {TEST_FOLDER}")
+
     
 if __name__ == "__main__":
     try:
-        main()
+        # main()
+        main_collect_test_data()
     except KeyboardInterrupt:
         print("Keyboard interrupt received. Cleaning up...")
     except Exception as e:
