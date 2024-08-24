@@ -6,7 +6,7 @@ import numpy as np
 from autoencoder import EnvironmentAutoencoder, LayerAutoencoder
 import time
 import logging
-import tqdm
+from tqdm import tqdm
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -128,7 +128,8 @@ def test_specific_autoencoder(autoencoder, h5_folder, output_folder, autoencoder
     try:
         # Find a suitable H5 file
         # h5_file = find_suitable_h5_file(h5_folder)
-        filename = 'data_mcity_image_1_s5_t90_j89_a10.h5'
+        # filename = 'data_mcity_image_1_s5_t90_j89_a10.h5'
+        filename = 'test_data/data_mcity_image_2_s1045_t30_j90_a8.h5'
         h5_file = os.path.join(h5_folder, filename)
         full_state = load_data_from_h5(h5_file, step=30, agent=1)
 
@@ -149,9 +150,10 @@ def test_specific_autoencoder(autoencoder, h5_folder, output_folder, autoencoder
 
         # Test and visualize each layer
         for layer in layers_to_visualize:
-            ae_index = layer
-            if layer == 2:
-                ae_index = 1
+            if layer >= 2:
+                ae_index = layer - 1
+            else:
+                ae_index = layer
             input_data = full_state[layer]
 
             logging.info(f"Layer {layer} - Input shape: {input_data.shape}")
@@ -223,20 +225,20 @@ def main_test_data():
 
 def main_test_specific():
     H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
-    AUTOENCODER_FILE = 'autoencoder_1_best.pth'  # Update this to the Autoencoder to test
+    AUTOENCODER_FILE = 'AE_save_23_08/autoencoder_2_best.pth'  # Update this to the Autoencoder to test
     OUTPUT_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data/training_visualisations'  # Update this path
 
     autoencoder_path = os.path.join(H5_FOLDER, AUTOENCODER_FILE)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     autoencoder = EnvironmentAutoencoder(device)
     autoencoder.load(autoencoder_path)
-    test_specific_autoencoder(autoencoder, H5_FOLDER, OUTPUT_FOLDER, autoencoder_index=1)
+    test_specific_autoencoder(autoencoder, H5_FOLDER, OUTPUT_FOLDER, autoencoder_index=2)
     
     
 def main_test_autoencoder_performance():
     # Constants
     H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
-    TEST_SET_FOLDER = os.path.join(H5_FOLDER, 'test_data')
+    TEST_SET_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data/test_data'
     AE_SAVE_FOLDER = 'AE_save_23_08'
     TEST_SET_SIZE = 10  # Number of H5 files to use for testing
     TRAIN_SET_SIZE = 20  # Number of H5 files to use for training comparison
@@ -266,17 +268,23 @@ def main_test_autoencoder_performance():
             
             for step in selected_steps:
                 step_data = data[step]
-                agent = list(step_data.keys())[0]  # Take the first agent
-                full_state = step_data[agent]['full_state'][()]
+                agents = list(step_data.keys())
                 
-                for layer in range(4):
-                    ae_index = min(layer, 2)
-                    with torch.no_grad():
-                        input_tensor = torch.FloatTensor(full_state[layer]).unsqueeze(0).unsqueeze(0).to(device)
-                        reconstructed = autoencoders[ae_index](input_tensor).cpu().numpy().squeeze()
-                    
-                    mse = calculate_mse(full_state[layer], reconstructed)
-                    mse_losses[layer].append(mse)
+                for agent in agents:
+                    full_state = step_data[agent]['full_state'][()]
+                
+                    for layer in range(4):
+                        if layer >= 2:
+                            ae_index = layer - 1
+                        else:
+                            ae_index = layer
+                        # ae_index = min(layer, 2)
+                        with torch.no_grad():
+                            input_tensor = torch.FloatTensor(full_state[layer]).unsqueeze(0).unsqueeze(0).to(device)
+                            reconstructed = autoencoders[ae_index](input_tensor).cpu().numpy().squeeze()
+                        
+                        mse = calculate_mse(full_state[layer], reconstructed)
+                        mse_losses[layer].append(mse)
             
             return {layer: np.mean(losses) for layer, losses in mse_losses.items()}
 
@@ -297,7 +305,7 @@ def main_test_autoencoder_performance():
     print("Processing test set...")
     test_results = {0: [], 1: [], 2: [], 3: []}
     for file in tqdm(test_files):
-        file_path = os.path.join(H5_FOLDER, file)
+        file_path = os.path.join(TEST_SET_FOLDER, file)
         file_results = process_file(file_path, autoencoders, device)
         for layer, mse in file_results.items():
             test_results[layer].append(mse)
@@ -313,16 +321,16 @@ def main_test_autoencoder_performance():
 
     # Calculate and print average MSE for each layer
     print("\nAverage MSE Results:")
-    logging.info("\nAverage MSE Results:")
+    # logging.info("\nAverage MSE Results:")
     print("Layer | Test Set | Train Set")
-    logging.info("Layer | Test Set | Train Set")
+    # logging.info("Layer | Test Set | Train Set")
     print("------|----------|----------")
-    logging.info("------|----------|----------")
+    # logging.info("------|----------|----------")
     for layer in range(4):
         test_mse = np.mean(test_results[layer])
         train_mse = np.mean(train_results[layer])
         print(f"{layer}     | {test_mse:.6f} | {train_mse:.6f}")
-        logging.info(f"{layer}     | {test_mse:.6f} | {train_mse:.6f}")
+        # logging.info(f"{layer}     | {test_mse:.6f} | {train_mse:.6f}")
     
 
 def main():
@@ -380,6 +388,6 @@ def main():
 
 if __name__ == "__main__":
     # main()
-    # main_test_specific()
+    main_test_specific()
     # main_test_data()
-    main_test_autoencoder_performance()
+    # main_test_autoencoder_performance()
