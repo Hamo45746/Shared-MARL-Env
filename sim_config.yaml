@@ -1,0 +1,46 @@
+env: custom_multi_agent_env
+env_config:
+  config_path: "config.yaml"
+  render_mode: "human"  
+num_workers: 0  # No workers needed for inference
+framework: torch  
+model:
+  conv_filters:
+    - [32, [3, 3], 1]
+    - [64, [3, 3], 1]
+    - [128, [3, 3], 1]
+  conv_activation: relu
+multiagent:
+  policies:
+    policy_0:
+      - None
+      - Dict
+      - {
+          "encoded_map": {
+            "type": "box",
+            "low": -inf,
+            "high": inf,
+            "shape": [4,32]
+          },
+          "velocity": {
+            "type": "box",
+            "low": -10.0,
+            "high": 10.0,
+            "shape": [2]
+          },
+          "goal": {
+            "type": "box",
+            "low": -2000,
+            "high": 2000,
+            "shape": [2]
+          }
+        }
+      - {
+          "type": "box",
+          "low": -1.0,
+          "high": 1.0,
+          "shape": [2]
+        }
+      - {}
+  policy_mapping_fn: policy_mapping_fn
+log_level: "ERROR" 

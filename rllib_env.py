@@ -1,7 +1,8 @@
-import gymnasium as gym 
+import os
 import numpy as np
 import random
 import yaml
+import pickle
 import agent_utils
 import jammer_utils
 import target_utils
@@ -18,6 +19,7 @@ from Continuous_autoencoder.autoencoder import EnvironmentAutoencoder
 from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.policy.policy import Policy
 from ray.tune.registry import register_env
+from ray.rllib.algorithms.algorithm import Algorithm
 
 class Environment(MultiAgentEnv):
     def __init__(self, config_path, render_mode="human"):
@@ -892,61 +894,54 @@ class Environment(MultiAgentEnv):
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(self.agents)}
             observations, rewards, terminated, truncated, self.info = self.step(action_dict)
             collected_data.append(observations)
-            self.render()  
+            #self.render()  
             step_count += 1
 
             if terminated.get("__all__", False) or truncated.get("__all__", False):
                 print("here")
                 break
 
-        pygame.image.save(self.screen, "outputs/environment_snapshot.png")
+        #pygame.image.save(self.screen, "outputs/environment_snapshot.png")
         self.reset()
         pygame.quit()
 
         return collected_data
     
-    def run_simulation_with_policy(self, checkpoint_path, max_steps=100):
-        # Load the trained policy configuration
-        with open("marl_config.yaml", "r") as file:
-            config = yaml.safe_load(file)
+    def run_simulation_with_policy(self, checkpoint_dir, params_path, max_steps=100):
+        # Load the configuration from the params.pkl file
+        with open(params_path, "rb") as f:
+            config = pickle.load(f)
 
-        # Correctly set up the policy mapping and spaces in the config
-        num_agents = 5
-        obs_shape = (4, 32)
-        action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
-        obs_space = spaces.Dict({
-            "encoded_map": spaces.Box(low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32),
-            "velocity": spaces.Box(low=-10.0, high=10.0, shape=(2,), dtype=np.float32),
-            "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32)
-        })
-
-        config["multiagent"] = {
-            "policies": {
-                "policy_0": (None, obs_space, action_space, {})
-            },
-            "policy_mapping_fn": lambda agent_id, episode, worker, **kwargs: "policy_0"
-        }
-
+        # Register the custom environment
         register_env("custom_multi_agent_env", lambda config: Environment(config_path=config["config_path"], render_mode=config.get("render_mode", "human")))
 
-        # Initialize the trainer with the config and restore the checkpoint
+        # Recreate the trainer with the loaded configuration
         trainer = PPO(config=config)
-        trainer.restore(checkpoint_path)
-        policy = trainer.get_policy("policy_0")  # one shared policy
+
+        # Restore the checkpoint from the checkpoint directory
+        trainer.restore(checkpoint_dir)
+
+        # Get the policy from the trainer
+        policy = trainer.get_policy("policy_0")
 
         running = True
         step_count = 0
         collected_data = []
-
+        print("here")
         while running and step_count < max_steps:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
 
-            # Generate actions for all agents using the trained policy
             action_dict = {}
             for agent_id in range(self.num_agents):
                 obs = self.safely_observe(agent_id)
+                encoded_obs = self.encode_observation({agent_id: obs})[agent_id]  # Encode observation
+                obs = {
+                    "encoded_map": encoded_obs["encoded_map"].reshape(1, 4, 32),  # Adjust the shape for the policy
+                    "velocity": np.array(encoded_obs["velocity"]).reshape(1, -1),
+                    "goal": np.array(encoded_obs["goal"]).reshape(1, -1)
+                }
                 action = policy.compute_single_action(obs)[0]
                 action_dict[agent_id] = action
 
@@ -963,5 +958,3 @@ class Environment(MultiAgentEnv):
         pygame.quit()
 
         return collected_data
-
-        

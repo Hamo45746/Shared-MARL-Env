@@ -170,38 +170,6 @@ class EnvironmentAutoencoder:
         plot_path = os.path.join('outputs/plots', f'lossplot_{layer_name}.png')
         plt.savefig(plot_path)
 
-    # def train(self, data, layer_name, epochs=10, batch_size=32):
-    #     dataloader = torch.utils.data.DataLoader(data[layer_name], batch_size=batch_size, shuffle=True)
-    #     print(f"Training on data for layers: {layer_name}")
-    #     losses = []
-
-    #     for epoch in range(epochs):
-    #         total_loss = 0
-    #         for batch in dataloader:
-    #             batch = batch.to(self.device)
-    #             self.optimizers[layer_name].zero_grad()
-    #             encoded, decoded = self.autoencoders[layer_name](batch)
-    #             if layer_name == "map_view":
-    #                 loss = self.criterion_standard(decoded, batch)
-    #             else:
-    #                 loss = self.criterion_custom(decoded, batch)
-    #             loss.backward()
-    #             self.optimizers[layer_name].step()
-    #             total_loss += loss.item()
-            
-    #         average_loss = total_loss / len(dataloader)
-    #         losses.append(average_loss)
-    #         self.schedulers[layer_name].step(average_loss)
-
-    #         if (epoch + 1) % 20 == 0:
-    #             print(f"Epoch [{epoch+1}/{epochs}], Loss: {average_loss:.6f}")
-
-    #         if (epoch + 1) % 100 == 0:
-    #             self.visualize_reconstructions(dataloader, layer_name, epoch)
-
-    #     # Plot the training loss
-    #     self.plot_loss(losses, layer_name)
-
     def encode_state(self, state):
         encoded_state = {}
         for layer_name, layer_data in state.items():
@@ -226,17 +194,7 @@ class EnvironmentAutoencoder:
             decoded_state[layer_name] = decoded
 
         return decoded_state
-
-    # def plot_loss(self, losses, layer_name):
-    #     plt.figure(figsize=(10, 5))
-    #     plt.plot(losses, label='Training Loss')
-    #     plt.title(f'Training Loss for {layer_name}')
-    #     plt.xlabel('Epoch')
-    #     plt.ylabel('Loss')
-    #     plt.legend()
-    #     plt.grid(True)
-    #     plot_path = os.path.join('outputs/plots', f'lossplot_{layer_name}.png')
-    #     plt.savefig(plot_path)
+    
 
     def visualize_reconstructions(self, dataloader, layer_name, epoch):
         self.autoencoders[layer_name].eval()
