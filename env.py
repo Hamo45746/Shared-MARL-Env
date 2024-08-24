@@ -9,6 +9,8 @@ import target_utils
 import pygame
 import gc
 from skimage.transform import resize
+from scipy.ndimage import binary_dilation, label, generate_binary_structure
+from skimage.draw import rectangle, disk, polygon, ellipse
 from layer import AgentLayer, JammerLayer, TargetLayer
 from gym.utils import seeding
 # from gymnasium.utils import seeding
@@ -77,14 +79,91 @@ class Environment(gym.core.Env):
         pygame.init()
 
 
-    def load_map(self):
+    # def load_map(self): # OLD (WORKING)
+    #     original_map = np.load(self.config['map_path'])[:, :, 0]
+    #     original_map = original_map.transpose() # want to keep map as horizontal rectangle - do transposition in render instead
+    #     original_x, original_y = original_map.shape
+    #     self.X = int(original_x * self.map_scale)
+    #     self.Y = int(original_y * self.map_scale)
+    #     resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
+    #     return (resized_map != 0).astype(int) # 0 for obstacles, 1 for free space
+    
+    def load_map(self): # NEW
         original_map = np.load(self.config['map_path'])[:, :, 0]
-        original_map = original_map.transpose() # want to keep map as horizontal rectangle - do transposition in render instead
+        original_map = original_map.transpose()
         original_x, original_y = original_map.shape
         self.X = int(original_x * self.map_scale)
         self.Y = int(original_y * self.map_scale)
-        resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
-        return (resized_map != 0).astype(int) # 1 for obstacles, 0 for free space
+        
+        if self.config.get('generate_rand_map', False):
+            return self.generate_random_map(self.X, self.Y)
+        else:
+            resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
+            print(resized_map)
+            return (resized_map != 0).astype(int)  # 0 for obstacles, 1 for free space
+    
+    
+    def generate_random_map(self, height, width):
+        map_array = np.ones((height, width), dtype=int)  # Start with all free space (1)
+        
+        # Determine if we're using an outer border
+        use_border = self.config.get('outer_border', None)
+        if use_border is None:
+            use_border = self.np_random.choice([True, False])
+        
+        # Create outer border with random width
+        if use_border:
+            border_width = self.np_random.randint(1, 10)
+            map_array[:border_width, :] = 0  # Top border
+            map_array[-border_width:, :] = 0  # Bottom border
+            map_array[:, :border_width] = 0  # Left border
+            map_array[:, -border_width:] = 0  # Right border
+
+        # Generate random obstacle shapes
+        num_shapes = self.np_random.randint(5, 16)
+        for _ in range(num_shapes):
+            shape_type = self.np_random.choice(['rectangle', 'circle', 'triangle', 'ellipse'])
+            
+            if shape_type == 'rectangle':
+                h, w = self.np_random.randint(10, 60, size=2)  # Height and width between 5 and 50
+                x = self.np_random.randint(-w//2, width)  # Allow partial off-screen
+                y = self.np_random.randint(-h//2, height)  # Allow partial off-screen
+                rr, cc = rectangle((y, x), extent=(h, w), shape=map_array.shape)
+                map_array[rr, cc] = 0
+            
+            elif shape_type == 'circle':  # circle
+                r = self.np_random.randint(10, 60)  # Radius between 5 and 45
+                x = self.np_random.randint(-r, width + r)  # Allow partial off-screen
+                y = self.np_random.randint(-r, height + r)  # Allow partial off-screen
+                rr, cc = disk((y, x), r, shape=map_array.shape)
+                map_array[rr, cc] = 0
+                
+            elif shape_type == 'triangle':
+                size = self.np_random.randint(10, 60)
+                x = self.np_random.randint(-size//2, width + size//2)
+                y = self.np_random.randint(-size//2, height + size//2)
+                r = size // 2
+                angles = self.np_random.uniform(0, 2*np.pi, 3)
+                triangle_points = np.array([(x + r*np.cos(a), y + r*np.sin(a)) for a in angles])
+                rr, cc = polygon(triangle_points[:, 1], triangle_points[:, 0], shape=map_array.shape)
+                map_array[rr, cc] = 0
+            
+            else:  # ellipse
+                r_radius = self.np_random.randint(10, 60)
+                c_radius = self.np_random.randint(10, 60)
+                x = self.np_random.randint(-r_radius, width + r_radius)
+                y = self.np_random.randint(-c_radius, height + c_radius)
+                rr, cc = ellipse(y, x, r_radius, c_radius, shape=map_array.shape)
+                map_array[rr, cc] = 0
+
+        # Ensure connectivity of free space (optional, comment out if not needed)
+        structure = generate_binary_structure(2, 2)
+        labeled, num_features = label(map_array, structure=structure)
+        if num_features > 1:
+            largest_component = labeled == (np.bincount(labeled.flat)[1:].argmax() + 1)
+            map_array = largest_component.astype(int)
+        
+        return map_array
 
 
     def initialise_agents(self):
@@ -141,13 +220,13 @@ class Environment(gym.core.Env):
         self.map_scale = self.config['map_scale']
         self.seed_value = self.config['seed']
         self.comm_range = self.config['comm_range']
-
-        # Load and process the map
-        self.map_matrix = self.load_map()
-
+        
         if seed is not None:
             self.seed_value = seed
         self.seed(self.seed_value)
+
+        # Load and process the map
+        self.map_matrix = self.load_map()
 
         self.global_state.fill(0)
         self.global_state[0] = self.map_matrix
@@ -241,7 +320,7 @@ class Environment(gym.core.Env):
             #     print_agent_full_state_region(agent, self.global_state)
             
             self.current_step += 1
-            # self.render()
+            self.render()
 
         # Calculate rewards
         rewards = self.collect_rewards()
@@ -990,6 +1069,6 @@ def print_env_state_summary(step, global_state):
         print(f"    Num -20: {np.sum(layer_data == -20)}")
     sys.stdout.flush()
 
-# config_path = 'config.yaml' 
-# env = Environment(config_path)
-# Environment.run_simulation(env, max_steps=2)
+config_path = 'config.yaml' 
+env = Environment(config_path)
+Environment.run_simulation(env, max_steps=3)

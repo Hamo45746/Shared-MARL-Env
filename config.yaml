@@ -24,6 +24,9 @@ jamming_radius: 20 #This is radius, in comparison to comms_range. That is why it
 
 seed: 1
 
+generate_rand_map: true
+# outer_border: null
+
 # Example locations
 # agent_positions:
 #  - [1, 17]
