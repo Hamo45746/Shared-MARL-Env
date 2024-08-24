@@ -236,6 +236,7 @@ def main_test_specific():
 def main_test_autoencoder_performance():
     # Constants
     H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
+    TEST_SET_FOLDER = os.path.join(H5_FOLDER, 'test_data')
     AE_SAVE_FOLDER = 'AE_save_23_08'
     TEST_SET_SIZE = 10  # Number of H5 files to use for testing
     TRAIN_SET_SIZE = 20  # Number of H5 files to use for training comparison
@@ -285,11 +286,12 @@ def main_test_autoencoder_performance():
 
     # Get all H5 files
     all_h5_files = [f for f in os.listdir(H5_FOLDER) if f.endswith('.h5')]
+    test_h5_files = [f for f in os.listdir(TEST_SET_FOLDER) if f.endswith('.h5')]
 
     # Randomly select files for test and train sets
     np.random.shuffle(all_h5_files)
-    test_files = all_h5_files[:TEST_SET_SIZE]
-    train_files = all_h5_files[TEST_SET_SIZE:TEST_SET_SIZE + TRAIN_SET_SIZE]
+    test_files = test_h5_files[:TEST_SET_SIZE]
+    train_files = all_h5_files[:TRAIN_SET_SIZE]
 
     # Process test set
     print("Processing test set...")
@@ -378,5 +380,6 @@ def main():
 
 if __name__ == "__main__":
     # main()
-    main_test_specific()
+    # main_test_specific()
     # main_test_data()
+    main_test_autoencoder_performance()
