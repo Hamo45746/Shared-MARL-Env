@@ -320,9 +320,9 @@ def process_config(args):
                 if full_state.shape[0] != 4:
                     logging.error(f"Incorrect number of layers in {filepath}: expected 4, got {full_state.shape[0]}")
                     return None
-            progress = set(os.path.basename(filepath))
-            progress.add(os.path.basename(filepath))
-            save_progress(progress)
+            # progress = set(os.path.basename(filepath))
+            # progress.add(os.path.basename(filepath))
+            # save_progress(progress)
             return filepath
         else:
             return None
@@ -357,6 +357,8 @@ def collect_data_for_config(config, config_path, steps_per_episode, h5_folder):
 
     # Update filename to include map information
     map_name = os.path.splitext(os.path.basename(config['map_path']))[0]
+    if config.get('generate_rand_map', False):
+        map_name = 'rand'
     filename = f"data_m{map_name}_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
     filepath = os.path.join(h5_folder, filename)
 

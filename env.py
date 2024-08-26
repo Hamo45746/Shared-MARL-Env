@@ -9,7 +9,7 @@ import target_utils
 import pygame
 import gc
 from skimage.transform import resize
-from scipy.ndimage import binary_dilation, label, generate_binary_structure
+from scipy.ndimage import label, generate_binary_structure
 from skimage.draw import rectangle, disk, polygon, ellipse
 from layer import AgentLayer, JammerLayer, TargetLayer
 from gym.utils import seeding
@@ -61,7 +61,7 @@ class Environment(gym.core.Env):
         if self.agent_type == 'task_allocation':
             self.agent_paths = {agent_id: [] for agent_id in range(self.num_agents)}
             self.current_waypoints = {agent_id: None for agent_id in range(self.num_agents)}
-        
+            
         self.initialise_agents()
         self.initialise_targets()
         self.initialise_jammers()
@@ -99,9 +99,7 @@ class Environment(gym.core.Env):
             return self.generate_random_map(self.X, self.Y)
         else:
             resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
-            print(resized_map)
             return (resized_map != 0).astype(int)  # 0 for obstacles, 1 for free space
-    
     
     def generate_random_map(self, height, width):
         map_array = np.ones((height, width), dtype=int)  # Start with all free space (1)
@@ -164,7 +162,6 @@ class Environment(gym.core.Env):
             map_array = largest_component.astype(int)
         
         return map_array
-
 
     def initialise_agents(self):
         agent_positions = self.config.get('agent_positions')

@@ -17,6 +17,8 @@ map_path: 'city_image_1.npy'
 #map_path: 'city_image_2.npy'
 #map_path: 'city_image_3.npy'
 
+map_paths: ['city_image_1.npy', 'city_image_2.npy', city_image_3.npy]
+
 n_agents: 4
 n_targets: 70
 n_jammers: 3
