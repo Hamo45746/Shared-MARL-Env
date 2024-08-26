@@ -8,7 +8,8 @@ import jammer_utils
 import target_utils
 import pygame
 import gc
-from skimage.transform import resize
+from skimage.transform import resize, rotate
+from skimage.util import crop
 from scipy.ndimage import label, generate_binary_structure
 from skimage.draw import rectangle, disk, polygon, ellipse
 from layer import AgentLayer, JammerLayer, TargetLayer
@@ -102,65 +103,66 @@ class Environment(gym.core.Env):
             return (resized_map != 0).astype(int)  # 0 for obstacles, 1 for free space
     
     def generate_random_map(self, height, width):
-        map_array = np.ones((height, width), dtype=int)  # Start with all free space (1)
+        map_array = np.ones((height, width), dtype=int)
         
-        # Determine if we're using an outer border
-        use_border = self.config.get('outer_border', None)
-        if use_border is None:
-            use_border = self.np_random.choice([True, False])
+        # Load and prepare map segments
+        map_paths = self.config['map_paths']
+        maps = [np.load(path)[:, :, 0] for path in map_paths]
         
-        # Create outer border with random width
-        if use_border:
-            border_width = self.np_random.randint(1, 10)
-            map_array[:border_width, :] = 0  # Top border
-            map_array[-border_width:, :] = 0  # Bottom border
-            map_array[:, :border_width] = 0  # Left border
-            map_array[:, -border_width:] = 0  # Right border
-
-        # Generate random obstacle shapes
-        num_shapes = self.np_random.randint(5, 16)
-        for _ in range(num_shapes):
-            shape_type = self.np_random.choice(['rectangle', 'circle', 'triangle', 'ellipse'])
-            
-            if shape_type == 'rectangle':
-                h, w = self.np_random.randint(10, 60, size=2)  # Height and width between 5 and 50
-                x = self.np_random.randint(-w//2, width)  # Allow partial off-screen
-                y = self.np_random.randint(-h//2, height)  # Allow partial off-screen
-                rr, cc = rectangle((y, x), extent=(h, w), shape=map_array.shape)
-                map_array[rr, cc] = 0
-            
-            elif shape_type == 'circle':  # circle
-                r = self.np_random.randint(10, 60)  # Radius between 5 and 45
-                x = self.np_random.randint(-r, width + r)  # Allow partial off-screen
-                y = self.np_random.randint(-r, height + r)  # Allow partial off-screen
-                rr, cc = disk((y, x), r, shape=map_array.shape)
-                map_array[rr, cc] = 0
+        # Divide each map into 8 segments (4 horizontal, 2 vertical)
+        segments = []
+        for map_data in maps:
+            h_segments = np.array_split(map_data, 4, axis=0)
+            for h_seg in h_segments:
+                v_segments = np.array_split(h_seg, 2, axis=1)
+                segments.extend(v_segments)
+        
+        # Calculate target segment size
+        target_height = height // 4
+        target_width = width // 2
+        
+        for i in range(4):  # 4 horizontal segments
+            for j in range(2):  # 2 vertical segments
+                selected_segment = self.np_random.choice(segments)
                 
-            elif shape_type == 'triangle':
-                size = self.np_random.randint(10, 60)
-                x = self.np_random.randint(-size//2, width + size//2)
-                y = self.np_random.randint(-size//2, height + size//2)
-                r = size // 2
-                angles = self.np_random.uniform(0, 2*np.pi, 3)
-                triangle_points = np.array([(x + r*np.cos(a), y + r*np.sin(a)) for a in angles])
-                rr, cc = polygon(triangle_points[:, 1], triangle_points[:, 0], shape=map_array.shape)
-                map_array[rr, cc] = 0
-            
-            else:  # ellipse
-                r_radius = self.np_random.randint(10, 60)
-                c_radius = self.np_random.randint(10, 60)
-                x = self.np_random.randint(-r_radius, width + r_radius)
-                y = self.np_random.randint(-c_radius, height + c_radius)
-                rr, cc = ellipse(y, x, r_radius, c_radius, shape=map_array.shape)
-                map_array[rr, cc] = 0
-
-        # Ensure connectivity of free space (optional, comment out if not needed)
-        structure = generate_binary_structure(2, 2)
-        labeled, num_features = label(map_array, structure=structure)
-        if num_features > 1:
-            largest_component = labeled == (np.bincount(labeled.flat)[1:].argmax() + 1)
-            map_array = largest_component.astype(int)
+                # Resize segment
+                selected_segment = resize(selected_segment, (target_height, target_width), 
+                                        order=0, preserve_range=True, anti_aliasing=False)
+                selected_segment = (selected_segment != 0).astype(int)  # Ensure binary values
+                
+                # Randomly rotate and flip
+                if self.np_random.random() < 0.5:
+                    selected_segment = np.flipud(selected_segment)
+                if self.np_random.random() < 0.5:
+                    selected_segment = np.fliplr(selected_segment)
+                rotation_angle = self.np_random.choice([0, 90, 180, 270])
+                selected_segment = rotate(selected_segment, angle=rotation_angle, resize=False, 
+                                        preserve_range=True, order=0)
+                selected_segment = (selected_segment > 0.5).astype(int)  # Threshold after rotation
+                
+                # Place the segment in the map
+                start_x = i * target_height
+                start_y = j * target_width
+                map_array[start_x:start_x+target_height, start_y:start_y+target_width] = selected_segment
         
+        # Add grid of streets across the entire map
+        grid_cell_size = self.np_random.integers(40, 81)
+        street_width = self.np_random.integers(7, 16)
+        
+        # Create vertical streets
+        for x in range(0, width, grid_cell_size):
+            map_array[:, x:x+street_width] = 1
+        
+        # Create horizontal streets
+        for y in range(0, height, grid_cell_size):
+            map_array[y:y+street_width, :] = 1
+
+        # Randomly rotate the entire map
+        if self.np_random.random() < 0.5:
+            rotation_angle = self.np_random.uniform(-90, 90)
+            map_array = rotate(map_array, angle=rotation_angle, resize=False, preserve_range=True, order=0)
+            map_array = (map_array > 0.5).astype(int)  # Threshold after rotation
+
         return map_array
 
     def initialise_agents(self):
