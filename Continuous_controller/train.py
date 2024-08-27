@@ -54,7 +54,7 @@ config["local_dir"] = logdir
 trainer = PPO(config=config)
 
 # Train the agents
-for i in range(100):
+for i in range(300):
     print(i)
     result = trainer.train()
     print(f"Iteration: {i}, "

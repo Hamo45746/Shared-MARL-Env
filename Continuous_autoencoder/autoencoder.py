@@ -99,10 +99,10 @@ class EnvironmentAutoencoder:
             activation_fn = ScaledSigmoid(-20, 0)
 
         self.autoencoders[layer_name] = ConvAutoencoder(1, input_shape, encoded_dim, activation_fn).to(self.device)
-        self.optimizers[layer_name] = optim.Adam(self.autoencoders[layer_name].parameters(), lr=0.001)
-        self.schedulers[layer_name] = optim.lr_scheduler.ReduceLROnPlateau(self.optimizers[layer_name], 'min', patience=8, factor=0.4, min_lr=1e-5)
+        self.optimizers[layer_name] = optim.Adam(self.autoencoders[layer_name].parameters(), lr=0.0005)
+        self.schedulers[layer_name] = optim.lr_scheduler.ReduceLROnPlateau(self.optimizers[layer_name], 'min', patience=9, factor=0.5, min_lr=1e-5)
 
-    def train(self, data, layer_name, epochs=10, batch_size=32, validation_split=0.2):
+    def train(self, data, layer_name, epochs=10, batch_size=32, validation_split=0.15):
         # Split data into training and validation sets
         train_data, val_data = train_test_split(data[layer_name], test_size=validation_split, random_state=42)
         
@@ -153,6 +153,9 @@ class EnvironmentAutoencoder:
                 print(f"Epoch [{epoch+1}/{epochs}], Training Loss: {average_train_loss:.6f}, Validation Loss: {average_val_loss:.6f}")
      
             if (epoch + 1) % 60 == 0:
+                self.visualize_reconstructions(val_loader, layer_name, epoch)
+
+            if (epoch + 1) % 400 == 0:
                 self.visualize_reconstructions(val_loader, layer_name, epoch)
 
         # Plot the training and validation losses

@@ -18,7 +18,7 @@ def train_autoencoder(data_path, model_save_path, layer_name):
 
     # Train the autoencoder
     autoencoder.add_layer(layer_name, (17, 17), encoded_dim=32)
-    autoencoder.train({layer_name: observation_data}, layer_name, epochs=300, batch_size=32)
+    autoencoder.train({layer_name: observation_data}, layer_name, epochs=400, batch_size=32)
     
     # Save the trained model
     autoencoder.save(model_save_path, layer_name)

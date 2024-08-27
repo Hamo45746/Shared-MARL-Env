@@ -199,7 +199,6 @@ class Environment(MultiAgentEnv):
         encoded_observations = self.encode_observation(observations)
             
         return encoded_observations, info
-    
 
     def step(self, actions_dict):
         if self.agent_type == 'task_allocation':
@@ -332,11 +331,11 @@ class Environment(MultiAgentEnv):
         # for agent_id, obs in observations.items():
         #     print(f"Agent {agent_id}: {obs}")
 
-        # print("Encoded Observations")
+        # # print("Encoded Observations")
         # encoded_obs = {}
         # for agent_id, obs in encoded_observations.items():
         #     encoded_obs[agent_id] = obs["encoded_map"]
-        #     print(f"Agent {agent_id}: {encoded_obs[agent_id]}")
+        #     # print(f"Agent {agent_id}: {encoded_obs[agent_id]}")
         
         # print("Decoded Observations")
         # for agent_id, obs in decoded_obs.items():
@@ -345,6 +344,7 @@ class Environment(MultiAgentEnv):
         
         # If i'm collecting observations I have to return observations. Once the auto encoder is trained I can return encoded observation
         return encoded_observations, rewards, terminated, truncated, info
+        #return observations, rewards, terminated, truncated, info
     
 
     def update_observations(self): #Alex had this one
@@ -894,14 +894,14 @@ class Environment(MultiAgentEnv):
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(self.agents)}
             observations, rewards, terminated, truncated, self.info = self.step(action_dict)
             collected_data.append(observations)
-            #self.render()  
+            self.render()  
             step_count += 1
 
             if terminated.get("__all__", False) or truncated.get("__all__", False):
                 print("here")
                 break
 
-        #pygame.image.save(self.screen, "outputs/environment_snapshot.png")
+        pygame.image.save(self.screen, "outputs/environment_snapshot.png")
         self.reset()
         pygame.quit()
 
