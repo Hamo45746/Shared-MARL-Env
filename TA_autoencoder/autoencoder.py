@@ -274,12 +274,12 @@ class EnvironmentAutoencoder:
             ae.load_state_dict(checkpoint['model_state_dicts'][i])
             ae.to(self.device, dtype=self.dtype)
         
-        for i, opt in enumerate(self.optimizers):
-            opt.load_state_dict(checkpoint['optimizer_state_dicts'][i])
-            self.move_optimizer_to_device(opt, self.device)
+        # for i, opt in enumerate(self.optimizers):
+        #     opt.load_state_dict(checkpoint['optimizer_state_dicts'][i])
+        #     self.move_optimizer_to_device(opt, self.device)
         
-        for i, sch in enumerate(self.schedulers):
-            sch.load_state_dict(checkpoint['scheduler_state_dicts'][i])
+        # for i, sch in enumerate(self.schedulers):
+        #     sch.load_state_dict(checkpoint['scheduler_state_dicts'][i])
         
         self.scaler.load_state_dict(checkpoint['scaler'])
 

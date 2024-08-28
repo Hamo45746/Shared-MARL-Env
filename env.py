@@ -158,10 +158,10 @@ class Environment(gym.core.Env):
             map_array[y:y+street_width, :] = 1
 
         # Randomly rotate the entire map
-        if self.np_random.random() < 0.5:
-            rotation_angle = self.np_random.uniform(-90, 90)
-            map_array = rotate(map_array, angle=rotation_angle, resize=False, preserve_range=True, order=0)
-            map_array = (map_array > 0.5).astype(int)  # Threshold after rotation
+        # if self.np_random.random() < 0.5:
+        #     rotation_angle = self.np_random.uniform(-90, 90)
+        #     map_array = rotate(map_array, angle=rotation_angle, resize=False, preserve_range=True, order=0)
+        #     map_array = (map_array > 0.5).astype(int)  # Threshold after rotation
 
         return map_array
 
@@ -319,7 +319,7 @@ class Environment(gym.core.Env):
             #     print_agent_full_state_region(agent, self.global_state)
             
             self.current_step += 1
-            self.render()
+            # self.render()
 
         # Calculate rewards
         rewards = self.collect_rewards()
@@ -1068,6 +1068,6 @@ def print_env_state_summary(step, global_state):
         print(f"    Num -20: {np.sum(layer_data == -20)}")
     sys.stdout.flush()
 
-config_path = 'config.yaml' 
-env = Environment(config_path)
-Environment.run_simulation(env, max_steps=3)
+# config_path = 'config.yaml' 
+# env = Environment(config_path)
+# Environment.run_simulation(env, max_steps=3)

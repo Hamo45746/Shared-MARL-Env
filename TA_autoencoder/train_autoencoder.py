@@ -451,13 +451,13 @@ def load_training_state(autoencoder, ae_index):
             autoencoder.autoencoders[ae_index].load_state_dict(state['model_state_dict'])
             autoencoder.autoencoders[ae_index].to(autoencoder.device)
             
-            autoencoder.optimizers[ae_index].load_state_dict(state['optimizer_state_dict'])
-            autoencoder.move_optimizer_to_device(autoencoder.optimizers[ae_index], autoencoder.device)
+            # autoencoder.optimizers[ae_index].load_state_dict(state['optimizer_state_dict'])
+            # autoencoder.move_optimizer_to_device(autoencoder.optimizers[ae_index], autoencoder.device)
             
-            autoencoder.schedulers[ae_index].load_state_dict(state['scheduler_state_dict'])
+            # autoencoder.schedulers[ae_index].load_state_dict(state['scheduler_state_dict'])
             
-            if 'scaler' in state:
-                autoencoder.scaler.load_state_dict(state['scaler'])
+            # if 'scaler' in state:
+            #     autoencoder.scaler.load_state_dict(state['scaler'])
             
             logging.info(f"Loaded training state for autoencoder {ae_index} from {state_path}")
             return state['epoch']
@@ -478,13 +478,13 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
     log_interval = 100  # Log every 100 batches
 
     try:
-        for ae_index in range(0, 3):  # Train each autoencoder separately
+        for ae_index in range(1, 3):  # Train each autoencoder separately
             print(f"Training autoencoder {ae_index}")
             if ae_index == 0:
                 delta = 0.001
             # load from previous save if specified
             if load_previous and ae_index in load_previous:
-                previous_save_path = os.path.join(H5_FOLDER, f"AE_save_22_08/autoencoder_{ae_index}_best.pth") # Change prev AE path here
+                previous_save_path = os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_best.pth") # Change prev AE path here
                 if os.path.exists(previous_save_path):
                     logging.info(f"Loading previous weights for autoencoder {ae_index}")
                     checkpoint = torch.load(previous_save_path, map_location=device)
@@ -515,8 +515,8 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
             
             dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
             
-            start_epoch = load_training_state(autoencoder, ae_index)
-            
+            # start_epoch = load_training_state(autoencoder, ae_index)
+            start_epoch = 0
             best_loss = float('inf')
             epochs_no_improve = 0
             
@@ -622,13 +622,13 @@ def main():
     setup_logging()
     
     # Configuration ranges
-    seed_range = range(1, 41) # 1-40 seed
+    seed_range = range(1, 400) # 1-500 seed
     num_agents_range = range(10, 11) # 10 agents
     num_targets_range = range(90, 91) # 90 targets
     num_jammers_range_low = range(0, 1)  # 0 jammers
-    num_jammers_range_high = range(85, 90)  # 85-89 jammers
+    num_jammers_range_high = range(90, 91)  # 90 jammers
     
-    map_paths = ['city_image_1.npy', 'city_image_2.npy', 'city_image_3.npy']
+    map_paths = ['city_image_1.npy']#, 'city_image_2.npy', 'city_image_3.npy']
     
     configs = [
         {'map_path': map_path, 'seed': seed, 'n_agents': num_agents, 'n_targets': num_targets, 'n_jammers': num_jammers}
@@ -699,7 +699,7 @@ def main():
         autoencoder = EnvironmentAutoencoder(device)
 
         # Train autoencoders
-        train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, batch_size=16)
+        train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, batch_size=16, load_previous=[0])
 
         # Save the final autoencoder
         autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
@@ -766,8 +766,8 @@ def main_collect_test_data():
     
 if __name__ == "__main__":
     try:
-        # main()
-        main_collect_test_data()
+        main()
+        # main_collect_test_data()
     except KeyboardInterrupt:
         print("Keyboard interrupt received. Cleaning up...")
     except Exception as e:
