@@ -373,6 +373,7 @@ class Environment(MultiAgentEnv):
             elif self.agent_type == "task_allocation":
                 reward = DiscreteAgentController.calculate_reward(agent)  # TODO: Implement task allocation reward
             else: 
+                print("agentID", agent_id)
                 reward = calculate_continuous_reward(agent, self)
             rewards[agent_id] = reward
         
@@ -636,7 +637,7 @@ class Environment(MultiAgentEnv):
                 self.screen = pygame.display.set_mode(
                     (self.pixel_scale * self.X, self.pixel_scale * self.Y)
                 )
-                pygame.display.set_caption("Search & Track Task Assign")
+                pygame.display.set_caption("Search & Track Path Planning")
             else:
                 self.screen = pygame.Surface(
                     (self.pixel_scale * self.X, self.pixel_scale * self.Y)
@@ -651,17 +652,25 @@ class Environment(MultiAgentEnv):
         self.draw_jammers()
         self.draw_waypoints()
 
-        observation = pygame.surfarray.pixels3d(self.screen)
-        new_observation = np.copy(observation)
-        del observation
-        if self.render_modes == "human":
-            pygame.event.pump()
-            pygame.display.update()
-        return (new_observation,
-            np.transpose(new_observation, axes=(1, 0, 2))
-            if self.render_modes == "rgb_array"
-            else None
-        )
+        # observation = pygame.surfarray.pixels3d(self.screen)
+        # new_observation = np.copy(observation)
+        # del observation
+        # if self.render_modes == "human":
+        #     pygame.event.pump()
+        #     pygame.display.update()
+        # elif mode == "human":
+        #     pygame.display.flip()
+
+        # return (new_observation,
+        #     np.transpose(new_observation, axes=(1, 0, 2))
+        #     if self.render_modes == "rgb_array"
+        #     else None
+        # )
+        if mode == "rgb_array":
+            return pygame.surfarray.array3d(self.screen).transpose((1, 0, 2))  # Ensure consistent shape
+        elif mode == "human":
+            pygame.display.flip()
+        return None
 
 
     def state(self) -> np.ndarray:
@@ -907,7 +916,7 @@ class Environment(MultiAgentEnv):
 
         return collected_data
     
-    def run_simulation_with_policy(self, checkpoint_dir, params_path, max_steps=100):
+    def run_simulation_with_policy(self, checkpoint_dir, params_path, max_steps=100, iteration=None):
         # Load the configuration from the params.pkl file
         with open(params_path, "rb") as f:
             config = pickle.load(f)
@@ -921,13 +930,13 @@ class Environment(MultiAgentEnv):
         # Restore the checkpoint from the checkpoint directory
         trainer.restore(checkpoint_dir)
 
-        # Get the policy from the trainer
-        policy = trainer.get_policy("policy_0")
+        # # Get the policy from the trainer
+        # policy = trainer.get_policy("policy_0") # This is for centralised learning - remove for decentralised 
 
         running = True
         step_count = 0
         collected_data = []
-        print("here")
+
         while running and step_count < max_steps:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -942,6 +951,7 @@ class Environment(MultiAgentEnv):
                     "velocity": np.array(encoded_obs["velocity"]).reshape(1, -1),
                     "goal": np.array(encoded_obs["goal"]).reshape(1, -1)
                 }
+                policy = trainer.get_policy(f"policy_{agent_id}") # This is for decentralised learning - remove for centralised 
                 action = policy.compute_single_action(obs)[0]
                 action_dict[agent_id] = action
 
@@ -952,9 +962,14 @@ class Environment(MultiAgentEnv):
 
             if terminated.get("__all__", False) or truncated.get("__all__", False):
                 break
+        
+        if iteration is not None:
+            map_filename = f"outputs/environment_snapshot_iteration_{iteration}.png"
+        else:
+            map_filename = "outputs/environment_snapshot.png"
 
-        pygame.image.save(self.screen, "outputs/environment_snapshot.png")
-        self.reset()
+        pygame.image.save(self.screen, map_filename)
+        #self.reset()
         pygame.quit()
 
         return collected_data

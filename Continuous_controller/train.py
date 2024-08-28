@@ -11,6 +11,8 @@ from rllib_env import Environment
 from ray.rllib.algorithms.ppo import PPO
 from ray.tune.registry import register_env
 from gymnasium import spaces
+import glob
+import os
 
 
 def env_creator(env_config):
@@ -22,9 +24,16 @@ register_env("custom_multi_agent_env", env_creator)
 with open("marl_config.yaml", "r") as file:
     config = yaml.safe_load(file)
 
-# Define the policy mapping function
+# # Define the policy mapping function - This is for centralised training 
+# def policy_mapping_fn(agent_id, episode, worker, **kwargs):
+#     return "policy_0"
+
+# Define the policy mapping function - this is for decentralised training
 def policy_mapping_fn(agent_id, episode, worker, **kwargs):
-    return "policy_0"
+    return f"policy_{agent_id}"
+
+# Update the configuration
+logdir = "./custom_ray_results"
 
 # Update the policies in the config
 num_agents = 5  # Example, adjust based on your environment
@@ -35,26 +44,24 @@ obs_space = spaces.Dict({
     "velocity": spaces.Box(low=-10.0, high=10.0, shape=(2,), dtype=np.float32),
     "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32)
 })
+# # This is the config for cnetralised training - one policy
+# config["multiagent"]["policies"] = {
+#     "policy_0": (None, obs_space, action_space, {})
+# }
+# config["multiagent"]["policy_mapping_fn"] = policy_mapping_fn
+
+# This is the config for decentralised training - multiple policies. 
 config["multiagent"]["policies"] = {
-    "policy_0": (None, obs_space, action_space, {})
+    f"policy_{i}": (None, obs_space, action_space, {}) for i in range(num_agents)
 }
 config["multiagent"]["policy_mapping_fn"] = policy_mapping_fn
 
-#Add TensorBoard logger callback
-logdir = "./custom_ray_results"
-config["logger_config"] = {
-    "loggers": [TBXLogger],
-    "logdir": logdir
-}
-
-# Set up custom location for ray_results
-config["local_dir"] = logdir
 
 # Initialize the PPO trainer
 trainer = PPO(config=config)
 
 # Train the agents
-for i in range(300):
+for i in range(200):
     print(i)
     result = trainer.train()
     print(f"Iteration: {i}, "
@@ -63,9 +70,12 @@ for i in range(300):
           f"Policy Loss: {result['info']['learner']['policy_0']['learner_stats']['policy_loss']}, "
           f"Entropy: {result['info']['learner']['policy_0']['learner_stats']['entropy']}")
     
-    if (i + 10) % 1 == 0:
+    if (i + 10) % 50 == 0:
         checkpoint_dir = trainer.save(logdir)
-
+        latest_folder = max(glob.glob(os.path.join('/Users/alexandramartinwallace/ray_results/', '*/')), key=os.path.getmtime)
+        params_path = os.path.join(latest_folder, "params.pkl")
+        env2 = Environment(config_path="config.yaml")
+        env2.run_simulation_with_policy(checkpoint_dir=checkpoint_dir, params_path=params_path, max_steps=100, iteration=i)
 
 #Ensure TensorBoard logs are being written
 final_checkpoint_dir = trainer.save(logdir)

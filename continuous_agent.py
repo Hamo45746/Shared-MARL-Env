@@ -157,7 +157,7 @@ class ContinuousAgent(BaseAgent):
         return False
     
     def calls_obstacle_avoidance(self):
-        threshold = 2
+        threshold = 5
         x, y = self.current_pos
         for dx in range(-threshold, threshold + 1):
             for dy in range(-threshold, threshold + 1):

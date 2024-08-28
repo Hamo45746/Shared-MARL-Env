@@ -7,19 +7,20 @@ def calculate_continuous_reward(agent, env):
     if agent.inbuilding(agent.current_position()[0], agent.current_position()[1]):
          reward -= 50
 
-     # Check if the agent hits another agent or target
+    # Check if the agent hits another agent or target
     for other_agent in env.agent_layer.agents:
          if other_agent != agent and np.array_equal(agent.current_position, other_agent.current_position):
              reward -= 50
 
     for target in env.target_layer.targets:
          if np.array_equal(agent.current_position, target.current_position):
-             reward -= 20
+             reward -= 10
 
     percentage_new_information = agent.gains_information() 
+    #print("percentage_new_information", percentage_new_information)
     # percentage_new_information = int(percentage_new_information)
     # percentage_new_information = percentage_new_information/2
-    reward += percentage_new_information
+    reward += (percentage_new_information*1.5)
 
     # # Check if the agent gains new information
     # if agent.gains_information():
@@ -46,11 +47,11 @@ def calculate_continuous_reward(agent, env):
 
     # Check if the agent calls the obstacle avoidance method
     if agent.calls_obstacle_avoidance():
-        reward -= 10
+        reward -= 20
 
     # check if the agent has to change it's angle choice 
     if agent.angle_change():
-        reward -= 3
+        reward -= 8
 
     if agent.goal_area is not None:
         current_distance_to_goal = agent.calculate_distance_to_goal()

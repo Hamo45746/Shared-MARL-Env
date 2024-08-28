@@ -17,9 +17,10 @@ model:
     - [64, [3, 3], 1]
     - [128, [3, 3], 1]
   conv_activation: relu
+local_dir: "./custom_ray_results"
 logger_config:
   loggers: ["ray.tune.logger.TBXLogger"]
-  logdir: "./logs"  # Directory where logs will be stored
+  logdir: "./custom_ray_results"  # Directory where logs will be stored
 multiagent:
   policies:
     policy_0:
@@ -52,4 +53,125 @@ multiagent:
           "shape": [2]
         }
       - {}
-  policy_mapping_fn: policy_mapping_fn
+    policy_1: #The following 4 policies are for decentralised training 
+      - None
+      - Dict
+      - {
+          "encoded_map": {
+            "type": "box",
+            "low": -inf,
+            "high": inf,
+            "shape": [4,32]
+          },
+          "velocity": {
+            "type": "box",
+            "low": -10.0,
+            "high": 10.0,
+            "shape": [2]
+          },
+          "goal": {
+            "type": "box",
+            "low": -2000,
+            "high": 2000,
+            "shape": [2]
+          }
+        }
+      - {
+          "type": "box",
+          "low": -1.0,
+          "high": 1.0,
+          "shape": [2]
+        }
+      - {}
+    policy_2:
+      - None
+      - Dict
+      - {
+          "encoded_map": {
+            "type": "box",
+            "low": -inf,
+            "high": inf,
+            "shape": [4,32]
+          },
+          "velocity": {
+            "type": "box",
+            "low": -10.0,
+            "high": 10.0,
+            "shape": [2]
+          },
+          "goal": {
+            "type": "box",
+            "low": -2000,
+            "high": 2000,
+            "shape": [2]
+          }
+        }
+      - {
+          "type": "box",
+          "low": -1.0,
+          "high": 1.0,
+          "shape": [2]
+        }
+      - {}
+    policy_3:
+      - None
+      - Dict
+      - {
+          "encoded_map": {
+            "type": "box",
+            "low": -inf,
+            "high": inf,
+            "shape": [4,32]
+          },
+          "velocity": {
+            "type": "box",
+            "low": -10.0,
+            "high": 10.0,
+            "shape": [2]
+          },
+          "goal": {
+            "type": "box",
+            "low": -2000,
+            "high": 2000,
+            "shape": [2]
+          }
+        }
+      - {
+          "type": "box",
+          "low": -1.0,
+          "high": 1.0,
+          "shape": [2]
+        }
+      - {}
+    policy_4:
+      - None
+      - Dict
+      - {
+          "encoded_map": {
+            "type": "box",
+            "low": -inf,
+            "high": inf,
+            "shape": [4,32]
+          },
+          "velocity": {
+            "type": "box",
+            "low": -10.0,
+            "high": 10.0,
+            "shape": [2]
+          },
+          "goal": {
+            "type": "box",
+            "low": -2000,
+            "high": 2000,
+            "shape": [2]
+          }
+        }
+      - {
+          "type": "box",
+          "low": -1.0,
+          "high": 1.0,
+          "shape": [2]
+        }
+      - {}
+  #policy_mapping_fn: policy_mapping_fn # This is for centralised training
+  policy_mapping_fn: policy_mapping_fn # this is for decentralised training 
