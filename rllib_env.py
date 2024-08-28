@@ -373,7 +373,6 @@ class Environment(MultiAgentEnv):
             elif self.agent_type == "task_allocation":
                 reward = DiscreteAgentController.calculate_reward(agent)  # TODO: Implement task allocation reward
             else: 
-                print("agentID", agent_id)
                 reward = calculate_continuous_reward(agent, self)
             rewards[agent_id] = reward
         

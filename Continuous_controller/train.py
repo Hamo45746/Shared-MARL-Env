@@ -70,7 +70,7 @@ for i in range(200):
           f"Policy Loss: {result['info']['learner']['policy_0']['learner_stats']['policy_loss']}, "
           f"Entropy: {result['info']['learner']['policy_0']['learner_stats']['entropy']}")
     
-    if (i + 10) % 50 == 0:
+    if (i + 1) % 50 == 0:
         checkpoint_dir = trainer.save(logdir)
         latest_folder = max(glob.glob(os.path.join('/Users/alexandramartinwallace/ray_results/', '*/')), key=os.path.getmtime)
         params_path = os.path.join(latest_folder, "params.pkl")
