@@ -371,7 +371,7 @@ def main():
                 logging.info(f"Loading autoencoder took {load_end - load_start:.2f} seconds")
 
                 vis_start = time.time()
-                output_data = visualize_autoencoder_progress(autoencoder, full_state[layer], layer, epoch, output_folder)
+                visualize_autoencoder_progress(autoencoder, full_state[layer], layer, epoch, output_folder)
                 vis_end = time.time()
                 logging.info(f"Visualization took {vis_end - vis_start:.2f} seconds")
 
