@@ -130,9 +130,12 @@ def test_specific_autoencoder(autoencoder, h5_folder, output_folder, autoencoder
         # h5_file = find_suitable_h5_file(h5_folder)
         # filename = 'data_mcity_image_1_s5_t90_j89_a10.h5'
         # filename = 'data_mcity_image_1_s2485_t90_j0_a1.h5'
-        filename = 'test_data/data_mrand_s1176_t55_j0_a8.h5'
+        # filename = 'test_data/data_mrand_s1176_t55_j0_a8.h5'
+        # filename = 'test_data/data_mrand_s1073_t21_j96_a14.h5' # jammer test
+        filename = '3_map_data/data_mcity_image_3_s33_t90_j0_a10.h5'
         h5_file = os.path.join(h5_folder, filename)
-        full_state = load_data_from_h5(h5_file, step=0, agent=0)
+        step = 2, agent = 2
+        full_state = load_data_from_h5(h5_file, step=step, agent=agent)
 
         input_shape = full_state.shape
         logging.info(f"Full input shape: {input_shape}")
@@ -196,7 +199,7 @@ def test_specific_autoencoder(autoencoder, h5_folder, output_folder, autoencoder
                 mse = np.mean((input_data - decoded) ** 2)
             
             epoch_str = f"Epoch {epoch} - " if epoch is not None else ""
-            plt.suptitle(f'Layer {layer} - {epoch_str}Autoencoder Test (MSE: {mse:.6f})')
+            plt.suptitle(f'Layer {layer} - {epoch_str}Autoencoder Test (MSE: {mse:.6f}) - file: {filename} - step: {step} - agent: {agent}')
 
             # Save the figure
             plt.tight_layout()
@@ -226,15 +229,15 @@ def main_test_data():
 
 def main_test_specific():
     H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
-    # AUTOENCODER_FILE = 'AE_save_23_08/autoencoder_0_best.pth'  # Update this to the Autoencoder to test
-    AUTOENCODER_FILE = 'autoencoder_0_best.pth'
+    AUTOENCODER_FILE = 'AE_save_23_08/autoencoder_1_best.pth'  # Update this to the Autoencoder to test
+    # AUTOENCODER_FILE = 'autoencoder_2_best.pth'
     OUTPUT_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data/training_visualisations'  # Update this path
 
     autoencoder_path = os.path.join(H5_FOLDER, AUTOENCODER_FILE)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     autoencoder = EnvironmentAutoencoder(device)
     autoencoder.load(autoencoder_path)
-    test_specific_autoencoder(autoencoder, H5_FOLDER, OUTPUT_FOLDER, autoencoder_index=0)
+    test_specific_autoencoder(autoencoder, H5_FOLDER, OUTPUT_FOLDER, autoencoder_index=1)
     
     
 def main_test_autoencoder_performance():
