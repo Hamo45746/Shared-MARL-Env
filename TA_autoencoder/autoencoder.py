@@ -118,7 +118,7 @@ class LayerAutoencoder(nn.Module):
 
     def decode(self, x):
         decoded = self.decoder(x)
-        # return F.interpolate(decoded, size=(276, 155), mode='bilinear', align_corners=False)
+        return F.interpolate(decoded, size=(276, 155), mode='bilinear', align_corners=False)
     
     # def get_sparse_layers(self):
     #     return [layer for layer in self.encoder if isinstance(layer, SparseConv2d)]

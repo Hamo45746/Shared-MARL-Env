@@ -1,8 +1,8 @@
 from discrete_agent import DiscreteAgent
 from continuous_agent import ContinuousAgent
 from task_allocation_agent import TaskAllocationAgent
-from target import Target
-import numpy as np
+# from target import Target
+# import numpy as np
 
 def create_agents(nagents, map_matrix, obs_range, randomiser, path_preprocessor, pos_list=None, agent_type='discrete', flatten=False, randinit=False, constraints=None):
     """Initializes the agents on a map (map_matrix).

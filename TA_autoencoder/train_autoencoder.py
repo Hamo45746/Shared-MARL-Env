@@ -13,10 +13,10 @@ import h5py
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
-from torch.cuda.amp import GradScaler, autocast
+# from torch.cuda.amp import GradScaler, autocast
 from torch.utils.tensorboard import SummaryWriter
-from functools import partial
-from multiprocessing import Pool, Value, cpu_count
+# from functools import partial
+from multiprocessing import Pool, Value
 import traceback
 # from test_autoencoder import test_specific_autoencoder
 
@@ -66,7 +66,6 @@ def setup_logging():
         logging.info(f"Logging initialized. Log file: {log_file_path}")
     except Exception as e:
         print(f"Error setting up logging: {e}")
-        print(f"Will log to console only.")
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
@@ -145,13 +144,12 @@ class FlattenedMultiAgentH5Dataset(Dataset):
             return {f'layer_{i}': full_state_tensor[i] for i in range(full_state_tensor.shape[0])}
 
 def get_cpu_temp():
-    try:
-        temps = psutil.sensors_temperatures()
-        if 'coretemp' in temps:
-            return max(temp.current for temp in temps['coretemp'])
-        return None
-    except:
-        return None
+
+    temps = psutil.sensors_temperatures()
+    if 'coretemp' in temps:
+        return max(temp.current for temp in temps['coretemp'])
+    return None
+ 
 
 def init_worker():
     global interrupt_flag
@@ -618,7 +616,7 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
     
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
-    original_config = load_config(config_path)
+    # original_config = load_config(config_path)
     setup_logging()
     
     # Configuration ranges
@@ -669,7 +667,7 @@ def main():
     num_processes = max(1, mp.cpu_count() // 2 )
     with Pool(processes=num_processes, initializer=init_worker) as pool:
         try:
-            results = list(tqdm(
+            list(tqdm(
                 pool.imap_unordered(process_config_wrapper, configs_to_process),
                 total=len(configs_to_process),
                 disable=interrupt_flag.value
@@ -690,10 +688,10 @@ def main():
         h5_files_low_jammers = [os.path.join(H5_FOLDER, filename) for filename in completed_configs if int(filename.split('_j')[1].split('_')[0]) < 5]
         h5_files_all_jammers = [os.path.join(H5_FOLDER, filename) for filename in completed_configs]
         
-        with h5py.File(h5_files_low_jammers[0], 'r') as f:
-            first_step = f['data']['0']
-            first_agent = first_step[list(first_step.keys())[0]]
-            # input_shape = first_agent['full_state'].shape
+        # with h5py.File(h5_files_low_jammers[0], 'r') as f:
+        #     first_step = f['data']['0']
+        #     first_agent = first_step[list(first_step.keys())[0]]
+        #     # input_shape = first_agent['full_state'].shape
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         autoencoder = EnvironmentAutoencoder(device)
@@ -747,7 +745,7 @@ def main_collect_test_data():
     num_processes = max(1, os.cpu_count() // 2)
     with Pool(processes=num_processes, initializer=init_worker) as pool:
         try:
-            results = list(tqdm(
+            list(tqdm(
                 pool.imap_unordered(process_config_wrapper, configs_to_process),
                 total=len(configs_to_process),
                 desc="Collecting test data"

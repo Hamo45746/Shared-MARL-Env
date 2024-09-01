@@ -1,5 +1,5 @@
 from target import Target
-import numpy as np
+# import numpy as np
 
 def create_targets(ntargets, map_matrix, obs_range, randomiser, path_processor, pos_list=None, flatten=False, randinit=False, constraints=None):
     """Initializes the targets on a map (map_matrix)."""

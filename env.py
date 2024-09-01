@@ -9,13 +9,10 @@ import target_utils
 import pygame
 import gc
 from skimage.transform import resize, rotate
-from skimage.util import crop
-from scipy.ndimage import label, generate_binary_structure
-from skimage.draw import rectangle, disk, polygon, ellipse
 from layer import AgentLayer, JammerLayer, TargetLayer
 from gym.utils import seeding
 # from gymnasium.utils import seeding
-from Continuous_controller.agent_controller import AgentController
+# from Continuous_controller.agent_controller import AgentController
 from Task_controller.agent_controller import DiscreteAgentController
 from Continuous_controller.reward import calculate_continuous_reward
 # from gym.spaces import Dict as GymDict, Box, Discrete
@@ -338,7 +335,7 @@ class Environment(gym.core.Env):
         
         # Update agent positions and layer state based on the provided actions
         for agent_id, action in actions_dict.items():
-            agent = self.agents[agent_id]
+            # agent = self.agents[agent_id]
             self.agent_layer.move_agent(agent_id, action)
             
             # Check if the agent touches any jammer and destroy it
@@ -683,11 +680,11 @@ class Environment(gym.core.Env):
         if self.render_modes == "human":
             pygame.event.pump()
             pygame.display.update()
-        # return (new_observation,
-        #     np.transpose(new_observation, axes=(1, 0, 2))
-        #     if self.render_modes == "rgb_array"
-        #     else None
-        # ) # for gymnasium
+        return (new_observation,
+            np.transpose(new_observation, axes=(1, 0, 2))
+            if self.render_modes == "rgb_array"
+            else None
+        ) # for gymnasium
 
 
     def state(self) -> np.ndarray:
