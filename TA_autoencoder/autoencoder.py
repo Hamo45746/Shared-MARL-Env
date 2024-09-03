@@ -48,76 +48,109 @@ def ceildiv(a, b):
 #         # Apply 1x1 convolution for final adjustments
 #         return self.conv(x.to(self.conv.weight.dtype))
 
+
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(ResidualBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        
+        self.shortcut = nn.Sequential()
+        if in_channels != out_channels:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, bias=False),
+                nn.BatchNorm2d(out_channels)
+            )
+
+    def forward(self, x):
+        residual = x
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += self.shortcut(residual)
+        out = F.relu(out)
+        return out
+
+
 class LayerAutoencoder(nn.Module):
     def __init__(self, is_map=False):
         super(LayerAutoencoder, self).__init__()
         self.is_map = is_map
+        self.latent_dim = 256
 
         # Calculate the flattened size
-        self.flattened_size = 1024 * 17 * 9  # 256 * 7 * 3 = 5376
+        self.flattened_size = 512 * 17 * 9  # 256 * 7 * 3 = 5376
         input_shape = (276, 155)
-        self.input_shape = input_shape  # (276, 155)
+        self.input_shape = input_shape
 
         # Encoder
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 128, kernel_size=4, stride=2, padding=1), # Output: 138 x 77 x 128
+            nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1), # 69 x 38 x 256
+            ResidualBlock(64, 64),
+            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1), # 34 x 19 x 512
+            ResidualBlock(128, 128),
+            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(512, 1024, kernel_size=4, stride=2, padding=1), # 17 x 9 x 1024
+            ResidualBlock(256, 256),
+            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),
             nn.LeakyReLU(0.2),
+            ResidualBlock(512, 512),
         )
-        
-        self.latent_space = nn.Linear(self.flattened_size, 256)
+
+        self.flatten = nn.Flatten()
+        self.fc_encoder = nn.Linear(512 * 17 * 9, self.latent_dim)
 
         # Decoder
+        self.fc_decoder = nn.Linear(self.latent_dim, 512 * 17 * 9)
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(1024, 512, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
+            ResidualBlock(512, 512),
             nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
             nn.LeakyReLU(0.2),
+            ResidualBlock(256, 256),
             nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
             nn.LeakyReLU(0.2),
-            # CustomFinalUpsampling(32, 1, (276, 155))
-            nn.ConvTranspose2d(128, 1, kernel_size=4, stride=2, padding=1)
+            ResidualBlock(128, 128),
+            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
+            nn.LeakyReLU(0.2),
+            ResidualBlock(64, 64),
+            nn.ConvTranspose2d(64, 1, kernel_size=4, stride=2, padding=1)
         )
-        self.latent_to_decoder_input_size = nn.Linear(256, 1024 * 17 * 9)
-        # self.apply(self._init_weights)
-
-    # def _init_weights(self, module):
-    #     if isinstance(module, (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)):
-    #         nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
-    #         if module.bias is not None:
-    #             nn.init.constant_(module.bias, 0)
 
     def forward(self, x):
+        # Encoding
         encoded = self.encoder(x)
-        x = encoded.view(encoded.size(0), -1) # Flattening
-        z = self.latent_space(x)
-        z = self.latent_to_decoder_input_size(z)
-        decoder_input = z.view(z.size(0), 1024, 17, 9)
-        decoded = self.decoder(decoder_input)
-        
+        flattened = self.flatten(encoded)
+        latent = self.fc_encoder(flattened)
+
+        # Decoding
+        decoded = self.fc_decoder(latent)
+        decoded = decoded.view(-1, 512, 17, 9)
+        decoded = self.decoder(decoded)
+
+        # Post-processing
         if not self.is_map:
-            # Scale the output to be between -20 and 0
             decoded = -20 + 20 * torch.sigmoid(decoded)
-            # Apply background mask
             background_mask = (decoded <= -19.8).float()
             decoded = decoded * (1 - background_mask) + (-20) * background_mask
         else:
-            # For the map layer, we keep the binary output
             decoded = torch.sigmoid(decoded)
-        decoded = F.interpolate(decoded, size=(276, 155), mode='bilinear', align_corners=False)
+
+        decoded = F.interpolate(decoded, size=self.input_shape, mode='bilinear', align_corners=False)
         return decoded
 
     def encode(self, x):
-        return self.encoder(x)
+        encoded = self.encoder(x)
+        flattened = self.flatten(encoded)
+        return self.fc_encoder(flattened)
 
-    def decode(self, x):
-        decoded = self.decoder(x)
-        return F.interpolate(decoded, size=(276, 155), mode='bilinear', align_corners=False)
+    def decode(self, latent):
+        decoded = self.fc_decoder(latent)
+        decoded = decoded.view(-1, 512, 17, 9)
+        decoded = self.decoder(decoded)
+        return F.interpolate(decoded, size=self.input_shape, mode='bilinear', align_corners=False)
     
     # def get_sparse_layers(self):
     #     return [layer for layer in self.encoder if isinstance(layer, SparseConv2d)]
