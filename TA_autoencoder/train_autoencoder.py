@@ -31,7 +31,7 @@ H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
 H5_PROGRESS_FILE = 'h5_collection_progress.txt'
 AUTOENCODER_FILE = 'trained_autoencoder.pth'
 TRAINING_STATE_FILE = 'training_state.pth'
-STEPS_PER_EPISODE = 100
+STEPS_PER_EPISODE = 100 # 1 for map AE, 100 for others
 LOG_FILE = 'autoencoder_training.log'
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -465,7 +465,7 @@ def load_training_state(autoencoder, ae_index):
             return 0
     return 0
         
-def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, num_epochs=100, batch_size=32, patience=2, delta=0.01, load_previous=None, load_optimizer=False):
+def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_high_jammers, num_epochs=100, batch_size=32, patience=2, delta=0.01, load_previous=None, load_optimizer=False):
     device = autoencoder.device
     output_folder = os.path.join(H5_FOLDER, 'training_visualisations')
     os.makedirs(output_folder, exist_ok=True)
@@ -507,7 +507,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, n
             
             # Use appropriate dataset for each autoencoder
             if ae_index == 2:
-                dataset = FlattenedMultiAgentH5Dataset(h5_files_all_jammers, dtype=dtype)
+                dataset = FlattenedMultiAgentH5Dataset(h5_files_high_jammers, dtype=dtype)
             else:
                 dataset = FlattenedMultiAgentH5Dataset(h5_files_low_jammers, dtype=dtype)
             
@@ -619,12 +619,19 @@ def main():
     # original_config = load_config(config_path)
     setup_logging()
     
-    # Configuration ranges
-    seed_range = range(1, 400) # 1-500 seed
+    # Configuration ranges - AE 1-2
+    seed_range = range(1, 400) # 1-399 seed
     num_agents_range = range(10, 11) # 10 agents
     num_targets_range = range(90, 91) # 90 targets
     num_jammers_range_low = range(0, 1)  # 0 jammers
     num_jammers_range_high = range(90, 91)  # 90 jammers
+
+    # Configurations ranges - AE 0 (Map)
+    # seed_range = range(1, 10000) # 1-9999 seed
+    # num_agents_range = range(1, 2) # 1 agents
+    # num_targets_range = range(90, 91) # 90 targets
+    # num_jammers_range_low = range(0, 1)  # 0 jammers
+    # num_jammers_range_high = range(90, 91)  # 90 jammers
     
     map_paths = ['city_image_1.npy']#, 'city_image_2.npy', 'city_image_3.npy']
     
@@ -647,7 +654,7 @@ def main():
         for num_jammers in num_jammers_range_high
     ]
     
-    all_configs = configs + configs_high_jammers
+    all_configs = configs + configs_high_jammers # Comment out high jammers for AE 0 (Map)
     
     total_configs = len(all_configs)
     initial_completed = len(load_progress(all_configs))
@@ -686,8 +693,7 @@ def main():
 
         # Separate h5 files for regular and high-jammer configurations
         h5_files_low_jammers = [os.path.join(H5_FOLDER, filename) for filename in completed_configs if int(filename.split('_j')[1].split('_')[0]) < 5]
-        h5_files_all_jammers = [os.path.join(H5_FOLDER, filename) for filename in completed_configs]
-        
+        h5_files_high_jammers = [os.path.join(H5_FOLDER, filename) for filename in completed_configs if int(filename.split('_j')[1].split('_')[0]) >=5]
         # with h5py.File(h5_files_low_jammers[0], 'r') as f:
         #     first_step = f['data']['0']
         #     first_agent = first_step[list(first_step.keys())[0]]
@@ -697,7 +703,7 @@ def main():
         autoencoder = EnvironmentAutoencoder(device)
 
         # Train autoencoders
-        train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_all_jammers, batch_size=16, load_previous=[0])
+        train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_high_jammers, batch_size=16, load_previous=[0])
 
         # Save the final autoencoder
         autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))

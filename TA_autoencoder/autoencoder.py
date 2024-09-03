@@ -54,20 +54,19 @@ class LayerAutoencoder(nn.Module):
         self.is_map = is_map
 
         # Calculate the flattened size
-        self.flattened_size = 512 * 17 * 9  # 256 * 7 * 3 = 5376
+        self.flattened_size = 1024 * 17 * 9  # 256 * 7 * 3 = 5376
         input_shape = (276, 155)
         self.input_shape = input_shape  # (276, 155)
-        # self.linearXIn = ceildiv(ceildiv(ceildiv(ceildiv(input_shape[1], 2), 2), 2), 2) # needs to match stride each layer
-        # self.linearYIn = ceildiv(ceildiv(ceildiv(ceildiv(input_shape[0], 2), 2), 2), 2)
+
         # Encoder
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1), # Output: 138 x 77 x 64
+            nn.Conv2d(1, 128, kernel_size=4, stride=2, padding=1), # Output: 138 x 77 x 128
             nn.LeakyReLU(0.2),
-            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1), # 69 x 38 x 128
+            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1), # 69 x 38 x 256
             nn.LeakyReLU(0.2),
-            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1), # 34 x 19 x 256
+            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1), # 34 x 19 x 512
             nn.LeakyReLU(0.2),
-            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1), # 17 x 9 x 512
+            nn.Conv2d(512, 1024, kernel_size=4, stride=2, padding=1), # 17 x 9 x 1024
             nn.LeakyReLU(0.2),
         )
         
@@ -75,16 +74,16 @@ class LayerAutoencoder(nn.Module):
 
         # Decoder
         self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(1024, 512, kernel_size=4, stride=2, padding=1),
+            nn.LeakyReLU(0.2),
             nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
             nn.LeakyReLU(0.2),
             nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
             # CustomFinalUpsampling(32, 1, (276, 155))
-            nn.ConvTranspose2d(64, 1, kernel_size=4, stride=2, padding=1)
+            nn.ConvTranspose2d(128, 1, kernel_size=4, stride=2, padding=1)
         )
-        self.latent_to_decoder_input_size = nn.Linear(256, 512 * 17 * 9)
+        self.latent_to_decoder_input_size = nn.Linear(256, 1024 * 17 * 9)
         # self.apply(self._init_weights)
 
     # def _init_weights(self, module):
@@ -98,7 +97,7 @@ class LayerAutoencoder(nn.Module):
         x = encoded.view(encoded.size(0), -1) # Flattening
         z = self.latent_space(x)
         z = self.latent_to_decoder_input_size(z)
-        decoder_input = z.view(z.size(0), 512, 17, 9)
+        decoder_input = z.view(z.size(0), 1024, 17, 9)
         decoded = self.decoder(decoder_input)
         
         if not self.is_map:
