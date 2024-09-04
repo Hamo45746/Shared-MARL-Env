@@ -73,18 +73,10 @@ class Environment(gym.core.Env):
         self.current_step = 0
         self.render_modes = render_mode
         self.screen = None
-
         # pygame.init() # Comment this out when not rendering
-
-
-    # def load_map(self): # OLD (WORKING)
-    #     original_map = np.load(self.config['map_path'])[:, :, 0]
-    #     original_map = original_map.transpose() # want to keep map as horizontal rectangle - do transposition in render instead
-    #     original_x, original_y = original_map.shape
-    #     self.X = int(original_x * self.map_scale)
-    #     self.Y = int(original_y * self.map_scale)
-    #     resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
-    #     return (resized_map != 0).astype(int) # 0 for obstacles, 1 for free space
+        self.networks = []
+        self.agent_to_network = {}
+        
     
     def load_map(self): # NEW
         original_map = np.load(self.config['map_path'])[:, :, 0]
@@ -98,6 +90,7 @@ class Environment(gym.core.Env):
         else:
             resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
             return (resized_map != 0).astype(int)  # 0 for obstacles, 1 for free space
+    
     
     def generate_random_map(self, height, width):
         map_array = np.ones((height, width), dtype=int)
@@ -154,13 +147,8 @@ class Environment(gym.core.Env):
         for y in range(0, height, grid_cell_size):
             map_array[y:y+street_width, :] = 1
 
-        # Randomly rotate the entire map
-        # if self.np_random.random() < 0.5:
-        #     rotation_angle = self.np_random.uniform(-90, 90)
-        #     map_array = rotate(map_array, angle=rotation_angle, resize=False, preserve_range=True, order=0)
-        #     map_array = (map_array > 0.5).astype(int)  # Threshold after rotation
-
         return map_array
+
 
     def initialise_agents(self):
         agent_positions = self.config.get('agent_positions')
@@ -233,6 +221,9 @@ class Environment(gym.core.Env):
 
         self.update_global_state()
         self.current_step = 0
+        
+        self.networks = []
+        self.agent_to_network = {}
 
         return self.get_obs()
 
@@ -279,15 +270,7 @@ class Environment(gym.core.Env):
             for agent_id, path in self.agent_paths.items():
                 if path:
                     next_pos = path.pop(0)
-                    # if agent_id == 3:
-                    #     agent = self.agents[agent_id]
-                    #     action = agent.determine_action(agent.current_position(), next_pos)
-                        # print(f"Agent {agent_id} Current pos: {agent.current_position()}. Next pos: {next_pos}. Via action: {agent.motion_range[action]}")
                     self.agent_layer.set_position(agent_id, next_pos[0], next_pos[1])
-                    
-                    # Update agent's own trail after each movement
-                    # self.agents[agent_id].update_own_trail()
-
             
             # Move all targets
             for target in self.target_layer.targets:
@@ -309,10 +292,6 @@ class Environment(gym.core.Env):
                 
             # Update observations and share them
             self.share_and_update_observations()
-            # print(self.agents[3].get_observation_state()[1])
-            
-            # for i, agent in enumerate(self.agents):
-            #     print_agent_full_state_region(agent, self.global_state)
             
             self.current_step += 1
             # self.render()
@@ -367,12 +346,8 @@ class Environment(gym.core.Env):
         # truncated = self.is_episode_done()
         info = {}
         
-        # print("observations", observations)
-        # print("local_states", local_states)
-        # np.set_printoptions(threshold=np.inf)
-        # print("local_states0", local_states[0])
-        # return local_states, rewards, terminated, truncated, info # for gymnasium
         return observations, rewards, terminated, info # for gym
+
 
     def update_observations(self): # Merge Notes: Alex had this one
         observations = {}
@@ -382,10 +357,6 @@ class Environment(gym.core.Env):
             observations[agent_id] = obs
         return observations
     
-    # def update_observations(self): # Merge Notes: Hamish had this one
-    #     for agent_id in range(self.num_agents):
-    #         obs = self.safely_observe(agent_id)
-    #         self.agent_layer.agents[agent_id].set_observation_state(obs)
 
     def collect_rewards(self):
         # local_states = {}
@@ -773,71 +744,8 @@ class Environment(gym.core.Env):
                 if i != j:
                     other_pos = other_agent.current_position()
                     if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(i) and not self.is_comm_blocked(j):
-                        # print(f"Agent {i} is communicating with Agent {j}")
                         other_agent.update_full_state(current_obs, current_pos)
-                        # other_obs = self.safely_observe(j)
-                        # terminal_width, _ = shutil.get_terminal_size()
-                        # np.set_printoptions(threshold=np.inf, linewidth=terminal_width)
-                        
-                        # Print the other agent's observation
-                        # print(f"Agent {j}'s observation:")
-                        # print(other_agent.get_observation_state()[1:2])
 
-                        # Print the section of the agent's local state before communication
-                        # print(f"Agent {i} local state at Agent {j}'s observation location before communication:")
-                        # self.print_local_state_section(agent, other_pos)
-                        
-                        # agent.update_full_state(other_obs, other_pos)
-                        
-                        # Print the section of the agent's local state after communication
-                        # print(f"Agent {i} local state at Agent {j}'s observation location after communication:")
-                        # self.print_local_state_section(agent, other_pos)
-                        # print("---")
-
-            
-
-    # def share_and_update_observations(self):
-    #     """
-    #     Updates each agent's internal observation state and internal local (entire env) state.
-    #     Will merge current observations of agents within communication range into each agent's local state.
-    #     This function should be run in the step function.
-    #     """
-
-    #     np.set_printoptions(threshold=np.inf, linewidth=np.inf) #THIS is for testing 
-
-    #     for i, agent in enumerate(self.agents):
-    #         current_obs = agent.get_observation_state()
-    #         current_pos = agent.current_position()
-    #         # print(f"Agent {i} local state before communication:")
-
-    #         for j, other_agent in enumerate(self.agents):
-    #             if i != j:
-    #                 other_pos = other_agent.current_position()
-    #                 if self.within_comm_range(current_pos, other_pos):
-    #                     if not self.is_comm_blocked(i):
-    #                         print(f"Agent {i} is communicating with Agent {j}")
-
-    #                         # Print the other agent's observation
-    #                         print(f"Agent {j}'s observation:")
-    #                         print(other_agent.get_observation_state())
-
-    #                         # Print the section of the agent's local state before communication
-    #                         print(f"Agent {i} local state at Agent {j}'s observation location before communication:")
-    #                         self.print_local_state_section(agent, other_pos)
-
-    #                         other_agent.update_local_state(current_obs, current_pos)
-    #                         agent.communicated = True 
-
-    #                         # Print the section of the agent's local state after communication
-    #                         print(f"Agent {i} local state at Agent {j}'s observation location after communication:")
-    #                         self.print_local_state_section(agent, other_pos)
-    #                         print("---")
-    #                     else:
-    #                        print(f"Agent {i} is within a jammed area and cannot communicate with Agent {j}")
-    #                 else:
-    #                     print(f"Agent {i} is out of communication range with Agent {j}")
-    #                 if self.is_comm_blocked(i):
-    #                     print("comm is blocked")
 
     def print_local_state_section(self, agent, other_pos):
         """
@@ -979,6 +887,7 @@ class Environment(gym.core.Env):
         gc.collect()
         return collected_data
     
+    
     def print_all_agents_full_state_regions(self, region_size=20):
         """
         Prints the full_state regions for all agents after each step.
@@ -988,6 +897,7 @@ class Environment(gym.core.Env):
             print(f"\nAgent {agent_id}:")
             print_agent_full_state_region(agent, self.global_state, region_size)
         print("\n" + "="*50 + "\n")  # Separator between steps
+    
     
 def print_agent_full_state_region(agent, global_state, region_size=20):
     """
@@ -1026,6 +936,7 @@ def print_agent_full_state_region(agent, global_state, region_size=20):
     print(env_str)
     print()
 
+
 def print_full_state_summary(full_state, step, agent_id):
     print(f"Full state summary for Agent {agent_id} at step {step}:")
     for layer in range(full_state.shape[0]):
@@ -1038,6 +949,7 @@ def print_full_state_summary(full_state, step, agent_id):
         print(f"    Num -20: {np.sum(layer_data == -20)}")
     sys.stdout.flush()
     
+    
 def print_env_state_summary(step, global_state):
     print(f"Full state summary for Env at step {step}:")
     for layer in range(global_state.shape[0]):
@@ -1049,6 +961,7 @@ def print_env_state_summary(step, global_state):
         print(f"    Num non-negative: {np.sum(layer_data >= 0)}")
         print(f"    Num -20: {np.sum(layer_data == -20)}")
     sys.stdout.flush()
+
 
 # config_path = 'config.yaml' 
 # env = Environment(config_path)
