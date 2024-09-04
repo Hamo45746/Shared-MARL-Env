@@ -19,6 +19,7 @@ from Continuous_controller.reward import calculate_continuous_reward
 from gym import spaces
 # from gymnasium import spaces
 from path_processor_simple import PathProcessor
+import matplotlib.pyplot as plt
 
 
 class Environment(gym.core.Env):
@@ -214,6 +215,8 @@ class Environment(gym.core.Env):
 
         self.global_state.fill(0)
         self.global_state[0] = self.map_matrix
+        
+        self.path_processor = PathProcessor(self.map_matrix, self.X, self.Y) # MUST HAVE
 
         self.initialise_agents()
         self.initialise_targets()
@@ -437,6 +440,7 @@ class Environment(gym.core.Env):
         # return all(self.agent_layer.is_agent_terminated(i) for i in range(len(self.agents)))
         return False
 
+    ## RENDERING FUNCTIONS ##
     def draw_agents(self):
         """
         Use pygame to draw agents and their paths.
@@ -527,6 +531,7 @@ class Environment(gym.core.Env):
                 ),
             )
             
+            
     def draw_waypoints(self):
         """
         Draw waypoints for task allocation agents.
@@ -574,6 +579,7 @@ class Environment(gym.core.Env):
                 text = font.render(str(i), True, color)
                 self.screen.blit(text, (waypoint_center[0] + 5, waypoint_center[1] + 5))
 
+
     #Still working on this function - Trying to make it work to show all observed area 
     def draw_all_agents_observations(self):
 
@@ -594,6 +600,7 @@ class Environment(gym.core.Env):
             )
             col = (0 ,0, 225)
             pygame.draw.rect(self.screen, col, pos)
+            
             
     def draw_agent_communication_range(self):
         """
@@ -731,38 +738,103 @@ class Environment(gym.core.Env):
         xolo, yolo = abs(np.clip(xld, -self.obs_range // 2, 0)), abs(np.clip(yld, -self.obs_range // 2, 0))
         xohi, yohi = xolo + (xhi - xlo), yolo + (yhi - ylo)
         return xlo, xhi + 1, ylo, yhi + 1, xolo, xohi + 1, yolo, yohi + 1
-                        
+          
+    ## COMMUNICATION FUNCTIONS ##                    
     def share_and_update_observations(self):
+        # First, update each agent's own observation
         for i, agent in enumerate(self.agents):
-            # agent.decay_full_state()
             current_obs = self.safely_observe(i)
             current_pos = agent.current_position()
             agent.set_observation_state(current_obs)
             agent.update_full_state(current_obs, current_pos)
-            
-            for j, other_agent in enumerate(self.agents):
-                if i != j:
-                    other_pos = other_agent.current_position()
-                    if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(i) and not self.is_comm_blocked(j):
-                        other_agent.update_full_state(current_obs, current_pos)
 
+        # Update networks
+        self.update_networks()
 
-    def print_local_state_section(self, agent, other_pos):
+        # Share information within each network
+        for network in self.networks:
+            combined_state = None
+            for agent_id in network:
+                if combined_state is None:
+                    combined_state = self.agents[agent_id].local_state.copy()
+                else:
+                    self.agents[agent_id].merge_full_states(combined_state)
+                    for layer in range(1, combined_state.shape[0]):
+                        mask = (self.agents[agent_id].local_state[layer] > combined_state[layer]) | (self.agents[agent_id].local_state[layer] == 0)
+                        combined_state[layer][mask] = self.agents[agent_id].local_state[layer][mask]
+
+            # Distribute the combined information to all agents in the network
+            for agent_id in network:
+                self.agents[agent_id].local_state = combined_state.copy()
+    
+    
+    def update_networks(self):
         """
-        Prints the section of the agent's local state that corresponds to the other agent's observation location.
+        Incrementally updates the networks based on agent movements and jamming status.
         """
-        obs_range = self.obs_range
-        obs_half_range = obs_range // 2
-        x_start, x_end = other_pos[0] - obs_half_range, other_pos[0] + obs_half_range + 1
-        y_start, y_end = other_pos[1] - obs_half_range, other_pos[1] + obs_half_range + 1
+        # Check each agent's current connections
+        for i, agent in enumerate(self.agents):
+            current_network = self.agent_to_network.get(i)
+            connected_agents = self.get_connected_agents(i)
 
-        x_start = int(x_start)
-        x_end = int(x_end)
-        y_start = int(y_start)
-        y_end = int(y_end)
-        
-        local_state_section = agent.local_state[1:2, x_start:x_end, y_start:y_end]
-        print(local_state_section)
+            if not connected_agents:
+                # Agent is isolated
+                if current_network:
+                    self.remove_from_network(i, current_network)
+                self.create_new_network([i])
+            else:
+                if not current_network:
+                    # Agent was isolated, now connected
+                    self.add_to_existing_or_new_network(i, connected_agents)
+                else:
+                    # Check for new connections outside current network
+                    for j in connected_agents:
+                        if self.agent_to_network.get(j) != current_network:
+                            self.merge_networks(current_network, self.agent_to_network[j])
+
+        # Clean up empty networks
+        self.networks = [net for net in self.networks if net]
+
+
+    def get_connected_agents(self, agent_id):
+        """Returns a list of agents that agent_id can directly communicate with."""
+        connected = []
+        for j, other_agent in enumerate(self.agents):
+            if agent_id != j and self.within_comm_range(self.agents[agent_id].current_position(), other_agent.current_position()) and \
+               not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(j):
+                connected.append(j)
+        return connected
+
+
+    def remove_from_network(self, agent_id, network):
+        network.remove(agent_id)
+        del self.agent_to_network[agent_id]
+
+
+    def create_new_network(self, agents):
+        new_network = set(agents)
+        self.networks.append(new_network)
+        for agent in agents:
+            self.agent_to_network[agent] = new_network
+
+
+    def add_to_existing_or_new_network(self, agent_id, connected_agents):
+        for connected in connected_agents:
+            if connected in self.agent_to_network:
+                self.agent_to_network[connected].add(agent_id)
+                self.agent_to_network[agent_id] = self.agent_to_network[connected]
+                return
+        # If no existing network found, create a new one
+        self.create_new_network([agent_id] + connected_agents)
+
+
+    def merge_networks(self, network1, network2):
+        merged = network1.union(network2)
+        self.networks.remove(network1)
+        self.networks.remove(network2)
+        self.networks.append(merged)
+        for agent in merged:
+            self.agent_to_network[agent] = merged
     
     
     def within_comm_range(self, agent1, agent2):
@@ -826,9 +898,6 @@ class Environment(gym.core.Env):
         Parameters:
         - position (tuple): The (x, y) coordinates of the jammer on the grid.
         - radius (int): The radius within which the jammer affects other units.
-        
-        Returns:
-        - set of tuples: Set of (x, y) coordinates representing the jammed area.
         """
         center_x, center_y = position
         x, y = np.ogrid[:self.X, :self.Y]
@@ -848,17 +917,15 @@ class Environment(gym.core.Env):
     def seed(self, seed=None): # This version for MARLlib (gym)
         self.np_random, seed = seeding.np_random(seed)
         return [seed] 
-
+    
 
     # Updated to collect data for auto encoder
     def run_simulation(self, max_steps=100):
         step_count = 0
         collected_data = []
-        # Get the terminal size
-        # terminal_size = shutil.get_terminal_size((80, 20))
         
         # np.set_printoptions(threshold=np.inf)
-        
+        # self.load_map = lambda: np.ones((self.X, self.Y), dtype=int) # Uncomment to test with no obstacles
         observations = self.reset()
         # print("Initial global_state shape:", self.global_state.shape)
         collected_data.append(observations)
@@ -875,6 +942,8 @@ class Environment(gym.core.Env):
             collected_data.append(observations)
             step_count += 1
             
+            visualize_agent_states(self, step_count)
+            
             # print(f"Step {step_count} completed")
             # print("Full_state for each agent after step:")
             # for agent_id, agent in enumerate(self.agents):
@@ -887,7 +956,7 @@ class Environment(gym.core.Env):
         gc.collect()
         return collected_data
     
-    
+    ## DEBUGGING PRINTS ##
     def print_all_agents_full_state_regions(self, region_size=20):
         """
         Prints the full_state regions for all agents after each step.
@@ -897,6 +966,24 @@ class Environment(gym.core.Env):
             print(f"\nAgent {agent_id}:")
             print_agent_full_state_region(agent, self.global_state, region_size)
         print("\n" + "="*50 + "\n")  # Separator between steps
+        
+    
+    def print_local_state_section(self, agent, other_pos):
+        """
+        Prints the section of the agent's local state that corresponds to the other agent's observation location.
+        """
+        obs_range = self.obs_range
+        obs_half_range = obs_range // 2
+        x_start, x_end = other_pos[0] - obs_half_range, other_pos[0] + obs_half_range + 1
+        y_start, y_end = other_pos[1] - obs_half_range, other_pos[1] + obs_half_range + 1
+
+        x_start = int(x_start)
+        x_end = int(x_end)
+        y_start = int(y_start)
+        y_end = int(y_end)
+        
+        local_state_section = agent.local_state[1:2, x_start:x_end, y_start:y_end]
+        print(local_state_section)
     
     
 def print_agent_full_state_region(agent, global_state, region_size=20):
@@ -961,8 +1048,26 @@ def print_env_state_summary(step, global_state):
         print(f"    Num non-negative: {np.sum(layer_data >= 0)}")
         print(f"    Num -20: {np.sum(layer_data == -20)}")
     sys.stdout.flush()
+    
+    
+def visualize_agent_states(env, step):
+    n_agents = len(env.agents)
+    fig, axes = plt.subplots(1, n_agents, figsize=(5*n_agents, 5))
+    if n_agents == 1:
+        axes = [axes]
+        
+    for i, agent in enumerate(env.agents):
+        state = agent.local_state[1]  # Assuming layer 1 contains the relevant information
+        im = axes[i].imshow(state, cmap='viridis')
+        axes[i].set_title(f'Agent {i}')
+        fig.colorbar(im, ax=axes[i])
+        
+    plt.suptitle(f'Agent States at Step {step}')
+    plt.tight_layout()
+    plt.savefig(f'agent_states_step_{step}.png')
+    plt.close()
 
 
-# config_path = 'config.yaml' 
-# env = Environment(config_path)
-# Environment.run_simulation(env, max_steps=3)
+config_path = 'config.yaml' 
+env = Environment(config_path)
+Environment.run_simulation(env, max_steps=3)
