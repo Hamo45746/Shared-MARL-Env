@@ -19,7 +19,6 @@ from Continuous_controller.reward import calculate_continuous_reward
 from gym import spaces
 # from gymnasium import spaces
 from path_processor_simple import PathProcessor
-import shutil
 
 
 class Environment(gym.core.Env):
@@ -74,7 +73,8 @@ class Environment(gym.core.Env):
         self.current_step = 0
         self.render_modes = render_mode
         self.screen = None
-        pygame.init()
+
+        # pygame.init() # Comment this out when not rendering
 
 
     # def load_map(self): # OLD (WORKING)
@@ -198,11 +198,11 @@ class Environment(gym.core.Env):
     def define_observation_space(self):
         if self.agent_type == 'task_allocation':
             self.observation_space = spaces.Dict({
-                'local_obs': spaces.Box(low=-20, high=1, shape=(self.D, self.obs_range, self.obs_range), dtype=np.float16),
-                'full_state': spaces.Box(low=-20, high=1, shape=(self.D, self.X, self.Y), dtype=np.float16)
+                'local_obs': spaces.Box(low=-20.0, high=1.0, shape=(self.D, self.obs_range, self.obs_range), dtype=np.float16),
+                'full_state': spaces.Box(low=-20.0, high=1.0, shape=(self.D, self.X, self.Y), dtype=np.float16)
             })
         else:
-            self.observation_space = spaces.Box(low=-20, high=1, shape=(self.D, self.obs_range, self.obs_range), dtype=np.float16)
+            self.observation_space = spaces.Box(low=-20.0, high=1.0, shape=(self.D, self.obs_range, self.obs_range), dtype=np.float16)
 
 
     def reset(self, seed=None):
@@ -306,8 +306,7 @@ class Environment(gym.core.Env):
             
             # Update global state
             self.update_global_state()
-            # for i, agent in enumerate(self.agents):
-            #     agent.decay_full_state()
+                
             # Update observations and share them
             self.share_and_update_observations()
             # print(self.agents[3].get_observation_state()[1])
@@ -776,7 +775,7 @@ class Environment(gym.core.Env):
                     if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(i) and not self.is_comm_blocked(j):
                         # print(f"Agent {i} is communicating with Agent {j}")
                         other_agent.update_full_state(current_obs, current_pos)
-                        other_obs = self.safely_observe(j)
+                        # other_obs = self.safely_observe(j)
                         # terminal_width, _ = shutil.get_terminal_size()
                         # np.set_printoptions(threshold=np.inf, linewidth=terminal_width)
                         
@@ -788,18 +787,14 @@ class Environment(gym.core.Env):
                         # print(f"Agent {i} local state at Agent {j}'s observation location before communication:")
                         # self.print_local_state_section(agent, other_pos)
                         
-                        agent.update_full_state(other_obs, other_pos)
+                        # agent.update_full_state(other_obs, other_pos)
                         
                         # Print the section of the agent's local state after communication
                         # print(f"Agent {i} local state at Agent {j}'s observation location after communication:")
                         # self.print_local_state_section(agent, other_pos)
                         # print("---")
-                        
-                        agent.communicated = True
-                        other_agent.communicated = True
+
             
-            # Decay unobserved cells in the agent's full_state
-            # agent.decay_full_state()
 
     # def share_and_update_observations(self):
     #     """
@@ -999,6 +994,7 @@ def print_agent_full_state_region(agent, global_state, region_size=20):
     Prints a square region of the agent's full_state centered around the agent's current position.
     
     :param agent: The agent object
+    :param global_state: The global state of the environment
     :param region_size: The size of the square region to print (default 20x20)
     """
     current_pos = agent.current_position()
@@ -1012,33 +1008,22 @@ def print_agent_full_state_region(agent, global_state, region_size=20):
     print(f"Agent at position [{current_pos[0]}, {current_pos[1]}]")
     print(f"Printing {region_size}x{region_size} region of full_state:")
     
-    # Get terminal width
-    terminal_width, _ = shutil.get_terminal_size()
-    
-    # for layer in range(1):
-    layer = 1
+    layer = 1  # interested in layer 1
     print(f"Layer {layer}:")
     region = agent.local_state[layer, x_start:x_end, y_start:y_end]
-        
-        # Create a string representation of the region
-    region_str = np.array2string(region, 
-                                     formatter={'float': lambda x: f'{x:4.0f}'}, 
-                                     max_line_width=terminal_width,
-                                     threshold=np.inf,
-                                     separator='')
+    
+    def format_float16(x):
+        return f'{x:5.1f}' if x != 0 else '  0.0'
+    
+    # Create a string representation of the region
+    region_str = '\n'.join(' '.join(format_float16(x) for x in row) for row in region)
     print(region_str)
     print()
-    print("Agent observation for region:")
-    print(agent.get_observation_state()[1])
+    
     print("Corresponding global_state section:")
     env_region = global_state[layer, x_start:x_end, y_start:y_end]
-    # Create a string representation of the region
-    region_str = np.array2string(env_region, 
-                                     formatter={'float': lambda x: f'{x:4.0f}'}, 
-                                     max_line_width=terminal_width,
-                                     threshold=np.inf,
-                                     separator='')
-    print(region_str)
+    env_str = '\n'.join(' '.join(format_float16(x) for x in row) for row in env_region)
+    print(env_str)
     print()
 
 def print_full_state_summary(full_state, step, agent_id):

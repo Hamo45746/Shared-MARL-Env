@@ -1,5 +1,5 @@
 import numpy as np
-from gymnasium import spaces
+from gym import spaces
 import random
 # Reference: This is largely copied from PettingZoos DiscreteAgent and Agent classes.
 
@@ -54,9 +54,9 @@ class DiscreteAgent(Agent):
 
         self.motion_range = [[-1, 0], [1, 0], [0, 1], [0, -1], [0, 0], [1, 1], [-1, 1], [-1, -1], [1, -1]]
 
-        self.current_pos = np.zeros(2, dtype=np.int32)  # x and y position
-        self.last_pos = np.zeros(2, dtype=np.int32)
-        self.temp_pos = np.zeros(2, dtype=np.int32)
+        self.current_pos = np.zeros(2, dtype=np.int16)  # x and y position
+        self.last_pos = np.zeros(2, dtype=np.int16)
+        self.temp_pos = np.zeros(2, dtype=np.int16)
 
         self.map_matrix = map_matrix
 
@@ -65,8 +65,8 @@ class DiscreteAgent(Agent):
         # Initialise the local observation state
         self._obs_range = obs_range
         self.X, self.Y = self.map_matrix.shape
-        self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-20)
-        self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20)
+        self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-20.0, dtype=np.float16)
+        self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20.0, dtype=np.float16)
         
         if flatten:
             self._obs_shape = (n_layers * obs_range**2 + 1,)
@@ -76,7 +76,7 @@ class DiscreteAgent(Agent):
 
     @property
     def observation_space(self):
-        return spaces.Box(low=-20, high=1, shape=self._obs_shape)
+        return spaces.Box(low=-20.0, high=1.0, shape=self._obs_shape)
 
     @property
     def action_space(self):
@@ -126,7 +126,7 @@ class DiscreteAgent(Agent):
         return False
 
     def inbuilding(self, x, y):
-        if self.observation_state[0, x, y] == 0: # Maybe incorrect?
+        if self.observation_state[0, x, y] == 0:
             return True
         return False
 

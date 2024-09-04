@@ -124,7 +124,7 @@ class TaskAllocationAgent(DiscreteAgent):
     def update_full_state(self, observed_state, observer_position):
         observer_x, observer_y = observer_position
         obs_range = self._obs_range
-        for layer in range(1, observed_state.shape[0]):  # Start from layer 1, skip map layer
+        for layer in range(1, observed_state.shape[0]):  # Start from layer 1, skip map layer - as all agents have that
             for dx in range(obs_range):
                 for dy in range(obs_range):
                     global_x = observer_x - obs_range // 2 + dx
@@ -138,17 +138,26 @@ class TaskAllocationAgent(DiscreteAgent):
     def decay_full_state(self):
         for layer in range(1, self.local_state.shape[0]):  # Start from layer 1, skip map layer
             # Create a mask for values to decay
-            decay_mask = (self.local_state[layer] <= 0) & (self.local_state[layer] > -20)
+            decay_mask = (self.local_state[layer] <= 0.0) & (self.local_state[layer] > -20.0)
             # Decay values
-            self.local_state[layer][decay_mask] -= 1
+            self.local_state[layer][decay_mask] -= 0.1
             # Ensure no values below -20
-            self.local_state[layer][self.local_state[layer] < -20] = -20
+            self.local_state[layer][self.local_state[layer] < -20.0] = -20.0
 
     def update_position(self, o_pos, n_pos):
         """Clear the old position and set the new position in the layer state."""
         ox, oy = tuple(map(int, o_pos))
         nx, ny = tuple(map(int, n_pos))
-        if self.local_state[1][ox, oy] == 0:  # Only reset if it was the current position of the agent
-            self.local_state[1][ox, oy] = -1  # Start decay from -1
-        self.local_state[1][nx, ny] = 0  # Refresh the new position to 0
+        if self.local_state[1][ox, oy] == 0.0:  # Only reset if it was the current position of the agent
+            self.local_state[1][ox, oy] = -0.1  # Start decay from -1
+        self.local_state[1][nx, ny] = 0.0  # Refresh the new position to 0
+        
+    def merge_full_states(self, other_full_state):
+        """
+        Merges the agent's full state with another agent's full state,
+        keeping the most recent information for each cell.
+        """
+        for layer in range(1, self.local_state.shape[0]):  # Start from layer 1, skip map layer
+            mask = (other_full_state[layer] > self.local_state[layer]) | (other_full_state[layer] == 0)
+            self.local_state[layer][mask] = other_full_state[layer][mask]
         
