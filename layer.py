@@ -39,7 +39,7 @@ class AgentLayer:
         ox, oy = tuple(map(int, old_position))
         nx, ny = tuple(map(int, new_position))
         if self.layer_state[ox, oy] == 0:  # Only reset if it was the current position of the agent
-            self.layer_state[ox, oy] = -1  # Start decay from -1
+            self.layer_state[ox, oy] = -0.1  # Start decay from -0.1
         self.layer_state[nx, ny] = 0  # Refresh the new position to 0
 
     def set_position(self, agent_idx, x, y):
@@ -71,7 +71,7 @@ class AgentLayer:
     def update(self):
         # Decay previous positions
         mask = (self.layer_state <= 0) & (self.layer_state > -20)
-        self.layer_state[mask] -= 1  # Decrement the state of previously occupied positions
+        self.layer_state[mask] -= 0.1  # Decrement the state of previously occupied positions
         # Reset positions that were more than 20 time steps ago
         self.layer_state[self.layer_state < -20] = -20
         # Update positions based on current agent locations
@@ -103,7 +103,7 @@ class TargetLayer:
         ox, oy = tuple(map(int, old_position))
         nx, ny = tuple(map(int, new_position))
         if self.layer_state[ox, oy] == 0:  # Only reset if it was the current position of the target
-            self.layer_state[ox, oy] = -1  # Start decay from -1
+            self.layer_state[ox, oy] = -0.1  # Start decay from -0.1
         self.layer_state[nx, ny] = 0  # Set new position to 0 (target present)
 
     def n_targets(self):
@@ -112,7 +112,7 @@ class TargetLayer:
     def update(self):
         # Decay previous positions
         mask = (self.layer_state <= 0) & (self.layer_state > -20)
-        self.layer_state[mask] -= 1  # Decrement the state of previously occupied positions
+        self.layer_state[mask] -= 0.1  # Decrement the state of previously occupied positions
         # Reset positions that were more than 20 time steps ago
         self.layer_state[self.layer_state < -20] = -20
         # Update positions based on current agent locations
