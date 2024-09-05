@@ -20,7 +20,6 @@ from gymnasium import spaces
 from path_processor_simple import PathProcessor
 import matplotlib.pyplot as plt
 from TA_autoencoder import autoencoder
-import logging
 
 
 class Environment(gym.core.Env):
@@ -29,9 +28,6 @@ class Environment(gym.core.Env):
         # Load configuration from YAML
         with open(config_path, 'r') as file:
             self.config = yaml.safe_load(file)
-            
-        logging.basicConfig(filename='environment_debug.log', level=logging.DEBUG)
-        self.logger = logging.getLogger(__name__)
         
         # Initialize environment parameters
         self.D = self.config['grid_size']['D']
@@ -777,7 +773,6 @@ class Environment(gym.core.Env):
         """
         for i, agent in enumerate(self.agents):
             connected_agents = self.get_connected_agents(i)
-            self.logger.debug(f"Agent {i}: connected_agents = {connected_agents}")
 
             if not connected_agents:
                 if i in self.agent_to_network:
@@ -804,29 +799,6 @@ class Environment(gym.core.Env):
                                 self.agent_to_network[j] = current_network
         
         self.networks = [net for net in self.networks if net]
-        
-        self.check_network_consistency()
-
-
-    def check_network_consistency(self):
-        self.logger.debug("Performing network consistency check")
-        
-        # Check that all agents are in a network
-        for i, agent in enumerate(self.agents):
-            if i not in self.agent_to_network:
-                self.logger.error(f"Consistency error: Agent {i} is not in any network")
-        
-        # Check that all networks in agent_to_network are in self.networks
-        for agent, network in self.agent_to_network.items():
-            if network not in self.networks:
-                self.logger.error(f"Consistency error: Network for agent {agent} is not in self.networks")
-                # Attempt to fix
-                self.networks.append(network)
-        
-        # Check that all networks are non-empty
-        self.networks = [net for net in self.networks if net]
-        
-        self.logger.debug("Network consistency check completed")
 
 
     def get_connected_agents(self, agent_id):
@@ -864,8 +836,6 @@ class Environment(gym.core.Env):
 
 
     def merge_networks(self, network1, network2):
-        self.logger.debug(f"Attempting to merge networks: {network1} and {network2}")
-    
         merged = network1.union(network2)
         
         if network1 in self.networks:
@@ -878,9 +848,6 @@ class Environment(gym.core.Env):
         # Update agent_to_network mapping
         for agent in merged:
             self.agent_to_network[agent] = merged
-        
-        self.logger.debug(f"Networks merged successfully. New network: {merged}")
-        self.logger.debug(f"Current networks after merge: {self.networks}")
         
         return merged  # Return the merged network
 
