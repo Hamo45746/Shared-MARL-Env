@@ -49,9 +49,9 @@ class Environment(gym.core.Env):
         self.global_state[0] = self.map_matrix
         
         # Initialise Autoencoder
-        self.autoencoder = autoencoder.EnvironmentAutoencoder()
-        ae_folder_path = '' # Change for location of AE
-        self.autoencoder.load_all_autoencoders(ae_folder_path)
+        # self.autoencoder = autoencoder.EnvironmentAutoencoder()
+        # ae_folder_path = '' # Change for location of AE
+        # self.autoencoder.load_all_autoencoders(ae_folder_path)
         
         # Initialise agents, targets, and jammers
         self.num_agents = self.config['n_agents']
@@ -775,8 +775,10 @@ class Environment(gym.core.Env):
         """
         Incrementally updates the networks based on agent movements and jamming status.
         """
-        # Check each agent's current connections
         self.logger.debug("Starting network update")
+        self.logger.debug(f"Current networks before update: {self.networks}")
+        self.logger.debug(f"Current agent_to_network before update: {self.agent_to_network}")
+        
         for i, agent in enumerate(self.agents):
             current_network = self.agent_to_network.get(i)
             connected_agents = self.get_connected_agents(i)
@@ -793,12 +795,39 @@ class Environment(gym.core.Env):
                 else:
                     for j in connected_agents:
                         if self.agent_to_network.get(j) != current_network:
+                            self.logger.debug(f"Merging networks for agents {i} and {j}")
                             self.merge_networks(current_network, self.agent_to_network[j])
 
         # Clean up empty networks
+        original_network_count = len(self.networks)
         self.networks = [net for net in self.networks if net]
+        if len(self.networks) != original_network_count:
+            self.logger.debug(f"Removed {original_network_count - len(self.networks)} empty networks")
+        
         self.logger.debug(f"Network update completed. Current networks: {self.networks}")
+        self.logger.debug(f"Final agent_to_network: {self.agent_to_network}")
+        self.check_network_consistency()
 
+
+    def check_network_consistency(self):
+        self.logger.debug("Performing network consistency check")
+        
+        # Check that all agents are in a network
+        for i, agent in enumerate(self.agents):
+            if i not in self.agent_to_network:
+                self.logger.error(f"Consistency error: Agent {i} is not in any network")
+        
+        # Check that all networks in agent_to_network are in self.networks
+        for agent, network in self.agent_to_network.items():
+            if network not in self.networks:
+                self.logger.error(f"Consistency error: Network for agent {agent} is not in self.networks")
+                # Attempt to fix
+                self.networks.append(network)
+        
+        # Check that all networks are non-empty
+        self.networks = [net for net in self.networks if net]
+        
+        self.logger.debug("Network consistency check completed")
 
 
     def get_connected_agents(self, agent_id):
@@ -812,19 +841,8 @@ class Environment(gym.core.Env):
 
 
     def remove_from_network(self, agent_id, network):
-        self.logger.debug(f"Attempting to remove agent {agent_id} from network {network}")
-        try:
-            network.remove(agent_id)
-        except KeyError:
-            self.logger.error(f"Failed to remove agent {agent_id} from network {network}. Agent not in network.")
-        except Exception as e:
-            self.logger.error(f"Unexpected error removing agent {agent_id} from network: {str(e)}")
-        
-        if agent_id in self.agent_to_network:
-            del self.agent_to_network[agent_id]
-        else:
-            self.logger.warning(f"Agent {agent_id} not found in agent_to_network mapping")
-
+        network.remove(agent_id)
+        del self.agent_to_network[agent_id]
 
 
     def create_new_network(self, agents):
@@ -846,20 +864,28 @@ class Environment(gym.core.Env):
 
     def merge_networks(self, network1, network2):
         self.logger.debug(f"Attempting to merge networks: {network1} and {network2}")
-        merged = network1.union(network2)
-        try:
-            self.networks.remove(network1)
-        except ValueError:
-            self.logger.error(f"Failed to remove network1 {network1} from networks list. Network not found.")
-        try:
-            self.networks.remove(network2)
-        except ValueError:
-            self.logger.error(f"Failed to remove network2 {network2} from networks list. Network not found.")
+    
+        # Check if networks are in self.networks
+        if network1 not in self.networks:
+            self.logger.warning(f"Network1 {network1} not found in self.networks. Current networks: {self.networks}")
+        if network2 not in self.networks:
+            self.logger.warning(f"Network2 {network2} not found in self.networks. Current networks: {self.networks}")
         
+        # Merge the networks regardless of whether they're in self.networks
+        merged = network1.union(network2)
+        
+        # Safely remove networks from self.networks if they exist
+        self.networks = [net for net in self.networks if net is not network1 and net is not network2]
+        
+        # Add the merged network
         self.networks.append(merged)
+        
+        # Update agent_to_network mapping
         for agent in merged:
             self.agent_to_network[agent] = merged
+        
         self.logger.debug(f"Networks merged successfully. New network: {merged}")
+        self.logger.debug(f"Current networks after merge: {self.networks}")
 
     
     
