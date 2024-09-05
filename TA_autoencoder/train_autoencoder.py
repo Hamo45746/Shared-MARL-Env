@@ -465,14 +465,13 @@ def load_training_state(autoencoder, ae_index):
             return 0
     return 0
         
-def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_high_jammers, num_epochs=100, batch_size=32, patience=2, delta=0.01, load_previous=None, load_optimizer=False):
+def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_high_jammers, num_epochs=100, batch_size=32, patience=2, delta=0.01, load_previous=None):
     device = autoencoder.device
     output_folder = os.path.join(H5_FOLDER, 'training_visualisations')
     os.makedirs(output_folder, exist_ok=True)
     dtype = autoencoder.dtype
     writer = SummaryWriter(log_dir=os.path.join(H5_FOLDER, 'tensorboard_logs'))
 
-    # Set log interval
     log_interval = 100  # Log every 100 batches
 
     try:
@@ -480,26 +479,16 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_high_jammers, 
             print(f"Training autoencoder {ae_index}")
             if ae_index == 0:
                 delta = 0.001
+            
             # load from previous save if specified
             if load_previous and ae_index in load_previous:
-                previous_save_path = os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_best.pth") # Change prev AE path here
+                previous_save_path = os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_best.pth")
                 if os.path.exists(previous_save_path):
                     logging.info(f"Loading previous weights for autoencoder {ae_index}")
-                    checkpoint = torch.load(previous_save_path, map_location=device)
-                    autoencoder.autoencoders[ae_index].load_state_dict(checkpoint['model_state_dicts'][ae_index])
-                    
-                    if load_optimizer:
-                        logging.info(f"Loading previous optimizer and scheduler states for autoencoder {ae_index}")
-                        autoencoder.optimizers[ae_index].load_state_dict(checkpoint['optimizer_state_dicts'][ae_index])
-                        autoencoder.schedulers[ae_index].load_state_dict(checkpoint['scheduler_state_dicts'][ae_index])
-                    else:
-                        logging.info(f"Resetting optimizer and scheduler for autoencoder {ae_index}")
-                        autoencoder.optimizers[ae_index] = torch.optim.Adam(autoencoder.autoencoders[ae_index].parameters(), lr=0.0001)
-                        autoencoder.schedulers[ae_index] = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                            autoencoder.optimizers[ae_index], mode='min', factor=0.4, patience=8, min_lr=1e-5
-                        )
+                    autoencoder.load_single_autoencoder(previous_save_path, ae_index)
                 else:
                     logging.info(f"No previous save found for autoencoder {ae_index}")
+            
             # Move current autoencoder to GPU
             autoencoder.autoencoders[ae_index] = autoencoder.autoencoders[ae_index].to(device, dtype=dtype)
             # Move optimizer to GPU
@@ -513,18 +502,10 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_high_jammers, 
             
             dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
             
-            # start_epoch = load_training_state(autoencoder, ae_index)
-            start_epoch = 0
             best_loss = float('inf')
             epochs_no_improve = 0
             
-            for epoch in range(start_epoch, num_epochs):
-                # if interrupt_flag.value:
-                #     print(f"Interrupt detected. Saving progress for autoencoder {ae_index}...")
-                #     # save_training_state(autoencoder, ae_index, epoch)
-                #     writer.flush()
-                #     return
-
+            for epoch in range(num_epochs):
                 total_loss = 0
                 num_batches = 0
                 
@@ -546,18 +527,10 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_high_jammers, 
                             total_loss += loss
                             num_batches += 1
 
-                            # Update tqdm progress bar
                             t.set_postfix(loss=f"{loss:.4f}")
 
-                            # Log at specified intervals
                             if batch_idx % log_interval == 0:
-                                # logging.info(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + batch_idx)
                                 writer.add_scalar(f'Autoencoder_{ae_index}/Batch_Loss', loss, epoch * len(dataloader) + batch_idx)
-
-                            # Adjust regularisation weights periodically
-                            # if batch_idx % 100 == 0:
-                            #     autoencoder.adjust_regularisation_weights()
-                            #     autoencoder.adjust_l1_weight()
 
                         del layer_batch, loss
                         torch.cuda.empty_cache()
@@ -575,7 +548,7 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_high_jammers, 
                     else:
                         best_loss = min(avg_loss, best_loss)
                         epochs_no_improve = 0
-                        autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_best.pth"))
+                        autoencoder.save_single_autoencoder(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_best.pth"), ae_index)
 
                     if epochs_no_improve >= patience:
                         print(f"Early stopping triggered for autoencoder {ae_index}. No improvement for {patience} epochs.")
@@ -584,14 +557,6 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_high_jammers, 
                 else:
                     print(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} failed. All batches resulted in NaN loss.")
                     logging.warning(f"Autoencoder {ae_index}, Epoch {epoch+1}/{num_epochs} failed. All batches resulted in NaN loss.")
-
-                save_training_state(autoencoder, ae_index, epoch)
-
-                # if (epoch + 1) % 10 == 0:
-                #     autoencoder.save(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_epoch_{epoch+1}.pth"))
-                    # test_specific_autoencoder(autoencoder, H5_FOLDER, output_folder, autoencoder_index=ae_index, epoch=epoch+1)
-
-                # torch.cuda.empty_cache()
 
             # After finishing all epochs for an autoencoder, move it back to CPU
             autoencoder.move_to_cpu(ae_index)
@@ -605,9 +570,9 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_high_jammers, 
         raise
     finally:
         writer.close()
-        autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
-        logging.info(f"Autoencoder training completed and model saved at {os.path.join(H5_FOLDER, AUTOENCODER_FILE)}")
-    
+        logging.info(f"Autoencoder training completed.")
+        
+        
 def main():
     global interrupt_flag
     interrupt_flag = mp.Value('i', 0)

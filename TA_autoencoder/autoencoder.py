@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.cuda.amp import GradScaler, autocast
 import numpy as np
+import os
 
 def ceildiv(a, b):
     return -(a // -b)
@@ -49,86 +50,80 @@ def ceildiv(a, b):
 #         return self.conv(x.to(self.conv.weight.dtype))
 
 
-class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(ResidualBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
-        self.bn1 = nn.BatchNorm2d(out_channels)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
-        self.bn2 = nn.BatchNorm2d(out_channels)
-        
-        self.shortcut = nn.Sequential()
-        if in_channels != out_channels:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, bias=False),
-                nn.BatchNorm2d(out_channels)
-            )
-
-    def forward(self, x):
-        residual = x
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = self.bn2(self.conv2(out))
-        out += self.shortcut(residual)
-        out = F.relu(out)
-        return out
-
-
 class LayerAutoencoder(nn.Module):
     def __init__(self, is_map=False):
         super(LayerAutoencoder, self).__init__()
         self.is_map = is_map
         self.latent_dim = 256
-
-        # Calculate the flattened size
-        self.flattened_size = 512 * 17 * 9  # 256 * 7 * 3 = 5376
-        input_shape = (276, 155)
-        self.input_shape = input_shape
+        self.input_shape = (276, 155)
 
         # Encoder
-        self.encoder = nn.Sequential(
+        # Input: 1 x 276 x 155
+        self.enc1 = nn.Sequential(
             nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
-            ResidualBlock(64, 64),
-            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
-            ResidualBlock(128, 128),
-            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
-            ResidualBlock(256, 256),
-            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
-            ResidualBlock(512, 512),
+            nn.LeakyReLU(0.2)
         )
-
+        # Input: 64 x 138 x 78
+        self.enc2 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
+            nn.LeakyReLU(0.2)
+        )
+        # Input: 128 x 69 x 39
+        self.enc3 = nn.Sequential(
+            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
+            nn.LeakyReLU(0.2)
+        )
+        # Input: 256 x 35 x 20
+        self.enc4 = nn.Sequential(
+            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),
+            nn.LeakyReLU(0.2)
+        )
+        
+        # Input: 512 x 18 x 10
         self.flatten = nn.Flatten()
-        self.fc_encoder = nn.Linear(512 * 17 * 9, self.latent_dim)
+        self.fc_encoder = nn.Linear(512 * 18 * 10, self.latent_dim)
 
         # Decoder
-        self.fc_decoder = nn.Linear(self.latent_dim, 512 * 17 * 9)
-        self.decoder = nn.Sequential(
-            ResidualBlock(512, 512),
+        self.fc_decoder = nn.Linear(self.latent_dim, 512 * 18 * 10)
+        # Input: 512 x 18 x 10
+        self.dec4 = nn.Sequential(
             nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
-            ResidualBlock(256, 256),
-            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
-            ResidualBlock(128, 128),
-            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
-            ResidualBlock(64, 64),
-            nn.ConvTranspose2d(64, 1, kernel_size=4, stride=2, padding=1)
+            nn.LeakyReLU(0.2)
         )
+        # Input: 512 x 35 x 20 (including skip connection)
+        self.dec3 = nn.Sequential(
+            nn.ConvTranspose2d(512, 128, kernel_size=4, stride=2, padding=1),
+            nn.LeakyReLU(0.2)
+        )
+        # Input: 256 x 69 x 39 (including skip connection)
+        self.dec2 = nn.Sequential(
+            nn.ConvTranspose2d(256, 64, kernel_size=4, stride=2, padding=1),
+            nn.LeakyReLU(0.2)
+        )
+        # Input: 128 x 138 x 78 (including skip connection)
+        self.dec1 = nn.Sequential(
+            nn.ConvTranspose2d(128, 1, kernel_size=4, stride=2, padding=1)
+        )
+        # Output: 1 x 276 x 155
 
     def forward(self, x):
         # Encoding
-        encoded = self.encoder(x)
-        flattened = self.flatten(encoded)
+        e1 = self.enc1(x)
+        e2 = self.enc2(e1)
+        e3 = self.enc3(e2)
+        e4 = self.enc4(e3)
+
+        # Latent space
+        flattened = self.flatten(e4)
         latent = self.fc_encoder(flattened)
 
         # Decoding
-        decoded = self.fc_decoder(latent)
-        decoded = decoded.view(-1, 512, 17, 9)
-        decoded = self.decoder(decoded)
+        d = self.fc_decoder(latent)
+        d = d.view(-1, 512, 18, 10)
+        d = self.dec4(d)
+        d = self.dec3(torch.cat([d, e3], dim=1))
+        d = self.dec2(torch.cat([d, e2], dim=1))
+        decoded = self.dec1(torch.cat([d, e1], dim=1))
 
         # Post-processing
         if not self.is_map:
@@ -138,22 +133,24 @@ class LayerAutoencoder(nn.Module):
         else:
             decoded = torch.sigmoid(decoded)
 
-        decoded = F.interpolate(decoded, size=self.input_shape, mode='bilinear', align_corners=False)
         return decoded
 
     def encode(self, x):
-        encoded = self.encoder(x)
-        flattened = self.flatten(encoded)
+        e1 = self.enc1(x)
+        e2 = self.enc2(e1)
+        e3 = self.enc3(e2)
+        e4 = self.enc4(e3)
+        flattened = self.flatten(e4)
         return self.fc_encoder(flattened)
 
     def decode(self, latent):
-        decoded = self.fc_decoder(latent)
-        decoded = decoded.view(-1, 512, 17, 9)
-        decoded = self.decoder(decoded)
-        return F.interpolate(decoded, size=self.input_shape, mode='bilinear', align_corners=False)
-    
-    # def get_sparse_layers(self):
-    #     return [layer for layer in self.encoder if isinstance(layer, SparseConv2d)]
+        d = self.fc_decoder(latent)
+        d = d.view(-1, 512, 18, 10)
+        d = self.dec4(d)
+        d = self.dec3(torch.cat([d, torch.zeros_like(d)], dim=1))
+        d = self.dec2(torch.cat([d, torch.zeros_like(d)], dim=1))
+        decoded = self.dec1(torch.cat([d, torch.zeros_like(d)], dim=1))
+        return decoded
 
 class EnvironmentAutoencoder:
     def __init__(self, device):
@@ -314,7 +311,44 @@ class EnvironmentAutoencoder:
         #     sch.load_state_dict(checkpoint['scheduler_state_dicts'][i])
         
         self.scaler.load_state_dict(checkpoint['scaler'])
+        
+    def save_single_autoencoder(self, path, index):
+        if index not in [0, 1, 2]:
+            raise ValueError("Index must be 0, 1, or 2")
+        torch.save({
+            'model_state_dict': self.autoencoders[index].cpu().state_dict(),
+            'is_map': self.autoencoders[index].is_map,
+        }, path)
 
+    def load_single_autoencoder(self, path, index):
+        if index not in [0, 1, 2]:
+            raise ValueError("Index must be 0, 1, or 2")
+
+        checkpoint = torch.load(path, map_location='cpu')
+        is_map = checkpoint['is_map']
+        
+        self.autoencoders[index] = LayerAutoencoder(is_map=is_map)
+        self.autoencoders[index].load_state_dict(checkpoint['model_state_dict'])
+        self.autoencoders[index].to(self.device, dtype=self.dtype)
+        
+        # Reinitialize optimizer and scheduler
+        self.optimizers[index] = torch.optim.Adam(self.autoencoders[index].parameters(), lr=0.0001)
+        self.schedulers[index] = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizers[index], mode='min', factor=0.4, patience=8, min_lr=1e-5
+        )
+
+    def load_all_autoencoders(self, folder_path):
+        """
+        Load all three autoencoders from individual save files.
+        
+        :param folder_path: Path to the folder containing the autoencoder save files
+        """
+        for index in range(3):
+            file_path = os.path.join(folder_path, f"autoencoder_{index}_best.pth")
+            if os.path.exists(file_path):
+                self.load_single_autoencoder(file_path, index)
+
+    
     @staticmethod
     def cpu_state_dict(optimizer):
         return {k: v.cpu() if isinstance(v, torch.Tensor) else v
