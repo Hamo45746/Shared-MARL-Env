@@ -78,7 +78,7 @@ def save_layer_data_to_file(data, layer, epoch, output_folder, data_type):
 def load_autoencoder_for_layer(path, input_shape, device, layer, epoch):
     logging.info(f"Loading autoencoder from {path}")
     try:
-        autoencoder = EnvironmentAutoencoder(input_shape, device)
+        autoencoder = EnvironmentAutoencoder()
         checkpoint = torch.load(path, map_location=device)
         
         logging.info(f"Checkpoint keys: {checkpoint.keys()}")
@@ -128,9 +128,9 @@ def test_specific_autoencoder(autoencoder, h5_folder, output_folder, autoencoder
     try:
         # Find a suitable H5 file
         # h5_file = find_suitable_h5_file(h5_folder)
-        # filename = 'data_mcity_image_1_s5_t90_j89_a10.h5'
+        filename = 'data_mcity_image_1_s5_t90_j0_a10.h5'
         # filename = 'data_mcity_image_1_s2485_t90_j0_a1.h5'
-        filename = 'test_data/data_mrand_s1176_t55_j0_a8.h5'
+        # filename = 'test_data/data_mrand_s1176_t55_j0_a8.h5'
         # filename = 'test_data/data_mrand_s1073_t21_j96_a14.h5' # jammer test
         # filename = '3_map_data/data_mcity_image_1_s33_t90_j0_a10.h5'
         # filename = 'data_mcity_image_1_s10000_t90_j0_a1.h5'
@@ -232,13 +232,12 @@ def main_test_data():
 def main_test_specific():
     H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
     # AUTOENCODER_FILE = 'AE_save_23_08/autoencoder_1_best.pth'  # Update this to the Autoencoder to test
-    # AUTOENCODER_FILE = 'AE_save_29_08/autoencoder_1_best.pth'
-    AUTOENCODER_FILE = 'autoencoder_1_best.pth' # double channels - map
+    AUTOENCODER_FILE = 'AE_save_4_09/autoencoder_1_best.pth'
+    # AUTOENCODER_FILE = 'autoencoder_1_best.pth' # double channels - map
     OUTPUT_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data/training_visualisations'  # Update this path
 
     autoencoder_path = os.path.join(H5_FOLDER, AUTOENCODER_FILE)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    autoencoder = EnvironmentAutoencoder(device)
+    autoencoder = EnvironmentAutoencoder()
     autoencoder.load(autoencoder_path)
     test_specific_autoencoder(autoencoder, H5_FOLDER, OUTPUT_FOLDER, autoencoder_index=1)
     

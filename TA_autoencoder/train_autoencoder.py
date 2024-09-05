@@ -72,7 +72,7 @@ def setup_logging():
             datefmt='%Y-%m-%d %H:%M:%S'
         )
         
-def log_error(depth=2):
+def log_error(depth=10):
     exc_type, exc_value, exc_traceback = sys.exc_info()
     tb = traceback.extract_tb(exc_traceback)
     
@@ -585,7 +585,7 @@ def main():
     setup_logging()
     
     # Configuration ranges - AE 1-2
-    seed_range = range(1, 400) # 1-399 seed
+    seed_range = range(1, 100) # 1-399 seed
     num_agents_range = range(10, 11) # 10 agents
     num_targets_range = range(90, 91) # 90 targets
     num_jammers_range_low = range(0, 1)  # 0 jammers
@@ -664,8 +664,7 @@ def main():
         #     first_agent = first_step[list(first_step.keys())[0]]
         #     # input_shape = first_agent['full_state'].shape
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        autoencoder = EnvironmentAutoencoder(device)
+        autoencoder = EnvironmentAutoencoder()
 
         # Train autoencoders
         train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_high_jammers, batch_size=16, load_previous=[0])

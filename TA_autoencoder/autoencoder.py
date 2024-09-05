@@ -62,16 +62,16 @@ class LayerAutoencoder(nn.Module):
 
         # Encoder
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 128, kernel_size=3, stride=2, padding=1), # Output: 138 x 77 x 128
+            nn.Conv2d(1, 128, kernel_size=4, stride=2, padding=1), # Output: 138 x 77 x 128
             nn.BatchNorm2d(128),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1), # 69 x 38 x 256
+            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1), # 69 x 38 x 256
             nn.BatchNorm2d(256),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1), # 34 x 19 x 512
+            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1), # 34 x 19 x 512
             nn.BatchNorm2d(512),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(512, 1024, kernel_size=3, stride=2, padding=1), # 17 x 9 x 1024
+            nn.Conv2d(512, 1024, kernel_size=4, stride=2, padding=1), # 17 x 9 x 1024
             nn.BatchNorm2d(1024),
             nn.LeakyReLU(0.2),
         )
@@ -80,17 +80,17 @@ class LayerAutoencoder(nn.Module):
 
         # Decoder
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(1024, 512, kernel_size=3, stride=2, padding=1),
+            nn.ConvTranspose2d(1024, 512, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(512),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(512, 256, kernel_size=3, stride=2, padding=1),
+            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(256),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1),
+            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(128),
             nn.LeakyReLU(0.2),
             # CustomFinalUpsampling(32, 1, (276, 155))
-            nn.ConvTranspose2d(128, 1, kernel_size=3, stride=2, padding=1)
+            nn.ConvTranspose2d(128, 1, kernel_size=4, stride=2, padding=1)
         )
         self.latent_to_decoder_input_size = nn.Linear(256, 1024 * 17 * 9)
         # self.apply(self._init_weights)
@@ -307,7 +307,7 @@ class EnvironmentAutoencoder:
         
         self.autoencoders[index] = LayerAutoencoder(is_map=is_map)
         self.autoencoders[index].load_state_dict(checkpoint['model_state_dict'])
-        self.autoencoders[index].to(self.device)
+        self.autoencoders[index].to(self.device, dtype=self.dtype)
         
         # Reinitialize optimizer and scheduler
         self.optimizers[index] = torch.optim.Adam(self.autoencoders[index].parameters(), lr=0.0001)
