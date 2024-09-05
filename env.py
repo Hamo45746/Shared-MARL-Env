@@ -76,6 +76,8 @@ class Environment(gym.core.Env):
         # pygame.init() # Comment this out when not rendering
         self.networks = []
         self.agent_to_network = {}
+        self.comm_matrix = np.zeros((self.num_agents, self.num_agents), dtype=bool)
+        self.jammed_agents = set()
         
     
     def load_map(self): # NEW
@@ -771,44 +773,54 @@ class Environment(gym.core.Env):
         """
         Incrementally updates the networks based on agent movements and jamming status.
         """
-        for i, agent in enumerate(self.agents):
-            connected_agents = self.get_connected_agents(i)
+        self.update_comm_matrix()
+        self.update_jammed_agents()
 
+        for i in range(self.agent_layer.n_agents()):
+            connected_agents = self.get_connected_agents(i)
             if not connected_agents:
                 if i in self.agent_to_network:
                     self.remove_from_network(i, self.agent_to_network[i])
                 self.create_new_network([i])
+            elif i not in self.agent_to_network:
+                self.add_to_existing_or_new_network(i, connected_agents)
             else:
-                if i not in self.agent_to_network:
-                    self.add_to_existing_or_new_network(i, connected_agents)
-                else:
-                    current_network = self.agent_to_network[i]
-                    for j in connected_agents:
-                        if j not in current_network:
-                            other_network = self.agent_to_network.get(j)
-                            if other_network is not None and other_network != current_network:
-                                # Check if j is still in other_network before merging
-                                if j in other_network:
-                                    merged_network = self.merge_networks(current_network, other_network)
-                                    current_network = merged_network  # Update the current_network reference
-                                else:
-                                    current_network.add(j)
-                                    self.agent_to_network[j] = current_network
+                current_network = self.agent_to_network[i]
+                for j in connected_agents:
+                    if j not in current_network:
+                        other_network = self.agent_to_network.get(j)
+                        if other_network is not None and other_network != current_network:
+                            if j in other_network:
+                                current_network = self.merge_networks(current_network, other_network)
                             else:
                                 current_network.add(j)
                                 self.agent_to_network[j] = current_network
-        
+                        else:
+                            current_network.add(j)
+                            self.agent_to_network[j] = current_network
+
         self.networks = [net for net in self.networks if net]
+        
+    
+    def update_comm_matrix(self):
+        for i in range(self.agent_layer.n_agents()):
+            for j in range(i+1, self.agent_layer.n_agents()):
+                in_range = self.within_comm_range(
+                    self.agent_layer.get_position(i),
+                    self.agent_layer.get_position(j)
+                )
+                self.comm_matrix[i, j] = self.comm_matrix[j, i] = in_range
+
+    def update_jammed_agents(self):
+        self.jammed_agents = set(i for i in range(self.agent_layer.n_agents()) if self.is_comm_blocked(i))
 
 
     def get_connected_agents(self, agent_id):
         """Returns a list of agents that agent_id can directly communicate with."""
-        connected = []
-        for j, other_agent in enumerate(self.agents):
-            if agent_id != j and self.within_comm_range(self.agents[agent_id].current_position(), other_agent.current_position()) and \
-               not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(j):
-                connected.append(j)
-        return connected
+        return [j for j in range(self.agent_layer.n_agents()) 
+                if j != agent_id and self.comm_matrix[agent_id, j] and 
+                j not in self.jammed_agents and agent_id not in self.jammed_agents]
+
 
 
     def remove_from_network(self, agent_id, network):
