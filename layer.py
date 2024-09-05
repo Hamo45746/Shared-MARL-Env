@@ -1,5 +1,4 @@
 import numpy as np
-import random
 
 class AgentLayer:
     def __init__(self, xs, ys, agents, seed=1):

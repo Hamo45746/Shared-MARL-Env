@@ -1,4 +1,4 @@
-from gym import spaces
+from gymnasium import spaces
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from env import Environment
 

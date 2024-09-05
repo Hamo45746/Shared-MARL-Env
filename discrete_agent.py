@@ -1,8 +1,8 @@
 import numpy as np
 import random
 from base_agent import BaseAgent
-# from gymnasium import spaces
-from gym import spaces # for MARLlib
+from gymnasium import spaces
+# from gym import spaces # for MARLlib
 
 class DiscreteAgent(BaseAgent):
     # constructor

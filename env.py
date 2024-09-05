@@ -1,5 +1,4 @@
-import gym # needed for MARLlib
-# import gymnasium as gym
+import gymnasium as gym
 import numpy as np
 import sys
 import yaml
@@ -10,14 +9,14 @@ import pygame
 import gc
 from skimage.transform import resize, rotate
 from layer import AgentLayer, JammerLayer, TargetLayer
-from gym.utils import seeding
-# from gymnasium.utils import seeding
+# from gym.utils import seeding
+from gymnasium.utils import seeding
 # from Continuous_controller.agent_controller import AgentController
 from Task_controller.agent_controller import DiscreteAgentController
 from Continuous_controller.reward import calculate_continuous_reward
 # from gym.spaces import Dict as GymDict, Box, Discrete
-from gym import spaces
-# from gymnasium import spaces
+# from gym import spaces
+from gymnasium import spaces
 from path_processor_simple import PathProcessor
 import matplotlib.pyplot as plt
 

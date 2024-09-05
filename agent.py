@@ -1,5 +1,5 @@
 import numpy as np
-from gym import spaces
+from gymnasium import spaces
 import random
 # Reference: This is largely copied from PettingZoos DiscreteAgent and Agent classes.
 
