@@ -80,13 +80,13 @@ class LayerAutoencoder(nn.Module):
 
         # Decoder
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(1024, 512, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ConvTranspose2d(1024, 512, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(512),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(512, 256, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ConvTranspose2d(512, 256, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(256),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(128),
             nn.LeakyReLU(0.2),
             # CustomFinalUpsampling(32, 1, (276, 155))
