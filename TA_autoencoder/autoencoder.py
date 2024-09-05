@@ -150,12 +150,21 @@ class LayerAutoencoder(nn.Module):
         d = self.dec3(torch.cat([d, torch.zeros_like(d)], dim=1))
         d = self.dec2(torch.cat([d, torch.zeros_like(d)], dim=1))
         decoded = self.dec1(torch.cat([d, torch.zeros_like(d)], dim=1))
+        
+        # Post-processing
+        if not self.is_map:
+            decoded = -20 + 20 * torch.sigmoid(decoded)
+            background_mask = (decoded <= -19.8).float()
+            decoded = decoded * (1 - background_mask) + (-20) * background_mask
+        else:
+            decoded = torch.sigmoid(decoded)
         return decoded
 
+
 class EnvironmentAutoencoder:
-    def __init__(self, device):
-        self.device = device
-        self.dtype = torch.float32
+    def __init__(self):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.dtype = torch.float16
         print(f"Autoencoder using device: {self.device}")
         
         self.autoencoders = [
@@ -260,7 +269,7 @@ class EnvironmentAutoencoder:
                 else:
                     ae_index = 2  # Use third autoencoder for jammer layer
                 ae = self.autoencoders[ae_index]
-                ae.eval()
+                ae.eval()  # Ensure it's in eval mode
                 ae.to(self.device)
                 layer_input = state_tensor[i].unsqueeze(0).to(self.device, dtype=self.dtype)  # Add batch dimension and move to GPU
                 encoded_layer = ae.encode(layer_input)
@@ -280,14 +289,15 @@ class EnvironmentAutoencoder:
                 else:
                     ae_index = 2  # Use third autoencoder for jammer layer
                 ae = self.autoencoders[ae_index]
-                ae.eval()
+                ae.eval()  # Ensure it's in eval mode
                 ae.to(self.device)
                 encoded_layer = torch.tensor(encoded_state[i], dtype=self.dtype).unsqueeze(0).unsqueeze(0).to(self.device)
-                decoded_layer = ae.decoder(encoded_layer)
+                decoded_layer = ae.decode(encoded_layer)
                 decoded_layers.append(decoded_layer.cpu().numpy().squeeze())
                 ae.cpu()
                 torch.cuda.empty_cache()
             return np.array(decoded_layers)
+
 
     def save(self, path):
         torch.save({
@@ -329,7 +339,7 @@ class EnvironmentAutoencoder:
         
         self.autoencoders[index] = LayerAutoencoder(is_map=is_map)
         self.autoencoders[index].load_state_dict(checkpoint['model_state_dict'])
-        self.autoencoders[index].to(self.device, dtype=self.dtype)
+        self.autoencoders[index].to(self.device)
         
         # Reinitialize optimizer and scheduler
         self.optimizers[index] = torch.optim.Adam(self.autoencoders[index].parameters(), lr=0.0001)

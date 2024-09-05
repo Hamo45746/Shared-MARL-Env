@@ -636,7 +636,7 @@ def main():
     print(f"Configurations to process: {len(configs_to_process)}")
     
     # Process configurations
-    num_processes = max(1, mp.cpu_count() // 2 )
+    num_processes = max(1, mp.cpu_count() // 3 )
     with Pool(processes=num_processes, initializer=init_worker) as pool:
         try:
             list(tqdm(

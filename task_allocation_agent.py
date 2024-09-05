@@ -114,7 +114,7 @@ class TaskAllocationAgent(DiscreteAgent):
         return action
 
     def inbuilding(self, x, y):
-        return self.local_state[0][x, y] == 0
+        return self.local_state[0][x, y] == 0.0
 
     def reset(self):
         super().reset()
@@ -132,7 +132,7 @@ class TaskAllocationAgent(DiscreteAgent):
                     if self.inbounds(global_x, global_y):
                         observed_value = observed_state[layer, dx, dy]
                         current_value = self.local_state[layer, global_x, global_y]
-                        if observed_value > current_value or observed_value == 0:
+                        if observed_value > current_value or observed_value == 0.0:
                             self.local_state[layer, global_x, global_y] = observed_value
 
     def decay_full_state(self):

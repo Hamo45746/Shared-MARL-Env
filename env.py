@@ -19,6 +19,7 @@ from Continuous_controller.reward import calculate_continuous_reward
 from gymnasium import spaces
 from path_processor_simple import PathProcessor
 import matplotlib.pyplot as plt
+from TA_autoencoder import autoencoder
 
 
 class Environment(gym.core.Env):
@@ -39,21 +40,20 @@ class Environment(gym.core.Env):
 
         # Load and process the map
         self.map_matrix = self.load_map()
-        # terminal_width, _ = shutil.get_terminal_size()
-        # np.set_printoptions(threshold=np.inf, max_line_width=terminal_width)
-        # region_str = np.array2string(self.map_matrix, 
-        #                              formatter={'float': lambda x: f'{x:4.0f}'}, 
-        #                              max_line_width=terminal_width,
-        #                              threshold=np.inf,
-        #                              separator='')
-        # print(region_str)
+
         self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.float16)
         self.global_state[0] = self.map_matrix
+        
+        # Initialise Autoencoder
+        self.autoencoder = autoencoder.EnvironmentAutoencoder()
+        ae_folder_path = '' # Change for location of AE
+        self.autoencoder.load_all_autoencoders(ae_folder_path)
         
         # Initialise agents, targets, and jammers
         self.num_agents = self.config['n_agents']
         self.agent_type = self.config.get('agent_type', 'discrete')
         self.path_processor = PathProcessor(self.map_matrix, self.X, self.Y)
+        
         
         if self.agent_type == 'task_allocation':
             self.agent_paths = {agent_id: [] for agent_id in range(self.num_agents)}
@@ -93,7 +93,7 @@ class Environment(gym.core.Env):
     
     
     def generate_random_map(self, height, width):
-        map_array = np.ones((height, width), dtype=int)
+        map_array = np.ones((height, width), dtype=np.float16)
         
         # Load and prepare map segments
         map_paths = self.config['map_paths']
@@ -118,7 +118,7 @@ class Environment(gym.core.Env):
                 # Resize segment
                 selected_segment = resize(selected_segment, (target_height, target_width), 
                                         order=0, preserve_range=True, anti_aliasing=False)
-                selected_segment = (selected_segment != 0).astype(int)  # Ensure binary values
+                selected_segment = (selected_segment != 0).astype(np.float16)  # Ensure binary values
                 
                 # Randomly rotate and flip
                 if self.np_random.random() < 0.5:
@@ -128,7 +128,7 @@ class Environment(gym.core.Env):
                 rotation_angle = self.np_random.choice([0, 90, 180, 270])
                 selected_segment = rotate(selected_segment, angle=rotation_angle, resize=False, 
                                         preserve_range=True, order=0)
-                selected_segment = (selected_segment > 0.5).astype(int)  # Threshold after rotation
+                selected_segment = (selected_segment > 0.5).astype(np.float16)  # Threshold after rotation
                 
                 # Place the segment in the map
                 start_x = i * target_height
