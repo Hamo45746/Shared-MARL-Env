@@ -585,7 +585,7 @@ def main():
     setup_logging()
     
     # Configuration ranges - AE 1-2
-    seed_range = range(1, 100) # 1-399 seed
+    seed_range = range(1, 400) # 1-399 seed
     num_agents_range = range(10, 11) # 10 agents
     num_targets_range = range(90, 91) # 90 targets
     num_jammers_range_low = range(0, 1)  # 0 jammers

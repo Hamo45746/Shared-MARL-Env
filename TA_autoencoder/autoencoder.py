@@ -132,20 +132,32 @@ class LayerAutoencoder(nn.Module):
 class EnvironmentAutoencoder:
     def __init__(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.dtype = torch.float16
+        self.dtype = torch.float32
         print(f"Autoencoder using device: {self.device}")
         
         self.autoencoders = [
-            LayerAutoencoder(is_map=True).to(self.device, dtype=self.dtype),  # For layer 0 (map)
-            LayerAutoencoder().to(self.device, dtype=self.dtype),  # For layers 1 and 2
-            LayerAutoencoder().to(self.device, dtype=self.dtype)   # For layer 3
+            LayerAutoencoder(is_map=True),  # For layer 0 (map)
+            LayerAutoencoder(),  # For layers 1 and 2
+            LayerAutoencoder()   # For layer 3
         ]
         
         self.optimizers = [torch.optim.Adam(ae.parameters(), lr=0.0001) for ae in self.autoencoders]
         self.schedulers = [torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='min', factor=0.4, patience=8, min_lr=1e-5) for opt in self.optimizers]
+        self.scaler = GradScaler()
         
-        # Remove the GradScaler as we're explicitly using float16
-        # self.scaler = GradScaler()
+        # self.scalers = [
+        #     lambda x: x,  # For binary layer (layer 0)
+        #     lambda x: (x + 20) / 20,  # For negative layers (layers 1 and 2)
+        #     lambda x: (x + 20) / 20,  # For negative layers (layers 1 and 2)
+        #     lambda x: (x + 20) / 20   # For negative layer (layer 3)
+        # ]
+        
+        # self.inverse_scalers = [
+        #     lambda x: x,  # For binary layer (layer 0)
+        #     lambda x: x * 20 - 20,  # For negative layers (layers 1 and 2)
+        #     lambda x: x * 20 - 20,  # For negative layers (layers 1 and 2)
+        #     lambda x: x * 20 - 20   # For negative layer (layer 3)
+        # ]
 
 
     def custom_loss(self, recon_x, x, layer):
@@ -186,9 +198,9 @@ class EnvironmentAutoencoder:
         
         optimizer.zero_grad(set_to_none=True)
         
-        # Remove autocast context as we're explicitly using float16
-        outputs = ae(layer_input)
-        loss = self.custom_loss(outputs, layer_input, layer)
+        with autocast():
+            outputs = ae(layer_input)
+            loss = self.custom_loss(outputs, layer_input, layer)
         
         if torch.isnan(loss):
             print(f"NaN loss detected in layer {layer}")
@@ -198,9 +210,9 @@ class EnvironmentAutoencoder:
             print(f"Output min: {outputs.min()}, max: {outputs.max()}")
             return None
         
-        # Remove scaler operations
-        loss.backward()
-        optimizer.step()
+        self.scaler.scale(loss).backward()
+        self.scaler.step(optimizer)
+        self.scaler.update()
         
         loss_value = loss.item()
         self.schedulers[layer].step(loss_value)
@@ -258,9 +270,9 @@ class EnvironmentAutoencoder:
     def save(self, path):
         torch.save({
             'model_state_dicts': [ae.cpu().state_dict() for ae in self.autoencoders],
-            'optimizer_state_dicts': [self.cpu_state_dict(opt) for opt in self.optimizers],
-            'scheduler_state_dicts': [sch.state_dict() for sch in self.schedulers],
-            # Remove scaler from save
+            # 'optimizer_state_dicts': [self.cpu_state_dict(opt) for opt in self.optimizers],
+            # 'scheduler_state_dicts': [sch.state_dict() for sch in self.schedulers],
+            'scaler': self.scaler.state_dict(),
         }, path)
 
     def load(self, path):
@@ -269,7 +281,6 @@ class EnvironmentAutoencoder:
             ae.load_state_dict(checkpoint['model_state_dicts'][i])
             ae.to(self.device, dtype=self.dtype)
         
-        # Optionally load optimizer and scheduler states if needed
         # for i, opt in enumerate(self.optimizers):
         #     opt.load_state_dict(checkpoint['optimizer_state_dicts'][i])
         #     self.move_optimizer_to_device(opt, self.device)
@@ -277,7 +288,7 @@ class EnvironmentAutoencoder:
         # for i, sch in enumerate(self.schedulers):
         #     sch.load_state_dict(checkpoint['scheduler_state_dicts'][i])
         
-        # Remove scaler load
+        self.scaler.load_state_dict(checkpoint['scaler'])
         
     def save_single_autoencoder(self, path, index):
         if index not in [0, 1, 2]:
