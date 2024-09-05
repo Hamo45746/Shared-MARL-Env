@@ -76,7 +76,7 @@ class Environment(gym.core.Env):
         # pygame.init() # Comment this out when not rendering
         self.networks = []
         self.agent_to_network = {}
-        self.comm_matrix = np.zeros((self.num_agents, self.num_agents), dtype=bool)
+        self.comm_matrix = None
         self.jammed_agents = set()
         
     
@@ -803,13 +803,20 @@ class Environment(gym.core.Env):
         
     
     def update_comm_matrix(self):
-        for i in range(self.agent_layer.n_agents()):
-            for j in range(i+1, self.agent_layer.n_agents()):
+        n_agents = self.agent_layer.n_agents()
+        
+        # Resize comm_matrix if the number of agents has changed
+        if self.comm_matrix is None or self.comm_matrix.shape[0] != n_agents:
+            self.comm_matrix = np.zeros((n_agents, n_agents), dtype=bool)
+        
+        for i in range(n_agents):
+            for j in range(i+1, n_agents):
                 in_range = self.within_comm_range(
                     self.agent_layer.get_position(i),
                     self.agent_layer.get_position(j)
                 )
                 self.comm_matrix[i, j] = self.comm_matrix[j, i] = in_range
+
 
     def update_jammed_agents(self):
         self.jammed_agents = set(i for i in range(self.agent_layer.n_agents()) if self.is_comm_blocked(i))
@@ -817,9 +824,11 @@ class Environment(gym.core.Env):
 
     def get_connected_agents(self, agent_id):
         """Returns a list of agents that agent_id can directly communicate with."""
-        return [j for j in range(self.agent_layer.n_agents()) 
+        n_agents = self.agent_layer.n_agents()
+        return [j for j in range(n_agents) 
                 if j != agent_id and self.comm_matrix[agent_id, j] and 
                 j not in self.jammed_agents and agent_id not in self.jammed_agents]
+
 
 
 
