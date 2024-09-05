@@ -986,7 +986,7 @@ class Environment(gym.core.Env):
             collected_data.append(observations)
             step_count += 1
             
-            visualize_agent_states(self, step_count)
+            # visualize_agent_states(self, step_count)
             
             # print(f"Step {step_count} completed")
             # print("Full_state for each agent after step:")
@@ -1112,6 +1112,6 @@ def visualize_agent_states(env, step):
     plt.close()
 
 
-config_path = 'config.yaml' 
-env = Environment(config_path)
-Environment.run_simulation(env, max_steps=3)
+# config_path = 'config.yaml' 
+# env = Environment(config_path)
+# Environment.run_simulation(env, max_steps=3)
