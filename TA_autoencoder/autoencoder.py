@@ -54,111 +54,79 @@ class LayerAutoencoder(nn.Module):
     def __init__(self, is_map=False):
         super(LayerAutoencoder, self).__init__()
         self.is_map = is_map
-        self.latent_dim = 256
-        self.input_shape = (276, 155)
+
+        # Calculate the flattened size
+        self.flattened_size = 1024 * 17 * 9  # 256 * 7 * 3 = 5376
+        input_shape = (276, 155)
+        self.input_shape = input_shape  # (276, 155)
 
         # Encoder
-        # Input: 1 x 276 x 155
-        self.enc1 = nn.Sequential(
-            nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2)
-        )
-        # Input: 64 x 138 x 78
-        self.enc2 = nn.Sequential(
-            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2)
-        )
-        # Input: 128 x 69 x 39
-        self.enc3 = nn.Sequential(
-            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2)
-        )
-        # Input: 256 x 35 x 20
-        self.enc4 = nn.Sequential(
-            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2)
+        self.encoder = nn.Sequential(
+            nn.Conv2d(1, 128, kernel_size=3, stride=2, padding=1), # Output: 138 x 77 x 128
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2),
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1), # 69 x 38 x 256
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2),
+            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1), # 34 x 19 x 512
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2),
+            nn.Conv2d(512, 1024, kernel_size=3, stride=2, padding=1), # 17 x 9 x 1024
+            nn.BatchNorm2d(1024),
+            nn.LeakyReLU(0.2),
         )
         
-        # Input: 512 x 18 x 10
-        self.flatten = nn.Flatten()
-        self.fc_encoder = nn.Linear(512 * 18 * 10, self.latent_dim)
+        self.latent_space = nn.Linear(self.flattened_size, 256)
 
         # Decoder
-        self.fc_decoder = nn.Linear(self.latent_dim, 512 * 18 * 10)
-        # Input: 512 x 18 x 10
-        self.dec4 = nn.Sequential(
-            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2)
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(1024, 512, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(512, 256, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2),
+            # CustomFinalUpsampling(32, 1, (276, 155))
+            nn.ConvTranspose2d(128, 1, kernel_size=3, stride=2, padding=1)
         )
-        # Input: 512 x 35 x 20 (including skip connection)
-        self.dec3 = nn.Sequential(
-            nn.ConvTranspose2d(512, 128, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2)
-        )
-        # Input: 256 x 69 x 39 (including skip connection)
-        self.dec2 = nn.Sequential(
-            nn.ConvTranspose2d(256, 64, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2)
-        )
-        # Input: 128 x 138 x 78 (including skip connection)
-        self.dec1 = nn.Sequential(
-            nn.ConvTranspose2d(128, 1, kernel_size=4, stride=2, padding=1)
-        )
-        # Output: 1 x 276 x 155
+        self.latent_to_decoder_input_size = nn.Linear(256, 1024 * 17 * 9)
+        # self.apply(self._init_weights)
+
+    # def _init_weights(self, module):
+    #     if isinstance(module, (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)):
+    #         nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+    #         if module.bias is not None:
+    #             nn.init.constant_(module.bias, 0)
 
     def forward(self, x):
-        # Encoding
-        e1 = self.enc1(x)
-        e2 = self.enc2(e1)
-        e3 = self.enc3(e2)
-        e4 = self.enc4(e3)
-
-        # Latent space
-        flattened = self.flatten(e4)
-        latent = self.fc_encoder(flattened)
-
-        # Decoding
-        d = self.fc_decoder(latent)
-        d = d.view(-1, 512, 18, 10)
-        d = self.dec4(d)
-        d = self.dec3(torch.cat([d, e3], dim=1))
-        d = self.dec2(torch.cat([d, e2], dim=1))
-        decoded = self.dec1(torch.cat([d, e1], dim=1))
-
-        # Post-processing
+        encoded = self.encoder(x)
+        x = encoded.view(encoded.size(0), -1) # Flattening
+        z = self.latent_space(x)
+        z = self.latent_to_decoder_input_size(z)
+        decoder_input = z.view(z.size(0), 1024, 17, 9)
+        decoded = self.decoder(decoder_input)
+        
         if not self.is_map:
+            # Scale the output to be between -20 and 0
             decoded = -20 + 20 * torch.sigmoid(decoded)
+            # Apply background mask
             background_mask = (decoded <= -19.8).float()
             decoded = decoded * (1 - background_mask) + (-20) * background_mask
         else:
+            # For the map layer, we keep the binary output
             decoded = torch.sigmoid(decoded)
-
+        decoded = F.interpolate(decoded, size=(276, 155), mode='bilinear', align_corners=False)
         return decoded
 
     def encode(self, x):
-        e1 = self.enc1(x)
-        e2 = self.enc2(e1)
-        e3 = self.enc3(e2)
-        e4 = self.enc4(e3)
-        flattened = self.flatten(e4)
-        return self.fc_encoder(flattened)
+        return self.encoder(x)
 
-    def decode(self, latent):
-        d = self.fc_decoder(latent)
-        d = d.view(-1, 512, 18, 10)
-        d = self.dec4(d)
-        d = self.dec3(torch.cat([d, torch.zeros_like(d)], dim=1))
-        d = self.dec2(torch.cat([d, torch.zeros_like(d)], dim=1))
-        decoded = self.dec1(torch.cat([d, torch.zeros_like(d)], dim=1))
-        
-        # Post-processing
-        if not self.is_map:
-            decoded = -20 + 20 * torch.sigmoid(decoded)
-            background_mask = (decoded <= -19.8).float()
-            decoded = decoded * (1 - background_mask) + (-20) * background_mask
-        else:
-            decoded = torch.sigmoid(decoded)
-        return decoded
+    def decode(self, x):
+        decoded = self.decoder(x)
+        return F.interpolate(decoded, size=(276, 155), mode='bilinear', align_corners=False)
 
 
 class EnvironmentAutoencoder:

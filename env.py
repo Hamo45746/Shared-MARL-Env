@@ -228,6 +228,8 @@ class Environment(gym.core.Env):
         
         self.networks = []
         self.agent_to_network = {}
+        self.comm_matrix = None
+        self.jammed_agents = set()
 
         return self.get_obs()
 
@@ -819,7 +821,8 @@ class Environment(gym.core.Env):
 
 
     def update_jammed_agents(self):
-        self.jammed_agents = set(i for i in range(self.agent_layer.n_agents()) if self.is_comm_blocked(i))
+        agent_positions = self.agent_layer.agent_positions
+        self.jammed_agents = self.jammed_areas[agent_positions[:, 0], agent_positions[:, 1]]
 
 
     def get_connected_agents(self, agent_id):
@@ -921,11 +924,15 @@ class Environment(gym.core.Env):
         Stores the jammed grid positions in a cache. This function should be called any time a 
         jammers position, activation, and destruction status changes.
         """
-        self.jammed_areas.fill(False)
-        self.jammed_positions.clear()
+        self.jammed_areas = np.zeros((self.X, self.Y), dtype=bool)
         for jammer in self.jammer_layer.jammers:
             if jammer.is_active() and not jammer.get_destroyed():
-                self.calculate_jammed_area(jammer.current_position(), jammer.radius)
+                x, y = jammer.current_position()
+                x_grid, y_grid = np.ogrid[-jammer.radius:jammer.radius+1, -jammer.radius:jammer.radius+1]
+                mask = x_grid**2 + y_grid**2 <= jammer.radius**2
+                x_min, y_min = max(0, x-jammer.radius), max(0, y-jammer.radius)
+                x_max, y_max = min(self.X, x+jammer.radius+1), min(self.Y, y+jammer.radius+1)
+                self.jammed_areas[x_min:x_max, y_min:y_max] |= mask[:x_max-x_min, :y_max-y_min]
 
 
     def calculate_jammed_area(self, position, radius):
@@ -979,7 +986,7 @@ class Environment(gym.core.Env):
             collected_data.append(observations)
             step_count += 1
             
-            # visualize_agent_states(self, step_count)
+            visualize_agent_states(self, step_count)
             
             # print(f"Step {step_count} completed")
             # print("Full_state for each agent after step:")
@@ -1105,6 +1112,6 @@ def visualize_agent_states(env, step):
     plt.close()
 
 
-# config_path = 'config.yaml' 
-# env = Environment(config_path)
-# Environment.run_simulation(env, max_steps=3)
+config_path = 'config.yaml' 
+env = Environment(config_path)
+Environment.run_simulation(env, max_steps=3)
