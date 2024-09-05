@@ -20,6 +20,7 @@ from gymnasium import spaces
 from path_processor_simple import PathProcessor
 import matplotlib.pyplot as plt
 from TA_autoencoder import autoencoder
+import logging
 
 
 class Environment(gym.core.Env):
@@ -28,6 +29,9 @@ class Environment(gym.core.Env):
         # Load configuration from YAML
         with open(config_path, 'r') as file:
             self.config = yaml.safe_load(file)
+            
+        logging.basicConfig(filename='environment_debug.log', level=logging.DEBUG)
+        self.logger = logging.getLogger(__name__)
         
         # Initialize environment parameters
         self.D = self.config['grid_size']['D']
@@ -772,27 +776,29 @@ class Environment(gym.core.Env):
         Incrementally updates the networks based on agent movements and jamming status.
         """
         # Check each agent's current connections
+        self.logger.debug("Starting network update")
         for i, agent in enumerate(self.agents):
             current_network = self.agent_to_network.get(i)
             connected_agents = self.get_connected_agents(i)
 
+            self.logger.debug(f"Agent {i}: current_network = {current_network}, connected_agents = {connected_agents}")
+
             if not connected_agents:
-                # Agent is isolated
                 if current_network:
                     self.remove_from_network(i, current_network)
                 self.create_new_network([i])
             else:
                 if not current_network:
-                    # Agent was isolated, now connected
                     self.add_to_existing_or_new_network(i, connected_agents)
                 else:
-                    # Check for new connections outside current network
                     for j in connected_agents:
                         if self.agent_to_network.get(j) != current_network:
                             self.merge_networks(current_network, self.agent_to_network[j])
 
         # Clean up empty networks
         self.networks = [net for net in self.networks if net]
+        self.logger.debug(f"Network update completed. Current networks: {self.networks}")
+
 
 
     def get_connected_agents(self, agent_id):
@@ -806,8 +812,19 @@ class Environment(gym.core.Env):
 
 
     def remove_from_network(self, agent_id, network):
-        network.remove(agent_id)
-        del self.agent_to_network[agent_id]
+        self.logger.debug(f"Attempting to remove agent {agent_id} from network {network}")
+        try:
+            network.remove(agent_id)
+        except KeyError:
+            self.logger.error(f"Failed to remove agent {agent_id} from network {network}. Agent not in network.")
+        except Exception as e:
+            self.logger.error(f"Unexpected error removing agent {agent_id} from network: {str(e)}")
+        
+        if agent_id in self.agent_to_network:
+            del self.agent_to_network[agent_id]
+        else:
+            self.logger.warning(f"Agent {agent_id} not found in agent_to_network mapping")
+
 
 
     def create_new_network(self, agents):
@@ -828,12 +845,22 @@ class Environment(gym.core.Env):
 
 
     def merge_networks(self, network1, network2):
+        self.logger.debug(f"Attempting to merge networks: {network1} and {network2}")
         merged = network1.union(network2)
-        self.networks.remove(network1)
-        self.networks.remove(network2)
+        try:
+            self.networks.remove(network1)
+        except ValueError:
+            self.logger.error(f"Failed to remove network1 {network1} from networks list. Network not found.")
+        try:
+            self.networks.remove(network2)
+        except ValueError:
+            self.logger.error(f"Failed to remove network2 {network2} from networks list. Network not found.")
+        
         self.networks.append(merged)
         for agent in merged:
             self.agent_to_network[agent] = merged
+        self.logger.debug(f"Networks merged successfully. New network: {merged}")
+
     
     
     def within_comm_range(self, agent1, agent2):
