@@ -775,37 +775,36 @@ class Environment(gym.core.Env):
         """
         Incrementally updates the networks based on agent movements and jamming status.
         """
-        self.logger.debug("Starting network update")
-        self.logger.debug(f"Current networks before update: {self.networks}")
-        self.logger.debug(f"Current agent_to_network before update: {self.agent_to_network}")
-        
         for i, agent in enumerate(self.agents):
-            current_network = self.agent_to_network.get(i)
             connected_agents = self.get_connected_agents(i)
-
-            self.logger.debug(f"Agent {i}: current_network = {current_network}, connected_agents = {connected_agents}")
+            self.logger.debug(f"Agent {i}: connected_agents = {connected_agents}")
 
             if not connected_agents:
-                if current_network:
-                    self.remove_from_network(i, current_network)
+                if i in self.agent_to_network:
+                    self.remove_from_network(i, self.agent_to_network[i])
                 self.create_new_network([i])
             else:
-                if not current_network:
+                if i not in self.agent_to_network:
                     self.add_to_existing_or_new_network(i, connected_agents)
                 else:
+                    current_network = self.agent_to_network[i]
                     for j in connected_agents:
-                        if self.agent_to_network.get(j) != current_network:
-                            self.logger.debug(f"Merging networks for agents {i} and {j}")
-                            self.merge_networks(current_network, self.agent_to_network[j])
-
-        # Clean up empty networks
-        original_network_count = len(self.networks)
-        self.networks = [net for net in self.networks if net]
-        if len(self.networks) != original_network_count:
-            self.logger.debug(f"Removed {original_network_count - len(self.networks)} empty networks")
+                        if j not in current_network:
+                            other_network = self.agent_to_network.get(j)
+                            if other_network is not None and other_network != current_network:
+                                # Check if j is still in other_network before merging
+                                if j in other_network:
+                                    merged_network = self.merge_networks(current_network, other_network)
+                                    current_network = merged_network  # Update the current_network reference
+                                else:
+                                    current_network.add(j)
+                                    self.agent_to_network[j] = current_network
+                            else:
+                                current_network.add(j)
+                                self.agent_to_network[j] = current_network
         
-        self.logger.debug(f"Network update completed. Current networks: {self.networks}")
-        self.logger.debug(f"Final agent_to_network: {self.agent_to_network}")
+        self.networks = [net for net in self.networks if net]
+        
         self.check_network_consistency()
 
 
@@ -847,37 +846,33 @@ class Environment(gym.core.Env):
 
     def create_new_network(self, agents):
         new_network = set(agents)
-        self.networks.append(new_network)
-        for agent in agents:
-            self.agent_to_network[agent] = new_network
+        if new_network:  # Only add non-empty networks
+            self.networks.append(new_network)
+            for agent in agents:
+                self.agent_to_network[agent] = new_network
 
 
     def add_to_existing_or_new_network(self, agent_id, connected_agents):
         for connected in connected_agents:
             if connected in self.agent_to_network:
-                self.agent_to_network[connected].add(agent_id)
-                self.agent_to_network[agent_id] = self.agent_to_network[connected]
+                network = self.agent_to_network[connected]
+                network.add(agent_id)
+                self.agent_to_network[agent_id] = network
                 return
         # If no existing network found, create a new one
-        self.create_new_network([agent_id] + connected_agents)
+        self.create_new_network([agent_id] + list(connected_agents))
 
 
     def merge_networks(self, network1, network2):
         self.logger.debug(f"Attempting to merge networks: {network1} and {network2}")
     
-        # Check if networks are in self.networks
-        if network1 not in self.networks:
-            self.logger.warning(f"Network1 {network1} not found in self.networks. Current networks: {self.networks}")
-        if network2 not in self.networks:
-            self.logger.warning(f"Network2 {network2} not found in self.networks. Current networks: {self.networks}")
-        
-        # Merge the networks regardless of whether they're in self.networks
         merged = network1.union(network2)
         
-        # Safely remove networks from self.networks if they exist
-        self.networks = [net for net in self.networks if net is not network1 and net is not network2]
+        if network1 in self.networks:
+            self.networks.remove(network1)
+        if network2 in self.networks:
+            self.networks.remove(network2)
         
-        # Add the merged network
         self.networks.append(merged)
         
         # Update agent_to_network mapping
@@ -886,6 +881,8 @@ class Environment(gym.core.Env):
         
         self.logger.debug(f"Networks merged successfully. New network: {merged}")
         self.logger.debug(f"Current networks after merge: {self.networks}")
+        
+        return merged  # Return the merged network
 
     
     
