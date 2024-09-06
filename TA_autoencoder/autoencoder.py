@@ -211,9 +211,6 @@ class EnvironmentAutoencoder:
         layer_input = batch.to(self.device, dtype=self.dtype)
         layer_input = layer_input.unsqueeze(1)
         
-        print(f"Input dtype: {layer_input.dtype}, device: {layer_input.device}")
-        print(f"Model dtype: {next(ae.parameters()).dtype}, device: {next(ae.parameters()).device}")
-        
         optimizer.zero_grad(set_to_none=True)
         
         with autocast():
