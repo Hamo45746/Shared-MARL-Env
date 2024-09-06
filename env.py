@@ -48,6 +48,9 @@ class Environment(gym.core.Env):
         # self.autoencoder = autoencoder.EnvironmentAutoencoder()
         # ae_folder_path = '' # Change for location of AE
         # self.autoencoder.load_all_autoencoders(ae_folder_path)
+        # # Set all autoencoders to eval
+        # for i in range (0, 3):
+        #     self.autoencoder.autoencoders[i].eval()
         
         # Initialise agents, targets, and jammers
         self.num_agents = self.config['n_agents']

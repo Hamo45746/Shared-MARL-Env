@@ -122,11 +122,26 @@ class LayerAutoencoder(nn.Module):
         return decoded
 
     def encode(self, x):
-        return self.encoder(x)
+        encoded = self.encoder(x)
+        x = encoded.view(encoded.size(0), -1) # Flattening
+        z = self.latent_space(x)
+        return z
 
     def decode(self, x):
-        decoded = self.decoder(x)
-        return F.interpolate(decoded, size=(276, 155), mode='bilinear', align_corners=False)
+        decoder_input = x.view(x.size(0), 1024, 17, 9)
+        decoded = self.decoder(decoder_input)
+        
+        if not self.is_map:
+            # Scale the output to be between -20 and 0
+            decoded = -20 + 20 * torch.sigmoid(decoded)
+            # Apply background mask
+            background_mask = (decoded <= -19.8).float()
+            decoded = decoded * (1 - background_mask) + (-20) * background_mask
+        else:
+            # For the map layer, we keep the binary output
+            decoded = torch.sigmoid(decoded)
+        decoded = F.interpolate(decoded, size=(276, 155), mode='bilinear', align_corners=False)
+        return decoded
 
 
 class EnvironmentAutoencoder:

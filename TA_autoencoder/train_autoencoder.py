@@ -667,7 +667,7 @@ def main():
         autoencoder = EnvironmentAutoencoder()
 
         # Train autoencoders
-        train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_high_jammers, batch_size=16, load_previous=[0])
+        train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_high_jammers, batch_size=16, load_previous=[0, 1])
 
         # Save the final autoencoder
         autoencoder.save(os.path.join(H5_FOLDER, AUTOENCODER_FILE))
