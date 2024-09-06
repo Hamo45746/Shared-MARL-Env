@@ -549,6 +549,10 @@ def train_autoencoder(autoencoder, h5_files_low_jammers, h5_files_high_jammers, 
                         best_loss = min(avg_loss, best_loss)
                         epochs_no_improve = 0
                         autoencoder.save_single_autoencoder(os.path.join(H5_FOLDER, f"autoencoder_{ae_index}_best.pth"), ae_index)
+                        # Move current autoencoder to GPU
+                        autoencoder.autoencoders[ae_index] = autoencoder.autoencoders[ae_index].to(device, dtype=dtype)
+                        # Move optimizer to GPU
+                        autoencoder.move_optimizer_to_device(autoencoder.optimizers[ae_index], device)
 
                     if epochs_no_improve >= patience:
                         print(f"Early stopping triggered for autoencoder {ae_index}. No improvement for {patience} epochs.")
