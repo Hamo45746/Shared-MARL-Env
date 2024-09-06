@@ -102,7 +102,7 @@ class EnvironmentAutoencoder:
         self.optimizers[layer_name] = optim.Adam(self.autoencoders[layer_name].parameters(), lr=0.0005)
         self.schedulers[layer_name] = optim.lr_scheduler.ReduceLROnPlateau(self.optimizers[layer_name], 'min', patience=9, factor=0.5, min_lr=1e-5)
 
-    def train(self, data, layer_name, epochs=10, batch_size=32, validation_split=0.15):
+    def train(self, data, layer_name, epochs=10, batch_size=32, validation_split=0.2):
         # Split data into training and validation sets
         train_data, val_data = train_test_split(data[layer_name], test_size=validation_split, random_state=42)
         

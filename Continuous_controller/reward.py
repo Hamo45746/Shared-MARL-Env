@@ -51,7 +51,7 @@ def calculate_continuous_reward(agent, env):
 
     # check if the agent has to change it's angle choice 
     if agent.angle_change():
-        reward -= 8
+        reward -= 5
 
     if agent.goal_area is not None:
         current_distance_to_goal = agent.calculate_distance_to_goal()

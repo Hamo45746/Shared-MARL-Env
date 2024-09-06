@@ -36,7 +36,7 @@ def create_agents(nagents, map_matrix, obs_range, randomiser, path_preprocessor,
             agent = agent_class(xs, ys, map_matrix, randomiser, path_preprocessor, obs_range=obs_range, flatten=flatten, max_steps_per_action=15)
         else:
             agent = agent_class(xs, ys, map_matrix, randomiser, obs_range=obs_range, flatten=flatten)
-            
+
         agent.set_position(xinit, yinit)
         agents.append(agent)
         #this is for lunch and learn 
@@ -48,6 +48,6 @@ def get_feasible_positions(map_matrix):
     xs, ys = map_matrix.shape
     for x in range(xs):
         for y in range(ys):
-            if map_matrix[x, y] != 0:
+            if map_matrix[x, y] == 1:
                 feasible_positions.append((x, y))
     return feasible_positions

@@ -14,7 +14,6 @@ from gymnasium import spaces
 import glob
 import os
 
-
 def env_creator(env_config):
     return Environment(config_path=env_config["config_path"], render_mode=env_config.get("render_mode", "human"))
 
@@ -34,6 +33,9 @@ def policy_mapping_fn(agent_id, episode, worker, **kwargs):
 
 # Update the configuration
 logdir = "./custom_ray_results"
+
+# Set up custom location for ray_results
+config["local_dir"] = logdir
 
 # Update the policies in the config
 num_agents = 5  # Example, adjust based on your environment

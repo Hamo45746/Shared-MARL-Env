@@ -73,7 +73,11 @@ class ContinuousAgent(BaseAgent):
 
         # If the final position after all sub-steps is invalid, reset to the last valid position
         if not valid_move:
-            self.current_pos[:] = self.last_pos
+            lx, ly = self.last_pos
+            if lx == 0:
+                self.current_pos[:] = self.current_pos
+            else:
+                self.current_pos[:] = self.last_pos
 
         return self.current_pos
 
@@ -97,28 +101,54 @@ class ContinuousAgent(BaseAgent):
     def current_position(self):
         return self.current_pos
 
+    #this is just to share observations 
+    # def update_local_state(self, observed_state, observer_position):
+    #     observer_x, observer_y = observer_position
+    #     obs_half_range = self._obs_range // 2
+    #     observed_map = observed_state["map"]
+
+    #     for layer in range(observed_map.shape[0]):
+    #         for dx in range(-obs_half_range, obs_half_range + 1):
+    #             for dy in range(-obs_half_range, obs_half_range + 1):
+    #                 global_x = observer_x + dx
+    #                 global_y = observer_y + dy
+    #                 global_x1 = int(global_x)
+    #                 global_y1 = int(global_y)
+    #                 obs_x = obs_half_range + dx
+    #                 obs_y = obs_half_range + dy
+    #                 if self.inbounds(global_x, global_y):
+    #                     if layer == 0:
+    #                         #this if statement means that the map layer will only be updated if the current agent doesn't already have
+    #                         # a known value there - this means that the other agent won't take priority over the current agents info
+    #                         if self.local_state[layer, global_x1, global_y1] == -20:
+    #                             self.local_state[layer, global_x1, global_y1] = observed_map[layer, obs_x, obs_y]
+    #                     else:
+    #                         observed_value = observed_state[layer, dx, dy]
+    #                         current_value = self.local_state[layer, global_x, global_y]
+    #                         if observed_value > current_value or observed_value == 0:
+    #                             self.local_state[layer, global_x, global_y] = observed_value
+
+    #this is to share full_state
     def update_local_state(self, observed_state, observer_position):
         observer_x, observer_y = observer_position
-        obs_half_range = self._obs_range // 2
-        observed_map = observed_state["map"]
-
-        for layer in range(observed_map.shape[0]):
-            for dx in range(-obs_half_range, obs_half_range + 1):
-                for dy in range(-obs_half_range, obs_half_range + 1):
-                    global_x = observer_x + dx
-                    global_y = observer_y + dy
-                    global_x1 = int(global_x)
-                    global_y1 = int(global_y)
-                    obs_x = obs_half_range + dx
-                    obs_y = obs_half_range + dy
-                    if self.inbounds(global_x, global_y):
+        for layer in range(observed_state.shape[0]):
+            for x in range(self.X):
+                for y in range(self.Y):
+                    # Check if the current position is within bounds
+                    if self.inbounds(x, y):
+                        # If it's the map layer (layer 0)
                         if layer == 0:
-                            self.local_state[layer, global_x1, global_y1] = observed_map[layer, obs_x, obs_y]
+                            # Update only if the local state is unknown (-20) and the observed state is known (not -20)
+                            if self.local_state[layer, x, y] == -20 and observed_state[layer, x, y] != 20:
+                                self.local_state[layer, x, y] = observed_state[layer, x, y]
+                                # Add the coordinate to the observed areas
+                                self.observed_areas.add((x, y))
                         else:
-                            if observed_map[layer, obs_x, obs_y] == 0:
-                                self.local_state[layer, global_x1, global_y1] = 0
-                            elif self.local_state[layer, global_x1, global_y1] > -20:
-                                self.local_state[layer, global_x1, global_y1] -= 1
+                            observed_value = observed_state[layer, x, y]
+                            current_value = self.local_state[layer, x, y]
+                            # Update if observed value is newer (greater) or if it's the most recent information (0)
+                            if observed_value != -20 and (observed_value > current_value or observed_value == 0):
+                                self.local_state[layer, x, y] = observed_value
 
     def get_next_action(self):
         action = self.random_state.uniform(-1, 1, size=(2,))

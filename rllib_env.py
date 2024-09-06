@@ -33,9 +33,12 @@ class Environment(MultiAgentEnv):
         self.obs_range = self.config['obs_range']
         self.pixel_scale = self.config['pixel_scale'] # Size in pixels of each map cell
         self.map_scale = self.config['map_scale'] # Scaling factor of map resolution
-        self.seed_value = self.config['seed']
         self.comm_range = self.config['comm_range']
         self.use_task_allocation = self.config.get('use_task_allocation_with_continuous', False)
+
+        self.seed_value = self.config.get('seed', None)
+        if self.seed_value == "None":
+            self.seed_value = None
         self._seed(self.seed_value)
 
         # Initialize autoencoders for all layers
@@ -165,16 +168,16 @@ class Environment(MultiAgentEnv):
         return decoded_observations
     
 
-    def reset(self, seed= None, options: dict = None):
+    def reset(self, seed=None, options: dict = None):
         """ Reset the environment for a new episode"""
-        super().reset(seed=self.seed_value)
         info = {}
-        if seed is not None:
-            self.seed_value = seed
-        self._seed(self.seed_value)
+        super().reset(seed=self.seed_value if seed is None else seed)
+        self._seed(self.seed_value if seed is None else seed)
         # Reset global state
         self.global_state.fill(0)
         self.global_state[0] = self.map_matrix # Uncomment above code if map_matrix is changed by sim
+
+        self.path_processor = PathProcessor(self.map_matrix, self.X, self.Y) # This was added by hamish - will test with it
 
         self.initialise_agents()
         self.initialise_targets()
@@ -344,7 +347,6 @@ class Environment(MultiAgentEnv):
         
         # If i'm collecting observations I have to return observations. Once the auto encoder is trained I can return encoded observation
         return encoded_observations, rewards, terminated, truncated, info
-        #return observations, rewards, terminated, truncated, info
     
 
     def update_observations(self): #Alex had this one
@@ -752,6 +754,29 @@ class Environment(MultiAgentEnv):
         xohi, yohi = xolo + (xhi - xlo), yolo + (yhi - ylo)
         return xlo, xhi + 1, ylo, yhi + 1, xolo, xohi + 1, yolo, yohi + 1
 
+    #to share observations only 
+    # def share_and_update_observations(self):
+    #     """
+    #     Updates each agent classes internal observation state and internal local (entire env) state.
+    #     Will merge current observations of agents within communication range into each agents local state.
+    #     This function should be run in the step function.
+    #     """
+    #     for i, agent in enumerate(self.agent_layer.agents):
+    #         # safely_observe returns the current observation of agent i - but that should be called before this function
+    #         current_obs = agent.get_observation_state()
+    #         current_pos = agent.current_position()
+    #         # agent.set_observation_state(current_obs)
+    #         for j, other_agent in enumerate(self.agent_layer.agents):
+    #             if i != j:
+    #                 other_pos = other_agent.current_position()
+    #                 agent_id = self.agent_name_mapping[agent]
+    #                 other_agent_id = self.agent_name_mapping[other_agent]
+
+    #                 if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(other_agent_id):
+    #                     other_agent.update_local_state(current_obs, current_pos) #This is to observation only
+    #                     agent.communicated = True 
+
+    #this is to share full state
     def share_and_update_observations(self):
         """
         Updates each agent classes internal observation state and internal local (entire env) state.
@@ -770,9 +795,9 @@ class Environment(MultiAgentEnv):
                     other_agent_id = self.agent_name_mapping[other_agent]
 
                     if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(other_agent_id):
-                        other_agent.update_local_state(current_obs, current_pos)
+                        #other_agent.update_local_state(current_obs, current_pos) #This is to observation only
+                        agent.update_local_state(other_agent.local_state, other_pos) #THIS CHANGE IS TO SHARE LOCAL STATE
                         agent.communicated = True 
-
 
     def print_local_state_section(self, agent, other_pos):
         """
@@ -882,12 +907,13 @@ class Environment(MultiAgentEnv):
 
 
     def _seed(self, seed=None):
+        if seed is None:
+            seed = np.random.randint(0, 2*32 - 1)
         self.np_random, seed_ = seeding.np_random(seed)
         np.random.seed(seed)
         random.seed(seed)
 
-
-    def run_simulation(self, max_steps=100):
+    def run_simulation(self, max_steps=10):
         running = True
         step_count = 0
         collected_data = []
@@ -968,7 +994,7 @@ class Environment(MultiAgentEnv):
             map_filename = "outputs/environment_snapshot.png"
 
         pygame.image.save(self.screen, map_filename)
-        #self.reset()
+        self.reset()
         pygame.quit()
 
         return collected_data
