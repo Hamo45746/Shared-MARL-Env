@@ -130,10 +130,10 @@ def test_specific_autoencoder(autoencoder, h5_folder, output_folder, autoencoder
         # h5_file = find_suitable_h5_file(h5_folder)
         # filename = 'data_mcity_image_1_s5_t90_j0_a10.h5'
         # filename = 'data_mcity_image_1_s2485_t90_j0_a1.h5'
-        # filename = 'test_data/data_mrand_s1176_t55_j0_a8.h5'
-        # filename = 'test_data/data_mrand_s1073_t21_j96_a14.h5' # jammer test
+        # filename = 'test_data/data_mrand_s1598_t67_j0_a13.h5'
+        filename = 'test_data/data_mrand_s1386_t28_j90_a13.h5'
         # filename = '3_map_data/data_mcity_image_1_s33_t90_j0_a10.h5'
-        filename = 'data_mcity_image_1_s10000_t90_j0_a1.h5'
+        # filename = 'data_mcity_image_1_s10000_t90_j0_a1.h5'
         h5_file = os.path.join(h5_folder, filename)
         step = 0
         agent = 0
@@ -233,13 +233,13 @@ def main_test_specific():
     H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
     # AUTOENCODER_FILE = 'AE_save_23_08/autoencoder_1_best.pth'  # Update this to the Autoencoder to test
     # AUTOENCODER_FILE = 'AE_save_4_09/autoencoder_1_best.pth'
-    AUTOENCODER_FILE = 'autoencoder_0_best.pth' # double channels - map
+    AUTOENCODER_FILE = 'autoencoder_2_best.pth' # double channels - map
     OUTPUT_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data/training_visualisations'  # Update this path
 
     autoencoder_path = os.path.join(H5_FOLDER, AUTOENCODER_FILE)
     autoencoder = EnvironmentAutoencoder()
-    autoencoder.load_single_autoencoder(autoencoder_path, 0)
-    test_specific_autoencoder(autoencoder, H5_FOLDER, OUTPUT_FOLDER, autoencoder_index=0)
+    autoencoder.load_single_autoencoder(autoencoder_path, 2)
+    test_specific_autoencoder(autoencoder, H5_FOLDER, OUTPUT_FOLDER, autoencoder_index=2)
     
     
 def main_test_autoencoder_performance():
