@@ -38,6 +38,8 @@ def create_agents(nagents, map_matrix, obs_range, randomiser, path_preprocessor,
             agent = agent_class(xs, ys, map_matrix, randomiser, obs_range=obs_range, flatten=flatten)
             
         agent.set_position(xinit, yinit)
+        if agent_type == 'discrete' or agent_type == 'task_allocation':
+            agent.full_state[1][xinit, yinit] == 0.0
         agents.append(agent)
         #this is for lunch and learn 
         agent.origin = agent.current_pos

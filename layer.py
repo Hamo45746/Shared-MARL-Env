@@ -22,10 +22,15 @@ class AgentLayer:
         self.layer_state = np.full((xs, ys), -20.0, dtype=np.float16)
         self.agent_positions = np.zeros((self.nagents, 2), dtype=np.int16)
         self.update_agent_positions()
+        self.initialise_layer_state()
         
     def update_agent_positions(self):
         for i, agent in enumerate(self.agents):
             self.agent_positions[i] = agent.current_position()
+            
+    def initialise_layer_state(self):
+        for i, pos in enumerate(self.agent_positions):
+            self.layer_state[pos[0], pos[1]] = 0.0
 
     def n_agents(self):
         return self.nagents

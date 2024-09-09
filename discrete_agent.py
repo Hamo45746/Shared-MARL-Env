@@ -41,8 +41,8 @@ class DiscreteAgent(BaseAgent):
         self._obs_range = obs_range # Initialise the local observation state
         self.X, self.Y = map_matrix.shape
         self.observation_state = np.full((n_layers, obs_range, obs_range), fill_value=-20.0)
-        self.local_state = np.full((n_layers, self.X, self.Y), fill_value=-20.0, dtype=np.float16)
-        self.local_state[0] = map_matrix # TODO: Assuption that we have a map - can be outdated?
+        self.full_state = np.full((n_layers, self.X, self.Y), fill_value=-20.0, dtype=np.float16)
+        self.full_state[0] = map_matrix # Assuption that we have a map - can be outdated?
         self.path = []
         
         # Ensure the action space is compatible with MARLlib
@@ -98,7 +98,7 @@ class DiscreteAgent(BaseAgent):
         return cpos
 
     def get_state(self):
-        return self.local_state
+        return self.full_state
 
     def get_observation_state(self):
         return self.observation_state
@@ -109,7 +109,7 @@ class DiscreteAgent(BaseAgent):
         self.temp_pos = np.zeros(2, dtype=np.int16)
         self.path = []
         self.observation_state.fill(-20.0)
-        self.local_state.fill(-20.0)
+        self.full_state.fill(-20.0)
         return self.get_observation()
 
     # Helper Functions
@@ -120,7 +120,7 @@ class DiscreteAgent(BaseAgent):
     
     def inbuilding(self, x, y):
         # if self.observation_state[0, x - self.current_pos[0], y - self.current_pos[1]] == 0: # Maybe incorrect?
-        if self.local_state[0][x, y] == 0:
+        if self.full_state[0][x, y] == 0:
             return True
         return False
 
@@ -137,7 +137,7 @@ class DiscreteAgent(BaseAgent):
     def last_position(self):
         return self.last_pos
     
-    def update_local_state(self, observed_state, observer_position):
+    def update_full_state(self, observed_state, observer_position):
         observer_x, observer_y = observer_position
         obs_half_range = self._obs_range // 2
 
@@ -154,16 +154,16 @@ class DiscreteAgent(BaseAgent):
                         0 <= obs_y < self._obs_range):
                         
                         if layer == 0:  # Map layer
-                            self.local_state[layer, global_x, global_y] = observed_state[layer, obs_x, obs_y]
+                            self.full_state[layer, global_x, global_y] = observed_state[layer, obs_x, obs_y]
                         else:
                             observed_value = observed_state[layer, obs_x, obs_y]
-                            current_value = self.local_state[layer, global_x, global_y]
+                            current_value = self.full_state[layer, global_x, global_y]
                             
                             if observed_value == 0:
-                                self.local_state[layer, global_x, global_y] = 0
+                                self.full_state[layer, global_x, global_y] = 0
                             elif observed_value > current_value:
                                 # Update only if the observed value is more recent
-                                self.local_state[layer, global_x, global_y] = observed_value
+                                self.full_state[layer, global_x, global_y] = observed_value
 
 
     # def update_local_state(self, observed_state, observer_position):

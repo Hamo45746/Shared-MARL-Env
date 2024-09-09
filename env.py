@@ -202,7 +202,7 @@ class Environment(gym.core.Env):
         gc.collect()
         super().reset(seed=seed)
 
-        # Initialize environment parameters
+        # Initialise environment parameters
         self.D = self.config['grid_size']['D']
         self.obs_range = self.config['obs_range']
         self.pixel_scale = self.config['pixel_scale']
@@ -233,6 +233,8 @@ class Environment(gym.core.Env):
         self.agent_to_network = {}
         self.comm_matrix = None
         self.jammed_agents = set()
+        # Initialise observations for all agents
+        self.update_all_agents_obs()
 
         return self.get_obs()
 
@@ -240,16 +242,22 @@ class Environment(gym.core.Env):
     def get_obs(self):
         observations = {}
         for agent_id, agent in enumerate(self.agents):
-            if self.agent_type == 'task_allocation':
-                local_obs = self.safely_observe(agent_id)
-                full_state = agent.get_state()
+            if agent.is_terminated(): # Give dummy obs - designed for task allocation agent, this func will break for continuous agents
                 observations[agent_id] = {
-                    'local_obs': local_obs,
-                    'full_state': full_state
+                    'local_obs': np.zeros_like(agent.observation_space['local_obs'].low),
+                    'full_state': np.zeros_like(agent.observation_space['full_state'].low)
                 }
             else:
                 observations[agent_id] = agent.get_observation()
         return observations
+    
+    
+    def update_all_agents_obs(self):
+        for agent_id, agent in enumerate(self.agents):
+            obs = self.safely_observe(agent_id)
+            agent.set_observation_state(obs)
+            current_pos = agent.current_position
+            # agent.update_full_state(obs, current_pos)
     
     
     def step(self, actions_dict):
@@ -274,10 +282,11 @@ class Environment(gym.core.Env):
         # Move agents and targets for max_path_length steps
         for step in range(max_path_length):
             for agent in self.agents:
-                agent.decay_full_state()
+                if not agent.is_terminated():
+                    agent.decay_full_state()
             # Move agents
             for agent_id, path in self.agent_paths.items():
-                if path:
+                if path and not agent.is_terminated():
                     next_pos = path.pop(0)
                     self.agent_layer.set_position(agent_id, next_pos[0], next_pos[1])
             
@@ -307,12 +316,12 @@ class Environment(gym.core.Env):
 
         # Calculate rewards
         rewards = self.collect_rewards()
-        observations = {agent_id: agent.get_observation() for agent_id, agent in enumerate(self.agents)}
+        observations = self.get_obs()
         
-        terminated = self.is_episode_done()
+        done = self.is_episode_done()
         info = {}
 
-        return observations, rewards, terminated, info
+        return observations, rewards, done, info
     
     def regular_step(self, actions_dict):
         # Update target positions and layer state
@@ -351,11 +360,11 @@ class Environment(gym.core.Env):
         
         self.current_step += 1
         
-        terminated = self.is_episode_done()
+        done = self.is_episode_done()
         # truncated = self.is_episode_done()
         info = {}
         
-        return observations, rewards, terminated, info # for gym
+        return observations, rewards, done, info # for gym
 
 
     def update_observations(self): # Merge Notes: Alex had this one
@@ -368,11 +377,13 @@ class Environment(gym.core.Env):
     
 
     def collect_rewards(self):
-        # local_states = {}
+        # full_states = {}
         rewards = {}
         for agent_id in range(self.num_agents):
             agent = self.agent_layer.agents[agent_id]
-            # local_states[agent_id] = agent.get_state()  # This returns the local_state
+            # full_states[agent_id] = agent.get_state()  # This returns the full_state
+            if agent.is_terminated():
+                rewards[agent_id] = 0
             
             if self.agent_type == "discrete":
                 reward = DiscreteAgentController.calculate_reward(agent)
@@ -382,7 +393,15 @@ class Environment(gym.core.Env):
                 reward = calculate_continuous_reward(agent, self)
             rewards[agent_id] = reward
         
-        return rewards #, local_states (was before rewards if uncommented)
+        return rewards #, full_states (was before rewards if uncommented)
+    
+    
+    def is_episode_done(self):
+        return all(agent.is_terminated() for agent in self.agents)
+    
+    
+    def get_battery_levels(self):
+        return {agent_id: agent.get_battery() for agent_id, agent in enumerate(self.agents)}
     
     
     def action_to_waypoint(self, action):
@@ -440,11 +459,7 @@ class Environment(gym.core.Env):
                 else:  # Free space
                     col = (0, 0, 0)  # White for free space
                 pygame.draw.rect(self.screen, col, pos)
-    
-    # need to update this, doing it for testing
-    def is_episode_done(self):
-        # return all(self.agent_layer.is_agent_terminated(i) for i in range(len(self.agents)))
-        return False
+
 
     ## RENDERING FUNCTIONS ##
     def draw_agents(self):
@@ -591,10 +606,10 @@ class Environment(gym.core.Env):
 
         observed_positions = set()
         for agent in self.agent_layer.agents:
-            #observed_positions = (agent.local_state<=0) & (agent.local_state > -20)
-            observed_positions = (agent.local_state[0]==0) | (agent.local_state[0] == -1)
+            #observed_positions = (agent.full_state<=0) & (agent.full_state > -20)
+            observed_positions = (agent.full_state[0]==0) | (agent.full_state[0] == -1)
 
-        observed_positions_2 = agent.local_state[observed_positions]
+        observed_positions_2 = agent.full_state[observed_positions]
         # print(observed_positions_2)
 
         for x, y in observed_positions_2:
@@ -747,7 +762,7 @@ class Environment(gym.core.Env):
           
     ## COMMUNICATION FUNCTIONS ##                    
     def share_and_update_observations(self):
-        # First, update each agent's own observation
+        # First update each agent's own observation
         for i, agent in enumerate(self.agents):
             current_obs = self.safely_observe(i)
             current_pos = agent.current_position()
@@ -762,16 +777,16 @@ class Environment(gym.core.Env):
             combined_state = None
             for agent_id in network:
                 if combined_state is None:
-                    combined_state = self.agents[agent_id].local_state.copy()
+                    combined_state = self.agents[agent_id].full_state.copy()
                 else:
                     self.agents[agent_id].merge_full_states(combined_state)
                     for layer in range(1, combined_state.shape[0]):
-                        mask = (self.agents[agent_id].local_state[layer] > combined_state[layer]) | (self.agents[agent_id].local_state[layer] == 0)
-                        combined_state[layer][mask] = self.agents[agent_id].local_state[layer][mask]
+                        mask = (self.agents[agent_id].full_state[layer] > combined_state[layer]) | (self.agents[agent_id].full_state[layer] == 0)
+                        combined_state[layer][mask] = self.agents[agent_id].full_state[layer][mask]
 
             # Distribute the combined information to all agents in the network
             for agent_id in network:
-                self.agents[agent_id].local_state = combined_state.copy()
+                self.agents[agent_id].full_state = combined_state.copy()
     
     
     def update_networks(self):
@@ -984,7 +999,7 @@ class Environment(gym.core.Env):
         while step_count < max_steps:
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(self.agents)}
             
-            observations, rewards, terminated, info = self.step(action_dict)
+            observations, rewards, done, info = self.step(action_dict)
             # print(observations[0]['local_obs'])
             collected_data.append(observations)
             step_count += 1
@@ -998,7 +1013,7 @@ class Environment(gym.core.Env):
             # self.print_all_agents_full_state_regions()
             # print_env_state_summary(step_count, self.global_state)
             
-            if terminated:
+            if done:
                 break
         gc.collect()
         return collected_data
@@ -1015,7 +1030,7 @@ class Environment(gym.core.Env):
         print("\n" + "="*50 + "\n")  # Separator between steps
         
     
-    def print_local_state_section(self, agent, other_pos):
+    def print_full_state_section(self, agent, other_pos):
         """
         Prints the section of the agent's local state that corresponds to the other agent's observation location.
         """
@@ -1029,8 +1044,8 @@ class Environment(gym.core.Env):
         y_start = int(y_start)
         y_end = int(y_end)
         
-        local_state_section = agent.local_state[1:2, x_start:x_end, y_start:y_end]
-        print(local_state_section)
+        full_state_section = agent.full_state[1:2, x_start:x_end, y_start:y_end]
+        print(full_state_section)
     
     
 def print_agent_full_state_region(agent, global_state, region_size=20):
@@ -1054,7 +1069,7 @@ def print_agent_full_state_region(agent, global_state, region_size=20):
     
     layer = 1  # interested in layer 1
     print(f"Layer {layer}:")
-    region = agent.local_state[layer, x_start:x_end, y_start:y_end]
+    region = agent.full_state[layer, x_start:x_end, y_start:y_end]
     
     def format_float16(x):
         return f'{x:5.1f}' if x != 0 else '  0.0'
@@ -1104,7 +1119,7 @@ def visualize_agent_states(env, step):
         axes = [axes]
         
     for i, agent in enumerate(env.agents):
-        state = agent.local_state[1]  # Assuming layer 1 contains the relevant information
+        state = agent.full_state[1]  # Assuming layer 1 contains the relevant information
         im = axes[i].imshow(state, cmap='viridis')
         axes[i].set_title(f'Agent {i}')
         fig.colorbar(im, ax=axes[i])

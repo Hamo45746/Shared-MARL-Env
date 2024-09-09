@@ -36,7 +36,7 @@ class BaseAgent(ABC):
         pass
 
     @abstractmethod
-    def update_local_state(self, observed_state, observer_position):
+    def update_full_state(self, observed_state, observer_position):
         """Update the agent's local state based on observed data."""
         pass
 

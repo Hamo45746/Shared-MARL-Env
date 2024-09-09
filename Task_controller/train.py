@@ -26,7 +26,8 @@ class RLLibEnvWrapper(gym.Env):
             dtype=np.float32
         )
 
-    def encode_full_state(self, full_state):
+
+    def encode_full_state(self, full_state, battery):
         encoded_full_state = []
         for i in range(self.D):
             if i == 0:
@@ -39,40 +40,50 @@ class RLLibEnvWrapper(gym.Env):
             ae = self.autoencoder.autoencoders[ae_index]
             encoded_full_state.append(ae.encode(full_state[i:i+1]).squeeze())
         
+        # Add battery information as a repeated 256-element vector
+        battery_vector = np.full(256, battery, dtype=np.float32)
+        encoded_full_state.append(battery_vector)
+        
         return np.stack(encoded_full_state)
+    
 
     def reset(self, seed=None):
         observations = self.env.reset(seed=seed)
-        encoded_obs = self._encode_observations(observations)
+        battery_levels = self.env.get_battery_levels()
+        encoded_obs = self._encode_observations(observations, battery_levels)
         return encoded_obs, {}
 
+
     def step(self, action_dict):
-        observations, rewards, terminated, info = self.env.step(action_dict)
+        observations, rewards, episode_done, info = self.env.step(action_dict)
+        battery_levels = self.env.get_battery_levels()
+        encoded_obs = self._encode_observations(observations, battery_levels)
         
-        encoded_obs = self._encode_observations(observations)
-        
-        dones = {"__all__": terminated}
+        dones = {}
         for agent_id in range(self.num_agents):
-            dones[agent_id] = terminated
+            dones[agent_id] = self.env.agents[agent_id].is_terminated()
+        
+        # Set __all__ to True only if all agents are terminated
+        dones["__all__"] = episode_done
 
-        return (
-            encoded_obs,
-            self._format_dict(rewards),
-            self._format_dict(dones),
-            self._format_dict(info)
-        )
+        return encoded_obs, self._format_dict(rewards), dones, self._format_dict(info)
 
-    def _encode_observations(self, observations):
-        if isinstance(observations, dict):
-            return {
-                agent_id: self.encode_full_state(obs['full_state'])
-                for agent_id, obs in observations.items()
-            }
-        else:
-            return {
-                agent_id: self.encode_full_state(obs['full_state'])
-                for agent_id, obs in enumerate(observations)
-            }
+
+    def _encode_observations(self, observations, battery_levels):
+        encoded_observations = {}
+
+        for agent_id, obs in observations.items():
+            if self.env.agents[agent_id].is_terminated():
+                # For terminated agents, return a zero-filled observation
+                encoded_observations[agent_id] = np.zeros((self.D + 1, 256), dtype=np.float32)
+            else:
+                # For active agents, encode the full state and include battery level
+                full_state = obs['full_state']
+                battery = battery_levels[agent_id]
+                encoded_observations[agent_id] = self.encode_full_state(full_state, battery)
+
+        return encoded_observations
+    
 
     def _format_dict(self, data):
         if isinstance(data, dict):

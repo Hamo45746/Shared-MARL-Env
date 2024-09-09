@@ -17,6 +17,9 @@ class TaskAllocationAgent(DiscreteAgent):
         seed=10,
         flatten=False,
         max_steps_per_action=10,
+        initial_battery=100,
+        move_battery_cost=0.1,
+        communicate_battery_cost=0.05
     ):
         super().__init__(xs, ys, map_matrix, randomiser, obs_range, n_layers, seed, flatten)
         self.max_distance = max_steps_per_action
@@ -26,6 +29,9 @@ class TaskAllocationAgent(DiscreteAgent):
         self.path_preprocessor = path_preprocessor
         self.randomiser = randomiser
         self._action_space = spaces.Discrete((2 * self.max_distance + 1) ** 2)
+        self.battery = initial_battery
+        self.move_battery_cost = move_battery_cost
+        self.communicate_battery_cost = communicate_battery_cost
     
     @property
     def action_space(self):
@@ -41,11 +47,16 @@ class TaskAllocationAgent(DiscreteAgent):
     def get_observation(self):
         return {
             'local_obs': self.observation_state,
-            'full_state': self.local_state
+            'full_state': self.full_state
         }
+        
+    def get_battery(self):
+        return self.battery
 
     def step(self, action):
-        # print(f"TaskAllocationAgent step called with action: {action}")
+        if self.is_terminated():
+            return self.current_pos
+        
         waypoint = self.action_to_waypoint(action)
         if not self.path:
             self.path = self.compute_path(tuple(self.current_pos), waypoint)
@@ -55,9 +66,8 @@ class TaskAllocationAgent(DiscreteAgent):
             # print(f"Current pos: {self.current_pos}. Next pos: {next_pos}. Via action: {self.motion_range[action]}")
             discrete_action = self.determine_action(tuple(self.current_pos), next_pos)
             self.current_pos = super().step(discrete_action)
+            self.battery -= self.move_battery_cost
         
-        # After moving, update the agent's own trail
-        self.update_own_trail()
         gc.collect()
         return self.current_pos
 
@@ -114,14 +124,16 @@ class TaskAllocationAgent(DiscreteAgent):
         return action
 
     def inbuilding(self, x, y):
-        return self.local_state[0][x, y] == 0.0
+        return self.full_state[0][x, y] == 0.0
 
     def reset(self):
         super().reset()
         self.path = []
+        self.battery = 100
         return self.get_observation()
 
     def update_full_state(self, observed_state, observer_position):
+        self.battery -= self.communicate_battery_cost
         observer_x, observer_y = observer_position
         obs_range = self._obs_range
         for layer in range(1, observed_state.shape[0]):  # Start from layer 1, skip map layer - as all agents have that
@@ -131,33 +143,36 @@ class TaskAllocationAgent(DiscreteAgent):
                     global_y = observer_y - obs_range // 2 + dy
                     if self.inbounds(global_x, global_y):
                         observed_value = observed_state[layer, dx, dy]
-                        current_value = self.local_state[layer, global_x, global_y]
+                        current_value = self.full_state[layer, global_x, global_y]
                         if observed_value > current_value or observed_value == 0.0:
-                            self.local_state[layer, global_x, global_y] = observed_value
+                            self.full_state[layer, global_x, global_y] = observed_value
 
     def decay_full_state(self):
-        for layer in range(1, self.local_state.shape[0]):  # Start from layer 1, skip map layer
+        for layer in range(1, self.full_state.shape[0]):  # Start from layer 1, skip map layer
             # Create a mask for values to decay
-            decay_mask = (self.local_state[layer] <= 0.0) & (self.local_state[layer] > -20.0)
+            decay_mask = (self.full_state[layer] <= 0.0) & (self.full_state[layer] > -20.0)
             # Decay values
-            self.local_state[layer][decay_mask] -= 0.1
+            self.full_state[layer][decay_mask] -= 0.1
             # Ensure no values below -20
-            self.local_state[layer][self.local_state[layer] < -20.0] = -20.0
+            self.full_state[layer][self.full_state[layer] < -20.0] = -20.0
 
     def update_position(self, o_pos, n_pos):
         """Clear the old position and set the new position in the layer state."""
         ox, oy = tuple(map(int, o_pos))
         nx, ny = tuple(map(int, n_pos))
-        if self.local_state[1][ox, oy] == 0.0:  # Only reset if it was the current position of the agent
-            self.local_state[1][ox, oy] = -0.1  # Start decay from -1
-        self.local_state[1][nx, ny] = 0.0  # Refresh the new position to 0
+        if self.full_state[1][ox, oy] == 0.0:  # Only reset if it was the current position of the agent
+            self.full_state[1][ox, oy] = -0.1  # Start decay from -1
+        self.full_state[1][nx, ny] = 0.0  # Refresh the new position to 0
         
     def merge_full_states(self, other_full_state):
         """
         Merges the agent's full state with another agent's full state,
         keeping the most recent information for each cell.
         """
-        for layer in range(1, self.local_state.shape[0]):  # Start from layer 1, skip map layer
-            mask = (other_full_state[layer] > self.local_state[layer]) | (other_full_state[layer] == 0)
-            self.local_state[layer][mask] = other_full_state[layer][mask]
+        for layer in range(1, self.full_state.shape[0]):  # Start from layer 1, skip map layer
+            mask = (other_full_state[layer] > self.full_state[layer]) | (other_full_state[layer] == 0)
+            self.full_state[layer][mask] = other_full_state[layer][mask]
+            
+    def is_terminated(self):
+        return self.battery <= 0
         
