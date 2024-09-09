@@ -43,8 +43,8 @@ def main():
     config_path = 'config.yaml'  # Update this to your config file path
     base_config = load_config(config_path)
     
-    num_configs = 10 # Number of different settings you want to generate data for
-    steps_per_episode = 250  # Number of steps per episode
+    num_configs = 20 # Number of different settings you want to generate data for
+    steps_per_episode = 200  # Number of steps per episode
     all_data_layers = {key: [] for key in ["map_view", "agent", "target", "jammer"]}
     random_configs = generate_random_configs(base_config, num_configs)
     for config in random_configs:

@@ -41,7 +41,7 @@ class Environment(MultiAgentEnv):
             self.seed_value = None
         self._seed(self.seed_value)
 
-        # Initialize autoencoders for all layers
+        #Initialize autoencoders for all layers
         self.autoencoder = EnvironmentAutoencoder((self.obs_range, self.obs_range), encoded_dim=32)
         for layer in ["map_view", "agent", "target", "jammer"]:
             self.autoencoder.add_layer(layer, (self.obs_range, self.obs_range), encoded_dim=32)
@@ -338,7 +338,7 @@ class Environment(MultiAgentEnv):
         # encoded_obs = {}
         # for agent_id, obs in encoded_observations.items():
         #     encoded_obs[agent_id] = obs["encoded_map"]
-        #     # print(f"Agent {agent_id}: {encoded_obs[agent_id]}")
+        #     print(f"Agent {agent_id}: {encoded_obs[agent_id]}")
         
         # print("Decoded Observations")
         # for agent_id, obs in decoded_obs.items():
@@ -796,8 +796,9 @@ class Environment(MultiAgentEnv):
 
                     if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(other_agent_id):
                         #other_agent.update_local_state(current_obs, current_pos) #This is to observation only
-                        agent.update_local_state(other_agent.local_state, other_pos) #THIS CHANGE IS TO SHARE LOCAL STATE
+                        agent.update_local_state(other_agent.local_state, other_pos) #Changed this to share full state. 
                         agent.communicated = True 
+
 
     def print_local_state_section(self, agent, other_pos):
         """
@@ -913,7 +914,7 @@ class Environment(MultiAgentEnv):
         np.random.seed(seed)
         random.seed(seed)
 
-    def run_simulation(self, max_steps=10):
+    def run_simulation(self, max_steps=100):
         running = True
         step_count = 0
         collected_data = []
