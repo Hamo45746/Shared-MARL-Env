@@ -1,98 +1,85 @@
-import gymnasium as gym
-from gymnasium import spaces
+import os
+import sys
+import yaml
 import numpy as np
-from TA_autoencoder import autoencoder
+from ray import tune
+from ray.rllib.algorithms.ppo import PPO
+from ray.tune.registry import register_env
+from gymnasium import spaces
+from ray.tune.logger import TBXLoggerCallback, JsonLoggerCallback, CSVLoggerCallback
 
-class RLLibEnvWrapper(gym.Env):
-    def __init__(self, env, ae_folder_path):
-        self.env = env
-        self.num_agents = len(self.env.agents)
-        self.D = self.env.D  # Number of layers in the state
+# Set environment variables
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+os.environ['MKL_DEBUG_CPU_TYPE'] = '5'
 
-        # Initialise Autoencoder
-        self.autoencoder = autoencoder.EnvironmentAutoencoder()
-        self.autoencoder.load_all_autoencoders(ae_folder_path)
-        for i in range(3):
-            self.autoencoder.autoencoders[i].eval()
+# Add the parent directory to the Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-        # Define action space
-        self.action_space = self.env.action_space
+from env import Environment
+from rllib_wrapper import RLLibEnvWrapper
 
-        # Define encoded observation space
-        encoded_shape = (256,)
-        self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, 
-            shape=(self.D,) + encoded_shape, 
-            dtype=np.float32
-        )
+# Environment creator function
+def env_creator(env_config):
+    env = Environment(config_path=env_config["config_path"])
+    return RLLibEnvWrapper(env, ae_folder_path=env_config["ae_folder_path"])
 
+# Register the environment
+register_env("custom_multi_agent_env", env_creator)
 
-    def encode_full_state(self, full_state, battery):
-        encoded_full_state = []
-        for i in range(self.D):
-            if i == 0:
-                ae_index = 0  # Use first autoencoder for map layer
-            elif i in [1, 2]:
-                ae_index = 1  # Use second autoencoder for agent and target layers
-            else:
-                ae_index = 2  # Use third autoencoder for jammer layer
-            
-            ae = self.autoencoder.autoencoders[ae_index]
-            encoded_full_state.append(ae.encode(full_state[i:i+1]).squeeze())
-        
-        # Add battery information as a repeated 256-element vector
-        battery_vector = np.full(256, battery, dtype=np.float32)
-        encoded_full_state.append(battery_vector)
-        
-        return np.stack(encoded_full_state)
+# Load the configuration file
+with open("marl_config.yaml", "r") as file:
+    config = yaml.safe_load(file)
+
+# Define the policy mapping function for decentralized training
+def policy_mapping_fn(agent_id, episode, worker, **kwargs):
+    return f"policy_{agent_id}"
+
+# Set up custom location for ray_results
+logdir = "./custom_ray_results"
+config["local_dir"] = logdir
+
+# Update the policies in the config
+num_agents = 5  # Adjust based on your environment
+obs_shape = (5, 256)  # Adjusted for encoded observation space (4 layers + 1 battery layer, 256 encoding size)
+action_space = spaces.Discrete((2 * 10 + 1) ** 2)  # Assuming max_steps_per_action is 10
+obs_space = spaces.Box(low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32)
+
+# Config for decentralized training
+config["multiagent"] = {
+    "policies": {f"policy_{i}": (None, obs_space, action_space, {}) for i in range(num_agents)},
+    "policy_mapping_fn": policy_mapping_fn
+}
+
+# Update environment config
+config["env_config"] = {
+    "config_path": "config.yaml",
+    "ae_folder_path": "path/to/autoencoder/models"
+}
+
+# Set up custom callbacks
+config["callbacks"] = [
+    TBXLoggerCallback(),
+    JsonLoggerCallback(),
+    CSVLoggerCallback()
+]
+
+# Initialize the PPO trainer
+trainer = PPO(config=config)
+
+# Train the agents
+for i in range(200):
+    print(f"Iteration: {i}")
+    result = trainer.train()
     
-
-    def reset(self, seed=None):
-        observations = self.env.reset(seed=seed)
-        battery_levels = self.env.get_battery_levels()
-        encoded_obs = self._encode_observations(observations, battery_levels)
-        return encoded_obs, {}
-
-
-    def step(self, action_dict):
-        observations, rewards, episode_done, info = self.env.step(action_dict)
-        battery_levels = self.env.get_battery_levels()
-        encoded_obs = self._encode_observations(observations, battery_levels)
-        
-        dones = {}
-        for agent_id in range(self.num_agents):
-            dones[agent_id] = self.env.agents[agent_id].is_terminated()
-        
-        # Set __all__ to True only if all agents are terminated
-        dones["__all__"] = episode_done
-
-        return encoded_obs, self._format_dict(rewards), dones, self._format_dict(info)
-
-
-    def _encode_observations(self, observations, battery_levels):
-        encoded_observations = {}
-
-        for agent_id, obs in observations.items():
-            if self.env.agents[agent_id].is_terminated():
-                # For terminated agents, return a zero-filled observation
-                encoded_observations[agent_id] = np.zeros((self.D + 1, 256), dtype=np.float32)
-            else:
-                # For active agents, encode the full state and include battery level
-                full_state = obs['full_state']
-                battery = battery_levels[agent_id]
-                encoded_observations[agent_id] = self.encode_full_state(full_state, battery)
-
-        return encoded_observations
+    # Print training metrics
+    print(f"Episode Reward Mean: {result['episode_reward_mean']}")
+    print(f"Episode Length Mean: {result['episode_len_mean']}")
     
+    # Save checkpoint every 50 iterations
+    if (i + 1) % 50 == 0:
+        checkpoint_dir = trainer.save(logdir)
+        print(f"Checkpoint saved at {checkpoint_dir}")
 
-    def _format_dict(self, data):
-        if isinstance(data, dict):
-            return data
-        else:
-            return {i: data for i in range(self.num_agents)}
-
-    def render(self, mode='human'):
-        return self.env.render(mode)
-
-    def close(self):
-        return self.env.close()
+# Save final checkpoint
+final_checkpoint_dir = trainer.save(logdir)
+print(f"Final checkpoint saved at {final_checkpoint_dir}")
