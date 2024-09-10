@@ -77,7 +77,7 @@ class Environment(gym.core.Env):
         self.current_step = 0
         self.render_modes = render_mode
         self.screen = None
-        pygame.init() # Comment this out when not rendering
+        # pygame.init() # Comment this out when not rendering
         self.networks = []
         self.agent_to_network = {}
         self.comm_matrix = None
@@ -330,7 +330,7 @@ class Environment(gym.core.Env):
             reward_calculator.post_step_update()
 
             self.current_step += 1
-            self.render()
+            # self.render()
 
         # Get final rewards
         rewards = reward_calculator.get_rewards()
@@ -1147,6 +1147,6 @@ def visualize_agent_states(env, step):
     plt.close()
 
 
-config_path = 'config.yaml' 
-env = Environment(config_path)
-Environment.run_simulation(env, max_steps=3)
+# config_path = 'config.yaml' 
+# env = Environment(config_path)
+# Environment.run_simulation(env, max_steps=3)
