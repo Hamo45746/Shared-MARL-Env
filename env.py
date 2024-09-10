@@ -274,25 +274,22 @@ class Environment(gym.core.Env):
     
     def task_allocation_step(self, actions_dict):
         reward_calculator = RewardCalculator(self)
+        
+        # Handle terminated agents
+        active_agents = [agent_id for agent_id, agent in enumerate(self.agents) if not agent.is_terminated()]
+        if not active_agents:
+            return self.get_obs(), {i: 0 for i in range(self.num_agents)}, {"__all__": True}, {"__all__": False}, {}
 
-        # Initialise rewards, observations, done, and truncated dictionaries for all agents
-        rewards = {i: 0.0 for i in range(self.num_agents)}
-        observations = {}
-        done = {i: self.agents[i].is_terminated() for i in range(self.num_agents)}
-        truncated = {i: False for i in range(self.num_agents)}
-
-        # Compute paths for all non-terminated agents based on their actions (waypoints)
+        # First, compute paths for all agents based on their actions (waypoints)
         for agent_id, action in actions_dict.items():
-            if not self.agents[agent_id].is_terminated():
-                agent = self.agents[agent_id]
-                start = tuple(self.agent_layer.get_position(agent_id))
-                goal = agent.action_to_waypoint(action)
-                self.current_waypoints[agent_id] = goal
-                self.agent_paths[agent_id] = self.path_processor.get_path(start, goal)
+            agent = self.agents[agent_id]
+            start = tuple(self.agent_layer.get_position(agent_id))
+            goal = agent.action_to_waypoint(action)
+            self.current_waypoints[agent_id] = goal
+            self.agent_paths[agent_id] = self.path_processor.get_path(start, goal)
 
-        # Find the maximum path length among non-terminated agents
-        max_path_length = max(len(path) for agent_id, path in self.agent_paths.items() 
-                            if not self.agents[agent_id].is_terminated())
+        # Find the maximum path length
+        max_path_length = max(len(path) for path in self.agent_paths.values())
 
         # Move agents and targets for max_path_length steps
         for step in range(max_path_length):
@@ -302,7 +299,7 @@ class Environment(gym.core.Env):
                 if not agent.is_terminated():
                     agent.decay_full_state()
 
-            # Move non-terminated agents
+            # Move agents
             for agent_id, path in self.agent_paths.items():
                 if path and not self.agents[agent_id].is_terminated():
                     next_pos = path.pop(0)
@@ -333,36 +330,26 @@ class Environment(gym.core.Env):
 
             # Update rewards based on exploration and target observation
             for agent_id in range(self.num_agents):
-                if not self.agents[agent_id].is_terminated():
-                    reward_calculator.update_exploration_reward(agent_id)
-                    reward_calculator.update_target_reward(agent_id)
+                reward_calculator.update_exploration_reward(agent_id)
+                reward_calculator.update_target_reward(agent_id)
 
             # Update communication rewards
             reward_calculator.update_communication_reward()
 
-            # Finalize rewards for this step
+            # Finalise rewards for this step
             reward_calculator.post_step_update()
 
             self.current_step += 1
             # self.render()
-            
+            # print(f"battery: {self.get_battery_levels()}")
+
         # Get final rewards
         rewards = reward_calculator.get_rewards()
-
-        # Update observations for all agents
-        for agent_id in range(self.num_agents):
-            if self.agents[agent_id].is_terminated():
-                observations[agent_id] = {
-                    'local_obs': np.zeros_like(self.observation_space['local_obs'].low),
-                    'full_state': np.zeros_like(self.observation_space['full_state'].low)
-                }
-            else:
-                observations[agent_id] = self.safely_observe(agent_id)
-
-        # Check if all agents are terminated
-        done["__all__"] = all(done.values())
+        observations = self.get_obs()
+        done = {agent_id: self.agents[agent_id].is_terminated() for agent_id in range(self.num_agents)}
+        done["__all__"] = self.is_episode_done()
+        truncated = {agent_id: False for agent_id in range(self.num_agents)}
         truncated["__all__"] = False
-
         info = {}
 
         return observations, rewards, done, truncated, info
