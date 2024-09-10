@@ -295,6 +295,7 @@ class Environment(gym.core.Env):
                 if path and not self.agents[agent_id].is_terminated():
                     next_pos = path.pop(0)
                     self.agent_layer.set_position(agent_id, next_pos[0], next_pos[1])
+                    self.agents[agent_id].battery -= self.agents[agent_id].move_battery_cost
 
             # Move all targets
             for target in self.target_layer.targets:
@@ -331,6 +332,7 @@ class Environment(gym.core.Env):
 
             self.current_step += 1
             # self.render()
+            # print(f"battery: {self.get_battery_levels()}")
 
         # Get final rewards
         rewards = reward_calculator.get_rewards()
@@ -1018,7 +1020,7 @@ class Environment(gym.core.Env):
         while step_count < max_steps:
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(self.agents)}
             
-            observations, rewards, done, info = self.step(action_dict)
+            observations, rewards, terminated, truncated, info = self.step(action_dict)
             # print(observations[0]['local_obs'])
             collected_data.append(observations)
             step_count += 1
@@ -1032,7 +1034,7 @@ class Environment(gym.core.Env):
             # self.print_all_agents_full_state_regions()
             # print_env_state_summary(step_count, self.global_state)
             
-            if done:
+            if terminated["__all__"]:
                 break
         gc.collect()
         return collected_data
@@ -1151,4 +1153,4 @@ def visualize_agent_states(env, step):
 
 # config_path = 'config.yaml' 
 # env = Environment(config_path)
-# Environment.run_simulation(env, max_steps=3)
+# Environment.run_simulation(env, max_steps=100)

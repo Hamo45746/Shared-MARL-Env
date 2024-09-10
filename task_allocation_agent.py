@@ -18,8 +18,8 @@ class TaskAllocationAgent(DiscreteAgent):
         flatten=False,
         max_steps_per_action=15,
         initial_battery=100,
-        move_battery_cost=0.5,
-        communicate_battery_cost=0.2
+        move_battery_cost=0.2,
+        communicate_battery_cost=0.1
     ):
         super().__init__(xs, ys, map_matrix, randomiser, obs_range, n_layers, seed, flatten)
         self.max_distance = max_steps_per_action
@@ -69,6 +69,7 @@ class TaskAllocationAgent(DiscreteAgent):
             self.battery -= self.move_battery_cost
         
         gc.collect()
+        print(self.battery)
         return self.current_pos
 
     def compute_path(self, start, goal):
