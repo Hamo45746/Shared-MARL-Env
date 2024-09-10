@@ -1,9 +1,8 @@
-import gymnasium as gym
-from gymnasium import spaces
-import numpy as np
-from TA_autoencoder import autoencoder
 import torch
+import numpy as np
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from TA_autoencoder import autoencoder
+import gymnasium as gym
 
 class RLLibEnvWrapper(MultiAgentEnv):
     def __init__(self, env, ae_folder_path):
@@ -11,19 +10,21 @@ class RLLibEnvWrapper(MultiAgentEnv):
         self.num_agents = len(self.env.agents)
         self.D = self.env.D  # Number of layers in the state
 
+        # Set up device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Using device: {self.device}")
+
+        # Initialize Autoencoder
         self.autoencoder = autoencoder.EnvironmentAutoencoder()
         self.autoencoder.load_all_autoencoders(ae_folder_path)
         for i in range(3):
             self.autoencoder.autoencoders[i].to(self.device)
             self.autoencoder.autoencoders[i].eval()
 
-        # Define action space
+        # Define action and observation spaces
         self.action_space = self.env.action_space
-
-        # Define encoded observation space
         encoded_shape = (256,)
-        self.observation_space = spaces.Box(
+        self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf,
             shape=(self.D,) + encoded_shape,
             dtype=np.float32
@@ -40,7 +41,10 @@ class RLLibEnvWrapper(MultiAgentEnv):
                 ae_index = 2  # Use third autoencoder for jammer layer
             
             ae = self.autoencoder.autoencoders[ae_index]
-            encoded_layer = ae.encode(torch.from_numpy(full_state[i:i+1]).to(self.device)).cpu().squeeze().numpy()
+            # Convert to float32 and move to device
+            input_tensor = torch.from_numpy(full_state[i:i+1]).float().to(self.device)
+            with torch.no_grad():
+                encoded_layer = ae.encode(input_tensor).cpu().squeeze().numpy()
             encoded_full_state.append(encoded_layer)
         
         # Add battery information as a repeated 256-element vector
@@ -60,11 +64,7 @@ class RLLibEnvWrapper(MultiAgentEnv):
         battery_levels = self.env.get_battery_levels()
         encoded_obs = self._encode_observations(observations, battery_levels)
         
-        dones = {}
-        for agent_id in range(self.num_agents):
-            dones[agent_id] = self.env.agents[agent_id].is_terminated()
-        
-        # Set __all__ to True only if all agents are terminated
+        dones = {agent_id: self.env.agents[agent_id].is_terminated() for agent_id in range(self.num_agents)}
         dones["__all__"] = all(dones.values())
 
         return encoded_obs, rewards, dones, info
@@ -73,10 +73,8 @@ class RLLibEnvWrapper(MultiAgentEnv):
         encoded_observations = {}
         for agent_id, obs in observations.items():
             if self.env.agents[agent_id].is_terminated():
-                # For terminated agents, return a zero-filled observation
                 encoded_observations[agent_id] = np.zeros((self.D + 1, 256), dtype=np.float32)
             else:
-                # For active agents, encode the full state and include battery level
                 full_state = obs['full_state']
                 battery = battery_levels[agent_id]
                 encoded_observations[agent_id] = self.encode_full_state(full_state, battery)
