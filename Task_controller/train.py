@@ -30,19 +30,33 @@ register_env("custom_multi_agent_env", env_creator)
 with open("marl_config.yaml", "r") as file:
     config = yaml.safe_load(file)
     
-# Update the configuration
+    
 config.update({
-    "num_workers": 2,
+    "num_workers": 4,  # Increased for more parallel data collection
     "num_envs_per_worker": 1,
-    "train_batch_size": 10000,  # Increased batch size
-    "rollout_fragment_length": 1000,  # Increased fragment length
-    "sgd_minibatch_size": 256,
-    "num_sgd_iter": 30,
+    "train_batch_size": 40000,  # Increased to gather more data before updating
+    "rollout_fragment_length": 1000,  # Collect longer sequences
+    "sgd_minibatch_size": 4000,  # Increased due to larger observation space
+    "num_sgd_iter": 10,
     "framework": "torch",
     "log_level": "DEBUG",
-    "batch_mode": "truncate_episodes",  # Allow learning from partial episodes
-    "sample_async": True,  # Enable asynchronous sampling
+    "batch_mode": "truncate_episodes",
+    "sample_async": True,
+    "horizon": None,  # Remove artificial horizon
+    "soft_horizon": True,  # Enable learning from truncated episodes
+    "no_done_at_end": True,  # Treat end of truncated episodes as regular transitions
+    "model": {
+        "fcnet_hiddens": [512, 512],  # Larger network to handle the 5x256 observation space
+        "fcnet_activation": "relu",
+    },
+    "lr": 1e-4,  # Lowered learning rate for stability with large observations
+    "gamma": 0.99,  # High discount factor for long-term planning
+    "lambda": 0.95,  # GAE parameter
+    "clip_param": 0.2,  # PPO clip parameter
+    "vf_clip_param": 10.0,  # Value function clip parameter
+    "entropy_coeff": 0.01,  # Encourage exploration
 })
+
 
 # Define the policy mapping function for decentralized training
 def policy_mapping_fn(agent_id, episode, worker, **kwargs):

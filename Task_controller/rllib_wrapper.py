@@ -9,6 +9,7 @@ class RLLibEnvWrapper(MultiAgentEnv):
         self.env = env
         self.num_agents = len(self.env.agents)
         self.D = self.env.D  # Number of layers in the state
+        self.step_count = 0
 
         # Set up device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -29,7 +30,6 @@ class RLLibEnvWrapper(MultiAgentEnv):
             shape=(self.D,) + encoded_shape,
             dtype=np.float32
         )
-        print("RLLibEnvWrapper Initialised")
 
     def encode_full_state(self, full_state, battery):
         encoded_full_state = []
@@ -59,6 +59,7 @@ class RLLibEnvWrapper(MultiAgentEnv):
         observations, _ = self.env.reset(seed=seed, options=options)
         battery_levels = self.env.get_battery_levels()
         encoded_obs = self._encode_observations(observations, battery_levels)
+        self.step_count = 0
         print(f"Reset returned observations for {len(encoded_obs)} agents")
         return encoded_obs, {}
 
@@ -68,6 +69,11 @@ class RLLibEnvWrapper(MultiAgentEnv):
         battery_levels = self.env.get_battery_levels()
         encoded_obs = self._encode_observations(observations, battery_levels)
 
+        self.step_count += 1
+        
+        # if self.step_count >= 100:  # Adjust this value as needed
+        #     truncated = {agent_id: True for agent_id in truncated}
+        #     truncated["__all__"] = True
         print(f"Step returned: obs={len(encoded_obs)}, rewards={len(rewards)}, terminated={terminated['__all__']}")
         return encoded_obs, rewards, terminated, truncated, info
 
