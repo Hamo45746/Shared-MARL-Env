@@ -1,0 +1,66 @@
+env: custom_multi_agent_env
+env_config:
+  config_path: "config.yaml"
+  ae_folder_path: "path/to/autoencoder/models"
+
+num_workers: 4
+framework: torch
+lr: 0.0003
+train_batch_size: 4000
+sgd_minibatch_size: 128
+num_sgd_iter: 30
+rollout_fragment_length: 200
+batch_mode: truncate_episodes
+num_gpus: 0
+
+model:
+  fcnet_hiddens: [256, 256]
+  fcnet_activation: relu
+
+local_dir: "./custom_ray_results"
+logger_config:
+  loggers: ["ray.tune.logger.TBXLogger"]
+  logdir: "./custom_ray_results"
+
+multiagent:
+  policies:
+    policy_0:
+      - None
+      - Box
+      - [-inf, inf]
+      - [5, 256]
+      - {}
+    policy_1:
+      - None
+      - Box
+      - [-inf, inf]
+      - [5, 256]
+      - {}
+    policy_2:
+      - None
+      - Box
+      - [-inf, inf]
+      - [5, 256]
+      - {}
+    policy_3:
+      - None
+      - Box
+      - [-inf, inf]
+      - [5, 256]
+      - {}
+    policy_4:
+      - None
+      - Box
+      - [-inf, inf]
+      - [5, 256]
+      - {}
+  policy_mapping_fn: policy_mapping_fn
+
+evaluation_interval: 10
+evaluation_duration: 5
+evaluation_num_workers: 1
+evaluation_config:
+  explore: false
+
+checkpoint_freq: 50
+checkpoint_at_end: true
