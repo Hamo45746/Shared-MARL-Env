@@ -2,7 +2,7 @@ import os
 import sys
 import yaml
 import numpy as np
-from ray import tune
+import ray
 from ray.rllib.algorithms.ppo import PPO
 from ray.tune.registry import register_env
 from gymnasium import spaces
@@ -62,6 +62,8 @@ config["logger_config"] = {
     "logdir": logdir,
     "loggers": DEFAULT_LOGGERS
 }
+
+ray.init(num_gpus=1)
 
 # Initialise the PPO trainer
 trainer = PPO(config=config)

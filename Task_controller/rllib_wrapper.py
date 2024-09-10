@@ -2,6 +2,7 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 from TA_autoencoder import autoencoder
+import torch
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 class RLLibEnvWrapper(MultiAgentEnv):
@@ -10,10 +11,11 @@ class RLLibEnvWrapper(MultiAgentEnv):
         self.num_agents = len(self.env.agents)
         self.D = self.env.D  # Number of layers in the state
 
-        # Initialise Autoencoder
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.autoencoder = autoencoder.EnvironmentAutoencoder()
         self.autoencoder.load_all_autoencoders(ae_folder_path)
         for i in range(3):
+            self.autoencoder.autoencoders[i].to(self.device)
             self.autoencoder.autoencoders[i].eval()
 
         # Define action space
@@ -38,7 +40,8 @@ class RLLibEnvWrapper(MultiAgentEnv):
                 ae_index = 2  # Use third autoencoder for jammer layer
             
             ae = self.autoencoder.autoencoders[ae_index]
-            encoded_full_state.append(ae.encode(full_state[i:i+1]).squeeze())
+            encoded_layer = ae.encode(torch.from_numpy(full_state[i:i+1]).to(self.device)).cpu().squeeze().numpy()
+            encoded_full_state.append(encoded_layer)
         
         # Add battery information as a repeated 256-element vector
         battery_vector = np.full(256, battery, dtype=np.float32)
@@ -47,7 +50,7 @@ class RLLibEnvWrapper(MultiAgentEnv):
         return np.stack(encoded_full_state)
 
     def reset(self, *, seed=None, options=None):
-        observations, _ = self.env.reset(seed=seed)
+        observations, _ = self.env.reset(seed=seed, options=options)
         battery_levels = self.env.get_battery_levels()
         encoded_obs = self._encode_observations(observations, battery_levels)
         return encoded_obs, {}

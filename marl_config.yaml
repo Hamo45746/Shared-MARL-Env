@@ -11,7 +11,7 @@ sgd_minibatch_size: 128
 num_sgd_iter: 30
 rollout_fragment_length: 200
 batch_mode: truncate_episodes
-num_gpus: 0
+num_gpus: 1
 
 model:
   fcnet_hiddens: [256, 256]

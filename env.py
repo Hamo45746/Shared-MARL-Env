@@ -199,7 +199,7 @@ class Environment(gym.core.Env):
             self.observation_space = spaces.Box(low=-20.0, high=1.0, shape=(self.D, self.obs_range, self.obs_range), dtype=np.float16)
 
 
-    def reset(self, seed=None):
+    def reset(self, seed=None, options=None):
         gc.collect()
         super().reset(seed=seed)
 
@@ -237,7 +237,7 @@ class Environment(gym.core.Env):
         # Initialise observations for all agents
         self.update_all_agents_obs()
 
-        return self.get_obs()
+        return self.get_obs(), {}
 
 
     def get_obs(self):
