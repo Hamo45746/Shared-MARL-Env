@@ -77,7 +77,7 @@ config["logger_config"] = {
     "loggers": DEFAULT_LOGGERS
 }
 
-ray.init(num_gpus=1, logging_level=ray.logging.DEBUG)
+ray.init(num_gpus=1)
 
 # Initialise the PPO trainer
 trainer = PPO(config=config)
