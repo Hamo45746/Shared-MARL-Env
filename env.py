@@ -247,10 +247,10 @@ class Environment(gym.core.Env):
     def get_obs(self):
         observations = {}
         for agent_id, agent in enumerate(self.agents):
-            if agent.is_terminated(): # Give dummy obs - designed for task allocation agent, this func will break for continuous agents
+            if agent.is_terminated():
                 observations[agent_id] = {
-                    'local_obs': np.zeros_like(agent.observation_space['local_obs'].low),
-                    'full_state': np.zeros_like(agent.observation_space['full_state'].low)
+                    'local_obs': np.full(self.observation_space['local_obs'].shape, -20, dtype=np.float16),
+                    'full_state': np.full(self.observation_space['full_state'].shape, -20, dtype=np.float16)
                 }
             else:
                 observations[agent_id] = agent.get_observation()
@@ -274,37 +274,34 @@ class Environment(gym.core.Env):
     
     def task_allocation_step(self, actions_dict):
         reward_calculator = RewardCalculator(self)
-        
-        # Handle terminated agents
-        active_agents = [agent_id for agent_id, agent in enumerate(self.agents) if not agent.is_terminated()]
-        if not active_agents:
-            return self.get_obs(), {i: 0 for i in range(self.num_agents)}, {"__all__": True}, {"__all__": False}, {}
 
-        # First, compute paths for all agents based on their actions (waypoints)
+        # Compute paths for all non-terminated agents based on their actions (waypoints)
         for agent_id, action in actions_dict.items():
-            agent = self.agents[agent_id]
-            start = tuple(self.agent_layer.get_position(agent_id))
-            goal = agent.action_to_waypoint(action)
-            self.current_waypoints[agent_id] = goal
-            self.agent_paths[agent_id] = self.path_processor.get_path(start, goal)
+            if not self.agents[agent_id].is_terminated():
+                agent = self.agents[agent_id]
+                start = tuple(self.agent_layer.get_position(agent_id))
+                goal = agent.action_to_waypoint(action)
+                self.current_waypoints[agent_id] = goal
+                self.agent_paths[agent_id] = self.path_processor.get_path(start, goal)
 
-        # Find the maximum path length
-        max_path_length = max(len(path) for path in self.agent_paths.values())
+        # Find the maximum path length among non-terminated agents
+        max_path_length = max(len(path) for agent_id, path in self.agent_paths.items() 
+                            if not self.agents[agent_id].is_terminated())
 
         # Move agents and targets for max_path_length steps
         for step in range(max_path_length):
             reward_calculator.pre_step_update()
 
-            for agent in self.agents:
-                if not agent.is_terminated():
-                    agent.decay_full_state()
+            active_agents = [agent_id for agent_id, agent in enumerate(self.agents) if not agent.is_terminated()]
 
-            # Move agents
-            for agent_id, path in self.agent_paths.items():
-                if path and not self.agents[agent_id].is_terminated():
-                    next_pos = path.pop(0)
+            for agent_id in active_agents:
+                agent = self.agents[agent_id]
+                agent.decay_full_state()
+
+                if self.agent_paths[agent_id]:
+                    next_pos = self.agent_paths[agent_id].pop(0)
                     self.agent_layer.set_position(agent_id, next_pos[0], next_pos[1])
-                    self.agents[agent_id].battery -= self.agents[agent_id].move_battery_cost
+                    agent.battery -= agent.move_battery_cost
 
             # Move all targets
             for target in self.target_layer.targets:
@@ -329,7 +326,7 @@ class Environment(gym.core.Env):
             self.share_and_update_observations()
 
             # Update rewards based on exploration and target observation
-            for agent_id in range(self.num_agents):
+            for agent_id in active_agents:
                 reward_calculator.update_exploration_reward(agent_id)
                 reward_calculator.update_target_reward(agent_id)
 
@@ -343,16 +340,15 @@ class Environment(gym.core.Env):
             # self.render()
             # print(f"battery: {self.get_battery_levels()}")
 
+            if not active_agents:
+                break
+
         # Get final rewards
         rewards = reward_calculator.get_rewards()
         observations = self.get_obs()
         
-        done = {agent_id: self.agents[agent_id].is_terminated() for agent_id in range(self.num_agents)}
+        done = {agent_id: agent.is_terminated() for agent_id in range(self.num_agents)}
         done["__all__"] = all(done.values())
-
-        # Ensure that even if all agents are terminated, we still return valid observations
-        if done["__all__"]:
-            observations = {agent_id: np.zeros_like(self.observation_space['full_state'].low) for agent_id in range(self.num_agents)}
 
         truncated = {agent_id: False for agent_id in range(self.num_agents)}
         truncated["__all__"] = False
@@ -800,8 +796,11 @@ class Environment(gym.core.Env):
           
     ## COMMUNICATION FUNCTIONS ##                    
     def share_and_update_observations(self):
+        active_agents = [agent_id for agent_id, agent in enumerate(self.agents) if not agent.is_terminated()]
+        
         # First update each agent's own observation
-        for i, agent in enumerate(self.agents):
+        for i in active_agents:
+            agent = self.agents[i]
             current_obs = self.safely_observe(i)
             current_pos = agent.current_position()
             agent.set_observation_state(current_obs)
@@ -812,8 +811,12 @@ class Environment(gym.core.Env):
 
         # Share information within each network
         for network in self.networks:
+            active_network = [agent_id for agent_id in network if not self.agents[agent_id].is_terminated()]
+            if not active_network:
+                continue
+            
             combined_state = None
-            for agent_id in network:
+            for agent_id in active_network:
                 if combined_state is None:
                     combined_state = self.agents[agent_id].full_state.copy()
                 else:
@@ -822,8 +825,8 @@ class Environment(gym.core.Env):
                         mask = (self.agents[agent_id].full_state[layer] > combined_state[layer]) | (self.agents[agent_id].full_state[layer] == 0)
                         combined_state[layer][mask] = self.agents[agent_id].full_state[layer][mask]
 
-            # Distribute the combined information to all agents in the network
-            for agent_id in network:
+            # Distribute the combined information to all active agents in the network
+            for agent_id in active_network:
                 self.agents[agent_id].full_state = combined_state.copy()
     
     
@@ -834,7 +837,9 @@ class Environment(gym.core.Env):
         self.update_comm_matrix()
         self.update_jammed_agents()
 
-        for i in range(self.agent_layer.n_agents()):
+        active_agents = [i for i, agent in enumerate(self.agents) if not agent.is_terminated()]
+
+        for i in active_agents:
             connected_agents = self.get_connected_agents(i)
             if not connected_agents:
                 if i in self.agent_to_network:
@@ -849,13 +854,20 @@ class Environment(gym.core.Env):
                         other_network = self.agent_to_network.get(j)
                         if other_network is not None and other_network != current_network:
                             if j in other_network:
-                                current_network = self.merge_networks(current_network, other_network)
+                                self.merge_networks(current_network, other_network)
                             else:
                                 current_network.add(j)
                                 self.agent_to_network[j] = current_network
                         else:
                             current_network.add(j)
                             self.agent_to_network[j] = current_network
+
+        # Remove terminated agents from networks
+        for network in self.networks:
+            terminated_agents = [agent_id for agent_id in network if self.agents[agent_id].is_terminated()]
+            for agent_id in terminated_agents:
+                if agent_id in network:
+                    self.remove_from_network(agent_id, network)
 
         self.networks = [net for net in self.networks if net]
         
@@ -886,7 +898,8 @@ class Environment(gym.core.Env):
         n_agents = self.agent_layer.n_agents()
         return [j for j in range(n_agents) 
                 if j != agent_id and self.comm_matrix[agent_id, j] and 
-                j not in self.jammed_agents and agent_id not in self.jammed_agents]
+                j not in self.jammed_agents and agent_id not in self.jammed_agents and
+                not self.agents[j].is_terminated()]
 
 
     def remove_from_network(self, agent_id, network):
