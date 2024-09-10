@@ -41,8 +41,8 @@ class RLLibEnvWrapper(MultiAgentEnv):
                 ae_index = 2  # Use third autoencoder for jammer layer
             
             ae = self.autoencoder.autoencoders[ae_index]
-            # Convert to float32 and move to device
-            input_tensor = torch.from_numpy(full_state[i:i+1]).float().to(self.device)
+            # Convert to float32, add batch dimension, and move to device
+            input_tensor = torch.from_numpy(full_state[i:i+1]).float().unsqueeze(0).to(self.device)
             with torch.no_grad():
                 encoded_layer = ae.encode(input_tensor).cpu().squeeze().numpy()
             encoded_full_state.append(encoded_layer)
