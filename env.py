@@ -338,8 +338,11 @@ class Environment(gym.core.Env):
         observations = self.get_obs()
         done = self.is_episode_done()
         info = {}
+        # Create truncated dictionary (all False if not using truncation)
+        truncated = {agent_id: False for agent_id in range(self.num_agents)}
+        truncated["__all__"] = False
 
-        return observations, rewards, done, info
+        return observations, rewards, done, truncated, info
     
     
     def regular_step(self, actions_dict):

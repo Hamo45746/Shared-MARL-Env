@@ -39,7 +39,7 @@ logdir = "./custom_ray_results"
 config["local_dir"] = logdir
 
 # Update the policies in the config
-num_agents = 5  # Adjust based on your environment
+num_agents = 10  # Adjust based on your environment
 obs_shape = (5, 256)  # Adjusted for encoded observation space (4 layers + 1 battery layer, 256 encoding size)
 action_space = spaces.Discrete((2 * 15 + 1) ** 2)  # Assuming max_steps_per_action is 15
 obs_space = spaces.Box(low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32)

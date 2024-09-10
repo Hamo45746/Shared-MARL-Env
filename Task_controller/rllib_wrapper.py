@@ -67,7 +67,7 @@ class RLLibEnvWrapper(MultiAgentEnv):
         dones = {agent_id: self.env.agents[agent_id].is_terminated() for agent_id in range(self.num_agents)}
         dones["__all__"] = all(dones.values())
 
-        return encoded_obs, rewards, dones, info
+        return encoded_obs, rewards, dones, truncated, info
 
     def _encode_observations(self, observations, battery_levels):
         encoded_observations = {}
