@@ -1,49 +1,52 @@
-# Constants for rewards and penalties
-        # self.JAMMER_DISCOVERY_REWARD = self.config['jammer_discovery_reward']
-        # self.TARGET_DISCOVERY_REWARD = self.config['target_discovery_reward']
-        # self.TRACKING_REWARD = self.config['tracking_reward']
-        # self.DESTRUCTION_REWARD = self.config['destruction_reward']
-        # self.MOVEMENT_PENALTY = self.config['movement_penalty']
-        # self.EXPLORATION_REWARD = self.config['exploration_reward']
+import numpy as np
 
-def ta_calculate_reward(agent):
-        # Placeholder reward:
-        reward = 1
-        return reward 
+class RewardCalculator:
+    def __init__(self, env):
+        self.env = env
+        self.accumulated_rewards = np.zeros(len(env.agents), dtype=np.float32)
+        self.prev_observed_cells = [np.full(env.global_state[1].shape, -20, dtype=np.float16) for _ in range(len(env.agents))]
+        self.prev_jammer_states = np.array([jammer.get_destroyed() for jammer in env.jammers], dtype=bool)
+        self.step_rewards = np.zeros(len(env.agents), dtype=np.float32)
 
-def ta_compute_path_reward(self, agent_id, chosen_location, path_steps):
-        """
-        Compute the reward based on the agent's path and the encounters along it, including exploration of outdated areas.
+    def pre_step_update(self):
+        self.step_rewards.fill(0)
 
-        Args:
-        - agent_id (int): ID of the agent.
-        - chosen_location (tuple): The final destination chosen by the agent.
-        - path_steps (list): A list of tuples representing the path coordinates.
+    def update_exploration_reward(self, agent_id):
+        agent_state = self.env.agents[agent_id].full_state[1:]
+        new_observed = np.sum((agent_state > -20) & (self.prev_observed_cells[agent_id] == -20))
+        self.step_rewards[agent_id] += new_observed * 0.1
+        self.prev_observed_cells[agent_id] = np.maximum(self.prev_observed_cells[agent_id], agent_state)
 
-        Returns:
-        - float: The computed reward for the path taken.
-        """
-        reward = 0
+    def update_target_reward(self, agent_id):
+        observed_targets = np.sum((self.env.agents[agent_id].full_state[2] >= -0.5) & (self.env.agents[agent_id].full_state[2] <= 0))
+        self.step_rewards[agent_id] += observed_targets * 5
 
-        target_identified = False
-        #TODO: Fix this up - move to reward file
-        for step in path_steps:
-            # Check for jammer destruction
-            if step == chosen_location and self.is_jammer_location(step):
-                reward += self.DESTRUCTION_REWARD
-                self.destroy_jammer(step) #
+    def update_jammer_reward(self):
+        current_jammer_states = np.array([jammer.get_destroyed() for jammer in self.env.jammers], dtype=bool)
+        newly_destroyed = current_jammer_states & ~self.prev_jammer_states
+        if np.any(newly_destroyed):
+            jammer_positions = np.array([jammer.current_position() for jammer in self.env.jammers])[newly_destroyed]
+            agent_positions = np.array([agent.current_position() for agent in self.env.agents])
+            distances = np.linalg.norm(agent_positions[:, np.newaxis] - jammer_positions, axis=2)
+            closest_agents = np.argmin(distances, axis=0)
+            self.step_rewards[closest_agents] += 10
+        self.prev_jammer_states = current_jammer_states
 
-            # Check for target identification and tracking
-            if self.is_target_in_observation(agent_id, step):
-                if not target_identified:
-                    reward += self.TARGET_DISCOVERY_REWARD
-                    target_identified = True
-                else:
-                    reward += self.TRACKING_REWARD
+    def update_communication_reward(self):
+        for network in self.env.networks:
+            network_size_reward = len(network) * 0.5
+            self.step_rewards[list(network)] += network_size_reward
 
-            # Reward for exploring outdated regions
-            if self.is_information_outdated(step, self.OUTDATED_INFO_THRESHOLD):
-                reward += self.EXPLORATION_REWARD
-                self.update_global_state(agent_id, step)
+    def post_step_update(self):
+        battery_factors = 1 + (100 - np.array([agent.get_battery() for agent in self.env.agents])) / 200
+        self.accumulated_rewards += self.step_rewards * battery_factors
 
-        return reward
+    def get_rewards(self):
+        return self.accumulated_rewards.copy()
+
+    def reset(self):
+        self.accumulated_rewards.fill(0)
+        for cells in self.prev_observed_cells:
+            cells.fill(-20)
+        self.prev_jammer_states = np.array([jammer.get_destroyed() for jammer in self.env.jammers], dtype=bool)
+        self.step_rewards.fill(0)

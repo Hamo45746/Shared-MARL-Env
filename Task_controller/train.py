@@ -30,7 +30,7 @@ register_env("custom_multi_agent_env", env_creator)
 with open("marl_config.yaml", "r") as file:
     config = yaml.safe_load(file)
 
-# Define the policy mapping function for decentralized training
+# Define the policy mapping function for decentralised training
 def policy_mapping_fn(agent_id, episode, worker, **kwargs):
     return f"policy_{agent_id}"
 
@@ -39,12 +39,12 @@ logdir = "./custom_ray_results"
 config["local_dir"] = logdir
 
 # Update the policies in the config
-num_agents = 5  # Adjust based on your environment
+num_agents = 10  # Adjust based on env
 obs_shape = (5, 256)  # Adjusted for encoded observation space (4 layers + 1 battery layer, 256 encoding size)
 action_space = spaces.Discrete((2 * 10 + 1) ** 2)  # Assuming max_steps_per_action is 10
 obs_space = spaces.Box(low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32)
 
-# Config for decentralized training
+# Config for decentralised training
 config["multiagent"] = {
     "policies": {f"policy_{i}": (None, obs_space, action_space, {}) for i in range(num_agents)},
     "policy_mapping_fn": policy_mapping_fn

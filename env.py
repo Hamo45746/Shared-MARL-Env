@@ -13,13 +13,14 @@ from layer import AgentLayer, JammerLayer, TargetLayer
 from gymnasium.utils import seeding
 # from Continuous_controller.agent_controller import AgentController
 from Task_controller.agent_controller import DiscreteAgentController
+from Task_controller.reward import RewardCalculator
 from Continuous_controller.reward import calculate_continuous_reward
 # from gym.spaces import Dict as GymDict, Box, Discrete
 # from gym import spaces
 from gymnasium import spaces
 from path_processor_simple import PathProcessor
 import matplotlib.pyplot as plt
-from TA_autoencoder import autoencoder
+
 
 
 class Environment(gym.core.Env):
@@ -76,7 +77,7 @@ class Environment(gym.core.Env):
         self.current_step = 0
         self.render_modes = render_mode
         self.screen = None
-        # pygame.init() # Comment this out when not rendering
+        pygame.init() # Comment this out when not rendering
         self.networks = []
         self.agent_to_network = {}
         self.comm_matrix = None
@@ -268,6 +269,8 @@ class Environment(gym.core.Env):
         
     
     def task_allocation_step(self, actions_dict):
+        reward_calculator = RewardCalculator(self)
+
         # First, compute paths for all agents based on their actions (waypoints)
         for agent_id, action in actions_dict.items():
             agent = self.agents[agent_id]
@@ -281,47 +284,63 @@ class Environment(gym.core.Env):
 
         # Move agents and targets for max_path_length steps
         for step in range(max_path_length):
+            reward_calculator.pre_step_update()
+
             for agent in self.agents:
                 if not agent.is_terminated():
                     agent.decay_full_state()
+
             # Move agents
             for agent_id, path in self.agent_paths.items():
-                if path and not agent.is_terminated():
+                if path and not self.agents[agent_id].is_terminated():
                     next_pos = path.pop(0)
                     self.agent_layer.set_position(agent_id, next_pos[0], next_pos[1])
-            
+
             # Move all targets
             for target in self.target_layer.targets:
                 action = target.get_next_action()
                 self.target_layer.move_targets(self.target_layer.targets.index(target), action)
-            
+
             self.target_layer.update()
             self.agent_layer.update()
 
             # Update jammed areas
             self.jammer_layer.activate_jammers(self.current_step)
             self.update_jammed_areas()
-            
+
             # Check for jammer destruction
             self.check_jammer_destruction()
-            
+            reward_calculator.update_jammer_reward()
+
             # Update global state
             self.update_global_state()
-                
+
             # Update observations and share them
             self.share_and_update_observations()
-            
-            self.current_step += 1
-            # self.render()
 
-        # Calculate rewards
-        rewards = self.collect_rewards()
+            # Update rewards based on exploration and target observation
+            for agent_id in range(self.num_agents):
+                reward_calculator.update_exploration_reward(agent_id)
+                reward_calculator.update_target_reward(agent_id)
+
+            # Update communication rewards
+            reward_calculator.update_communication_reward()
+
+            # Finalise rewards for this step
+            reward_calculator.post_step_update()
+
+            self.current_step += 1
+            self.render()
+
+        # Get final rewards
+        rewards = reward_calculator.get_rewards()
+
         observations = self.get_obs()
-        
         done = self.is_episode_done()
         info = {}
 
         return observations, rewards, done, info
+    
     
     def regular_step(self, actions_dict):
         # Update target positions and layer state
@@ -851,8 +870,6 @@ class Environment(gym.core.Env):
                 j not in self.jammed_agents and agent_id not in self.jammed_agents]
 
 
-
-
     def remove_from_network(self, agent_id, network):
         network.remove(agent_id)
         del self.agent_to_network[agent_id]
@@ -1130,6 +1147,6 @@ def visualize_agent_states(env, step):
     plt.close()
 
 
-# config_path = 'config.yaml' 
-# env = Environment(config_path)
-# Environment.run_simulation(env, max_steps=3)
+config_path = 'config.yaml' 
+env = Environment(config_path)
+Environment.run_simulation(env, max_steps=3)
