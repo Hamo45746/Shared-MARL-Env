@@ -29,6 +29,7 @@ class RLLibEnvWrapper(MultiAgentEnv):
             shape=(self.D,) + encoded_shape,
             dtype=np.float32
         )
+        print("RLLibEnvWrapper Initialised")
 
     def encode_full_state(self, full_state, battery):
         encoded_full_state = []
@@ -54,16 +55,20 @@ class RLLibEnvWrapper(MultiAgentEnv):
         return np.stack(encoded_full_state)
 
     def reset(self, *, seed=None, options=None):
+        print("RLLibEnvWrapper reset called")
         observations, _ = self.env.reset(seed=seed, options=options)
         battery_levels = self.env.get_battery_levels()
         encoded_obs = self._encode_observations(observations, battery_levels)
+        print(f"Reset returned observations for {len(encoded_obs)} agents")
         return encoded_obs, {}
 
     def step(self, action_dict):
+        print(f"RLLibEnvWrapper step called with actions for {len(action_dict)} agents")
         observations, rewards, terminated, truncated, info = self.env.step(action_dict)
         battery_levels = self.env.get_battery_levels()
         encoded_obs = self._encode_observations(observations, battery_levels)
-        
+
+        print(f"Step returned: obs={len(encoded_obs)}, rewards={len(rewards)}, terminated={terminated['__all__']}")
         return encoded_obs, rewards, terminated, truncated, info
 
     def _encode_observations(self, observations, battery_levels):

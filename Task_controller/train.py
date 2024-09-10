@@ -32,20 +32,14 @@ with open("marl_config.yaml", "r") as file:
     
 # Update the configuration
 config.update({
-    "num_workers": 2,  # Increase the number of workers
+    "num_workers": 1,
     "num_envs_per_worker": 1,
-    "train_batch_size": 4000,
-    "rollout_fragment_length": 200,
-    "sgd_minibatch_size": 128,
-    "num_sgd_iter": 30,
-    "sample_batch_size": 50,  # Reduce this if environment is very slow
-    "sample_async": True,
-    "batch_mode": "truncate_episodes",
-    "sample_timeout_s": 300,  # Increase timeout for slow environments
-    "env_runners": {
-        "rollout_fragment_length": 200,
-        "sample_timeout_s": 300,
-    },
+    "train_batch_size": 200,
+    "rollout_fragment_length": 50,
+    "sgd_minibatch_size": 64,
+    "num_sgd_iter": 10,
+    "framework": "torch",
+    "log_level": "DEBUG",
 })
 
 # Define the policy mapping function for decentralized training
@@ -81,41 +75,39 @@ config["logger_config"] = {
     "loggers": DEFAULT_LOGGERS
 }
 
-ray.init(num_gpus=1)
+ray.init(num_gpus=1, logging_level=ray.logging.DEBUG)
 
 # Initialise the PPO trainer
 trainer = PPO(config=config)
 
-# Train the agents
-for i in range(200):
-    print(f"Iteration: {i}")
-    result = trainer.train()
-    
-    # Print training metrics
-    print(f"Iteration {i} result keys: {result.keys()}")
-    if 'episode_reward_mean' in result:
-        print(f"Episode Reward Mean: {result['episode_reward_mean']}")
-    if 'episode_len_mean' in result:
-        print(f"Episode Length Mean: {result['episode_len_mean']}")
-    
-    # Print more detailed metrics
-    print(f"Total time trained: {result['time_total_s']}")
-    print(f"Timesteps trained: {result['timesteps_total']}")
-    print(f"Episodes this iteration: {result.get('episodes_this_iter', 0)}")
-    
-    # Save checkpoint every 50 iterations
-    if (i + 1) % 50 == 0:
-        checkpoint_dir = trainer.save(logdir)
-        print(f"Checkpoint saved at {checkpoint_dir}")
+# Initialize the PPO trainer
+trainer = PPO(config=config)
 
-        # Optional: Run a simulation with the saved policy
-        # env = Environment(config_path="config.yaml")
-        # env.run_simulation_with_policy(checkpoint_dir=checkpoint_dir, max_steps=100, iteration=i)
+# Run a single training iteration
+print("Starting training iteration")
+result = trainer.train()
 
-# Save final checkpoint
-final_checkpoint_dir = trainer.save(logdir)
-print(f"Final checkpoint saved at {final_checkpoint_dir}")
+print("Training iteration completed")
+print(f"Result keys: {result.keys()}")
+print(f"Timesteps trained: {result.get('timesteps_total', 0)}")
+print(f"Episodes this iteration: {result.get('episodes_this_iter', 0)}")
 
-# Optional: Run a final simulation with the trained policy
-# env = Environment(config_path="config.yaml")
-# env.run_simulation_with_policy(checkpoint_dir=final_checkpoint_dir, max_steps=100, iteration="final")
+# Try to manually step through the environment
+print("\nManually stepping through environment:")
+env = env_creator(config["env_config"])
+obs, _ = env.reset()
+print(f"Reset observation keys: {obs.keys()}")
+
+for i in range(5):
+    actions = {agent_id: env.action_space.sample() for agent_id in obs.keys()}
+    obs, rewards, terminated, truncated, info = env.step(actions)
+    print(f"Step {i + 1}:")
+    print(f"  Observation keys: {obs.keys()}")
+    print(f"  Rewards: {rewards}")
+    print(f"  Terminated: {terminated}")
+    print(f"  Truncated: {truncated}")
+    if terminated["__all__"] or truncated["__all__"]:
+        print("  Episode ended")
+        break
+
+ray.shutdown()
