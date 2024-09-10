@@ -1,7 +1,7 @@
 env: custom_multi_agent_env
 env_config:
   config_path: "config.yaml"
-  ae_folder_path: "path/to/autoencoder/models"
+  ae_folder_path: "/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data/AE_save_06_09"
 
 num_workers: 4
 framework: torch
@@ -18,9 +18,6 @@ model:
   fcnet_activation: relu
 
 local_dir: "./custom_ray_results"
-logger_config:
-  loggers: ["ray.tune.logger.TBXLogger"]
-  logdir: "./custom_ray_results"
 
 multiagent:
   policies:
