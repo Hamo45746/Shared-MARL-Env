@@ -64,10 +64,7 @@ class RLLibEnvWrapper(MultiAgentEnv):
         battery_levels = self.env.get_battery_levels()
         encoded_obs = self._encode_observations(observations, battery_levels)
         
-        dones = {agent_id: self.env.agents[agent_id].is_terminated() for agent_id in range(self.num_agents)}
-        dones["__all__"] = all(dones.values())
-
-        return encoded_obs, rewards, dones, truncated, info
+        return encoded_obs, rewards, terminated, truncated, info
 
     def _encode_observations(self, observations, battery_levels):
         encoded_observations = {}

@@ -334,13 +334,12 @@ class Environment(gym.core.Env):
 
         # Get final rewards
         rewards = reward_calculator.get_rewards()
-
         observations = self.get_obs()
-        done = self.is_episode_done()
-        info = {}
-        # Create truncated dictionary (all False if not using truncation)
+        done = {agent_id: self.agents[agent_id].is_terminated() for agent_id in range(self.num_agents)}
+        done["__all__"] = self.is_episode_done()
         truncated = {agent_id: False for agent_id in range(self.num_agents)}
         truncated["__all__"] = False
+        info = {}
 
         return observations, rewards, done, truncated, info
     
