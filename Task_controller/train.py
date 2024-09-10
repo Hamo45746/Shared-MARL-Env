@@ -34,26 +34,35 @@ with open("marl_config.yaml", "r") as file:
 config.update({
     "num_workers": 4,  # Increased for more parallel data collection
     "num_envs_per_worker": 1,
-    "train_batch_size": 512, 
-    "sgd_minibatch_size": 64,  # Increased due to larger observation space
-    "num_sgd_iter": 10,
+    "train_batch_size": 4096, 
+    "sgd_minibatch_size": 256,  # Increased due to larger observation space
+    "num_sgd_iter": 1,
     "framework": "torch",
     "log_level": "DEBUG",
     "batch_mode": "truncate_episodes",
     "sample_async": True,
-    "horizon": None,  # Remove artificial horizon
+    "horizon": 60,  # Remove artificial horizon
     "soft_horizon": False,  # Enable learning from truncated episodes
     "no_done_at_end": False,  # Treat end of truncated episodes as regular transitions
     "model": {
-        "fcnet_hiddens": [512, 512],  # Larger network to handle the 5x256 observation space
-        "fcnet_activation": "relu",
+        "fcnet_hiddens": [64, 64],  # Smaller network might help with stability
+        "fcnet_activation": "tanh",  # Try a bounded activation function
     },
-    "lr": 1e-4,  # Lowered learning rate for stability with large observations
+    "lr": 1e-5,  # Lowered learning rate for stability with large observations
     "gamma": 0.99,  # High discount factor for long-term planning
     "lambda": 0.95,  # GAE parameter
     "clip_param": 0.2,  # PPO clip parameter
     "vf_clip_param": 10.0,  # Value function clip parameter
     "entropy_coeff": 0.01,  # Encourage exploration
+    "shuffle_sequences": True,
+    "clip_actions": True, # Clip actions to valid range
+    "clip_rewards": True,
+    "grad_clip": 1.0,
+    "_disable_preprocessor_api": False,  # Enable preprocessor for stability
+    "optimizer": {
+        "type": "Adam",
+        "epsilon": 1e-5,  # Increased epsilon for numerical stability
+    }
 })
 
 

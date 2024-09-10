@@ -56,7 +56,7 @@ class RewardCalculator:
                 self.accumulated_rewards[i] = 0  # Ensure terminated agents have zero reward
 
     def get_rewards(self):
-        return self.accumulated_rewards.copy()
+        return {i: float(reward) if np.isfinite(reward) else 0.0 for i, reward in self.accumulated_rewards.items()}
 
     def reset(self):
         for i in range(self.num_agents):

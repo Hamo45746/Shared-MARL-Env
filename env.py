@@ -346,8 +346,14 @@ class Environment(gym.core.Env):
         # Get final rewards
         rewards = reward_calculator.get_rewards()
         observations = self.get_obs()
+        
         done = {agent_id: self.agents[agent_id].is_terminated() for agent_id in range(self.num_agents)}
-        done["__all__"] = self.is_episode_done()
+        done["__all__"] = all(done.values())
+
+        # Ensure that even if all agents are terminated, we still return valid observations
+        if done["__all__"]:
+            observations = {agent_id: np.zeros_like(self.observation_space['full_state'].low) for agent_id in range(self.num_agents)}
+
         truncated = {agent_id: False for agent_id in range(self.num_agents)}
         truncated["__all__"] = False
         info = {}
