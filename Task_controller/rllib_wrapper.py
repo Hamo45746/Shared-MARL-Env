@@ -2,8 +2,9 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 from TA_autoencoder import autoencoder
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
-class RLLibEnvWrapper(gym.Env):
+class RLLibEnvWrapper(MultiAgentEnv):
     def __init__(self, env, ae_folder_path):
         self.env = env
         self.num_agents = len(self.env.agents)
@@ -21,11 +22,10 @@ class RLLibEnvWrapper(gym.Env):
         # Define encoded observation space
         encoded_shape = (256,)
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, 
-            shape=(self.D,) + encoded_shape, 
+            low=-np.inf, high=np.inf,
+            shape=(self.D,) + encoded_shape,
             dtype=np.float32
         )
-
 
     def encode_full_state(self, full_state, battery):
         encoded_full_state = []
@@ -45,17 +45,15 @@ class RLLibEnvWrapper(gym.Env):
         encoded_full_state.append(battery_vector)
         
         return np.stack(encoded_full_state)
-    
 
-    def reset(self, seed=None):
-        observations = self.env.reset(seed=seed)
+    def reset(self, *, seed=None, options=None):
+        observations, _ = self.env.reset(seed=seed)
         battery_levels = self.env.get_battery_levels()
         encoded_obs = self._encode_observations(observations, battery_levels)
         return encoded_obs, {}
 
-
     def step(self, action_dict):
-        observations, rewards, episode_done, info = self.env.step(action_dict)
+        observations, rewards, terminated, truncated, info = self.env.step(action_dict)
         battery_levels = self.env.get_battery_levels()
         encoded_obs = self._encode_observations(observations, battery_levels)
         
@@ -64,14 +62,12 @@ class RLLibEnvWrapper(gym.Env):
             dones[agent_id] = self.env.agents[agent_id].is_terminated()
         
         # Set __all__ to True only if all agents are terminated
-        dones["__all__"] = episode_done
+        dones["__all__"] = all(dones.values())
 
-        return encoded_obs, self._format_dict(rewards), dones, self._format_dict(info)
-
+        return encoded_obs, rewards, dones, info
 
     def _encode_observations(self, observations, battery_levels):
         encoded_observations = {}
-
         for agent_id, obs in observations.items():
             if self.env.agents[agent_id].is_terminated():
                 # For terminated agents, return a zero-filled observation
@@ -81,15 +77,7 @@ class RLLibEnvWrapper(gym.Env):
                 full_state = obs['full_state']
                 battery = battery_levels[agent_id]
                 encoded_observations[agent_id] = self.encode_full_state(full_state, battery)
-
         return encoded_observations
-    
-
-    def _format_dict(self, data):
-        if isinstance(data, dict):
-            return data
-        else:
-            return {i: data for i in range(self.num_agents)}
 
     def render(self, mode='human'):
         return self.env.render(mode)
