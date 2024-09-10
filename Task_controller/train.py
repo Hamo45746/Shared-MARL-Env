@@ -29,6 +29,24 @@ register_env("custom_multi_agent_env", env_creator)
 # Load the configuration file
 with open("marl_config.yaml", "r") as file:
     config = yaml.safe_load(file)
+    
+# Update the configuration
+config.update({
+    "num_workers": 2,  # Increase the number of workers
+    "num_envs_per_worker": 1,
+    "train_batch_size": 4000,
+    "rollout_fragment_length": 200,
+    "sgd_minibatch_size": 128,
+    "num_sgd_iter": 30,
+    "sample_batch_size": 50,  # Reduce this if environment is very slow
+    "sample_async": True,
+    "batch_mode": "truncate_episodes",
+    "sample_timeout_s": 300,  # Increase timeout for slow environments
+    "env_runners": {
+        "rollout_fragment_length": 200,
+        "sample_timeout_s": 300,
+    },
+})
 
 # Define the policy mapping function for decentralized training
 def policy_mapping_fn(agent_id, episode, worker, **kwargs):
@@ -74,8 +92,16 @@ for i in range(200):
     result = trainer.train()
     
     # Print training metrics
-    print(f"Episode Reward Mean: {result['episode_reward_mean']}")
-    print(f"Episode Length Mean: {result['episode_len_mean']}")
+    print(f"Iteration {i} result keys: {result.keys()}")
+    if 'episode_reward_mean' in result:
+        print(f"Episode Reward Mean: {result['episode_reward_mean']}")
+    if 'episode_len_mean' in result:
+        print(f"Episode Length Mean: {result['episode_len_mean']}")
+    
+    # Print more detailed metrics
+    print(f"Total time trained: {result['time_total_s']}")
+    print(f"Timesteps trained: {result['timesteps_total']}")
+    print(f"Episodes this iteration: {result.get('episodes_this_iter', 0)}")
     
     # Save checkpoint every 50 iterations
     if (i + 1) % 50 == 0:
