@@ -34,9 +34,8 @@ with open("marl_config.yaml", "r") as file:
 config.update({
     "num_workers": 4,  # Increased for more parallel data collection
     "num_envs_per_worker": 1,
-    "train_batch_size": 40000,  # Increased to gather more data before updating
-    "rollout_fragment_length": 1000,  # Collect longer sequences
-    "sgd_minibatch_size": 4000,  # Increased due to larger observation space
+    "train_batch_size": 512, 
+    "sgd_minibatch_size": 64,  # Increased due to larger observation space
     "num_sgd_iter": 10,
     "framework": "torch",
     "log_level": "DEBUG",
