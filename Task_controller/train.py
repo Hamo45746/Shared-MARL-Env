@@ -43,8 +43,8 @@ config.update({
     "batch_mode": "truncate_episodes",
     "sample_async": True,
     "horizon": None,  # Remove artificial horizon
-    "soft_horizon": True,  # Enable learning from truncated episodes
-    "no_done_at_end": True,  # Treat end of truncated episodes as regular transitions
+    "soft_horizon": False,  # Enable learning from truncated episodes
+    "no_done_at_end": False,  # Treat end of truncated episodes as regular transitions
     "model": {
         "fcnet_hiddens": [512, 512],  # Larger network to handle the 5x256 observation space
         "fcnet_activation": "relu",

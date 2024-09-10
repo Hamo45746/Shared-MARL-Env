@@ -226,6 +226,10 @@ class Environment(gym.core.Env):
         self.initialise_agents()
         self.initialise_targets()
         self.initialise_jammers()
+        
+        # Reset agent batteries
+        for agent in self.agents:
+            agent.battery = 100
 
         self.update_global_state()
         self.current_step = 0
@@ -271,16 +275,24 @@ class Environment(gym.core.Env):
     def task_allocation_step(self, actions_dict):
         reward_calculator = RewardCalculator(self)
 
-        # First, compute paths for all agents based on their actions (waypoints)
-        for agent_id, action in actions_dict.items():
-            agent = self.agents[agent_id]
-            start = tuple(self.agent_layer.get_position(agent_id))
-            goal = agent.action_to_waypoint(action)
-            self.current_waypoints[agent_id] = goal
-            self.agent_paths[agent_id] = self.path_processor.get_path(start, goal)
+        # Initialise rewards, observations, done, and truncated dictionaries for all agents
+        rewards = {i: 0.0 for i in range(self.num_agents)}
+        observations = {}
+        done = {i: self.agents[i].is_terminated() for i in range(self.num_agents)}
+        truncated = {i: False for i in range(self.num_agents)}
 
-        # Find the maximum path length
-        max_path_length = max(len(path) for path in self.agent_paths.values())
+        # Compute paths for all non-terminated agents based on their actions (waypoints)
+        for agent_id, action in actions_dict.items():
+            if not self.agents[agent_id].is_terminated():
+                agent = self.agents[agent_id]
+                start = tuple(self.agent_layer.get_position(agent_id))
+                goal = agent.action_to_waypoint(action)
+                self.current_waypoints[agent_id] = goal
+                self.agent_paths[agent_id] = self.path_processor.get_path(start, goal)
+
+        # Find the maximum path length among non-terminated agents
+        max_path_length = max(len(path) for agent_id, path in self.agent_paths.items() 
+                            if not self.agents[agent_id].is_terminated())
 
         # Move agents and targets for max_path_length steps
         for step in range(max_path_length):
@@ -290,7 +302,7 @@ class Environment(gym.core.Env):
                 if not agent.is_terminated():
                     agent.decay_full_state()
 
-            # Move agents
+            # Move non-terminated agents
             for agent_id, path in self.agent_paths.items():
                 if path and not self.agents[agent_id].is_terminated():
                     next_pos = path.pop(0)
@@ -321,26 +333,36 @@ class Environment(gym.core.Env):
 
             # Update rewards based on exploration and target observation
             for agent_id in range(self.num_agents):
-                reward_calculator.update_exploration_reward(agent_id)
-                reward_calculator.update_target_reward(agent_id)
+                if not self.agents[agent_id].is_terminated():
+                    reward_calculator.update_exploration_reward(agent_id)
+                    reward_calculator.update_target_reward(agent_id)
 
             # Update communication rewards
             reward_calculator.update_communication_reward()
 
-            # Finalise rewards for this step
+            # Finalize rewards for this step
             reward_calculator.post_step_update()
 
             self.current_step += 1
             # self.render()
-            # print(f"battery: {self.get_battery_levels()}")
-
+            
         # Get final rewards
         rewards = reward_calculator.get_rewards()
-        observations = self.get_obs()
-        done = {agent_id: self.agents[agent_id].is_terminated() for agent_id in range(self.num_agents)}
-        done["__all__"] = self.is_episode_done()
-        truncated = {agent_id: False for agent_id in range(self.num_agents)}
+
+        # Update observations for all agents
+        for agent_id in range(self.num_agents):
+            if self.agents[agent_id].is_terminated():
+                observations[agent_id] = {
+                    'local_obs': np.zeros_like(self.observation_space['local_obs'].low),
+                    'full_state': np.zeros_like(self.observation_space['full_state'].low)
+                }
+            else:
+                observations[agent_id] = self.safely_observe(agent_id)
+
+        # Check if all agents are terminated
+        done["__all__"] = all(done.values())
         truncated["__all__"] = False
+
         info = {}
 
         return observations, rewards, done, truncated, info
@@ -1033,6 +1055,7 @@ class Environment(gym.core.Env):
             #     print_full_state_summary(agent.get_state(), step_count, agent_id)
             # self.print_all_agents_full_state_regions()
             # print_env_state_summary(step_count, self.global_state)
+            # print(f"Rewards: {rewards}")
             
             if terminated["__all__"]:
                 break

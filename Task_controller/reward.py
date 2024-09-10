@@ -15,12 +15,16 @@ class RewardCalculator:
             self.step_rewards[i] = 0.0
 
     def update_exploration_reward(self, agent_id):
+        if self.env.agents[agent_id].is_terminated():
+            return
         agent_state = self.env.agents[agent_id].full_state[1:]
         new_observed = np.sum((agent_state > -20) & (self.prev_observed_cells[agent_id] == -20))
         self.step_rewards[agent_id] += new_observed * 0.1
         self.prev_observed_cells[agent_id] = np.maximum(self.prev_observed_cells[agent_id], agent_state)
 
     def update_target_reward(self, agent_id):
+        if self.env.agents[agent_id].is_terminated():
+            return
         observed_targets = np.sum((self.env.agents[agent_id].full_state[2] >= -0.5) & (self.env.agents[agent_id].full_state[2] <= 0))
         self.step_rewards[agent_id] += observed_targets * 5
 
@@ -40,12 +44,16 @@ class RewardCalculator:
         for network in self.env.networks:
             network_size_reward = len(network) * 0.5
             for agent_id in network:
-                self.step_rewards[agent_id] += network_size_reward
+                if not self.env.agents[agent_id].is_terminated():
+                    self.step_rewards[agent_id] += network_size_reward
 
     def post_step_update(self):
-        battery_factors = {i: 1 + (100 - self.env.agents[i].get_battery()) / 200 for i in range(self.num_agents)}
         for i in range(self.num_agents):
-            self.accumulated_rewards[i] += self.step_rewards[i] * battery_factors[i]
+            if not self.env.agents[i].is_terminated():
+                battery_factor = 1 + (100 - self.env.agents[i].get_battery()) / 200
+                self.accumulated_rewards[i] += self.step_rewards[i] * battery_factor
+            else:
+                self.accumulated_rewards[i] = 0  # Ensure terminated agents have zero reward
 
     def get_rewards(self):
         return self.accumulated_rewards.copy()
