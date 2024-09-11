@@ -4,6 +4,7 @@ grid_size:
   #Y: 177        # Height of the grid - UNNEEDED - get from map
   D: 4           # Number of layers in the grid (e.g., map, targets, jammers, agents)
 
+# Keep these two constant now - Autoencoder trained on this input size
 pixel_scale: 4 #Going down reduces the pixel_size, which reduces the map
 map_scale: 0.18 #Going up makes to map larger
 
@@ -21,7 +22,7 @@ map_paths: ['city_image_1.npy', 'city_image_2.npy', city_image_3.npy]
 
 n_agents: 10
 n_targets: 20
-n_jammers: 3
+n_jammers: 7
 jamming_radius: 20 #This is radius, in comparison to comms_range. That is why it is a smaller value then comms_range, but looks bigger relitivly.  
 
 seed: 1

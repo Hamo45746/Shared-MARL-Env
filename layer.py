@@ -98,8 +98,6 @@ class TargetLayer:
         return self.targets[target_idx].current_position()
     
     def move_targets(self, target_idx, action):
-        """Moves the agent according to the defined action and updates the layer state.
-           This is where the policies should come in, providing the action for each agent."""
         o_pos = self.targets[target_idx].current_position()
         n_pos = self.targets[target_idx].step(action)
         self.update_position(o_pos, n_pos)

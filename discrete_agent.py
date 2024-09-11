@@ -92,7 +92,7 @@ class DiscreteAgent(BaseAgent):
         lpos[1] = cpos[1]
         cpos[0] = x
         cpos[1] = y
-        self.path.append((cpos[0], cpos[1]))
+        # self.path.append((cpos[0], cpos[1]))
         self.current_pos = cpos
         self.last_post = lpos
         return cpos

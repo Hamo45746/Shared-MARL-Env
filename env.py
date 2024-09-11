@@ -304,9 +304,9 @@ class Environment(gym.core.Env):
                     agent.battery -= agent.move_battery_cost
 
             # Move all targets
-            for target in self.target_layer.targets:
+            for target_idx, target in enumerate(self.target_layer.targets):
                 action = target.get_next_action()
-                self.target_layer.move_targets(self.target_layer.targets.index(target), action)
+                self.target_layer.move_targets(target_idx, action)
 
             self.target_layer.update()
             self.agent_layer.update()
