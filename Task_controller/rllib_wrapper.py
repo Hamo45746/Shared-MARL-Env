@@ -6,10 +6,12 @@ import gymnasium as gym
 
 class RLLibEnvWrapper(MultiAgentEnv):
     def __init__(self, env, ae_folder_path):
+        super().__init__()
         self.env = env
         self.num_agents = len(self.env.agents)
         self.D = self.env.D  # Number of layers in the state
         self.step_count = 0
+        self._agent_ids = set(range(self.num_agents))
 
         # Set up device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -56,12 +58,12 @@ class RLLibEnvWrapper(MultiAgentEnv):
 
     def reset(self, *, seed=None, options=None):
         print("RLLibEnvWrapper reset called")
-        observations, info = self.env.reset(seed=seed, options=options)
+        observations, _ = self.env.reset(seed=seed, options=options)
         battery_levels = self.env.get_battery_levels()
         encoded_obs = self._encode_observations(observations, battery_levels)
         self.step_count = 0
         print(f"Reset returned observations for {len(encoded_obs)} agents")
-        return encoded_obs, info
+        return encoded_obs, {}
 
     def step(self, action_dict):
         print(f"RLLibEnvWrapper step called with actions for {len(action_dict)} agents")
@@ -90,3 +92,21 @@ class RLLibEnvWrapper(MultiAgentEnv):
 
     def close(self):
         return self.env.close()
+    
+    def observation_space_sample(self):
+        return {i: self.observation_space.sample() for i in range(self.num_agents)}
+
+    def action_space_sample(self):
+        return {i: self.action_space.sample() for i in range(self.num_agents)}
+
+    @property
+    def observation_space(self):
+        return gym.spaces.Box(
+            low=-np.inf, high=np.inf,
+            shape=(5, 256),
+            dtype=np.float32
+        )
+
+    @property
+    def action_space(self):
+        return gym.spaces.Discrete((2 * 15 + 1) ** 2)

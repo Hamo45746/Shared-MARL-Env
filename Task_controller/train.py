@@ -40,8 +40,8 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    .environment("custom_multi_agent_env")  # Use the registered env name
-    .env_runners(num_env_runners=4)  # Adjust based on your needs
+    .environment("custom_multi_agent_env")
+    .env_runners(num_env_runners=4)
     .training(
         model={
             "fcnet_hiddens": [64, 64],
@@ -64,8 +64,7 @@ config = (
 
 # Set up multi-agent policies
 policies = {
-    f"policy_{i}": PolicySpec(observation_space=obs_space, action_space=action_space)
-    for i in range(num_agents)
+    f"policy_{i}": PolicySpec() for i in range(num_agents)
 }
 
 config = config.multi_agent(
