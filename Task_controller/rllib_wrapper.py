@@ -25,13 +25,20 @@ class RLLibEnvWrapper(MultiAgentEnv):
             self.autoencoder.autoencoders[i].eval()
 
         # Define action and observation spaces
-        self.action_space = self.env.action_space
-        encoded_shape = (256,)
-        self.observation_space = gym.spaces.Box(
+        self._action_space = gym.spaces.Discrete((2 * 15 + 1) ** 2)
+        self._observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf,
-            shape=(self.D,) + encoded_shape,
+            shape=(5, 256),
             dtype=np.float32
         )
+        
+    @property
+    def action_space(self):
+        return self._action_space
+
+    @property
+    def observation_space(self):
+        return self._observation_space
 
     def encode_full_state(self, full_state, battery):
         encoded_full_state = []
@@ -98,15 +105,3 @@ class RLLibEnvWrapper(MultiAgentEnv):
 
     def action_space_sample(self):
         return {i: self.action_space.sample() for i in range(self.num_agents)}
-
-    @property
-    def observation_space(self):
-        return gym.spaces.Box(
-            low=-np.inf, high=np.inf,
-            shape=(5, 256),
-            dtype=np.float32
-        )
-
-    @property
-    def action_space(self):
-        return gym.spaces.Discrete((2 * 15 + 1) ** 2)
