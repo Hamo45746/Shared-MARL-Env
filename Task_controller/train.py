@@ -17,10 +17,10 @@ os.environ['MKL_DEBUG_CPU_TYPE'] = '5'
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from env import Environment
 from rllib_wrapper import RLLibEnvWrapper
 
 def env_creator(env_config):
+    from env import Environment
     env = Environment(config_path=env_config["config_path"])
     return RLLibEnvWrapper(env, ae_folder_path=env_config["ae_folder_path"])
 
