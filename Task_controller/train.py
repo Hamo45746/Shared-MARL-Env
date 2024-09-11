@@ -31,7 +31,8 @@ obs_shape = (5, 256)  # Adjusted for encoded observation space (4 layers + 1 bat
 action_space = spaces.Discrete((2 * 15 + 1) ** 2)  # Assuming max_steps_per_action is 15
 obs_space = spaces.Box(low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32)
 
-
+# Register the environment
+register_env("custom_multi_agent_env", env_creator)
 
 config = (
     PPOConfig()
@@ -39,7 +40,7 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    .environment(env_creator)
+    .environment("custom_multi_agent_env")  # Use the registered env name
     .env_runners(num_env_runners=4)  # Adjust based on your needs
     .training(
         model={
