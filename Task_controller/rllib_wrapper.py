@@ -56,12 +56,12 @@ class RLLibEnvWrapper(MultiAgentEnv):
 
     def reset(self, *, seed=None, options=None):
         print("RLLibEnvWrapper reset called")
-        observations, _ = self.env.reset(seed=seed, options=options)
+        observations, info = self.env.reset(seed=seed, options=options)
         battery_levels = self.env.get_battery_levels()
         encoded_obs = self._encode_observations(observations, battery_levels)
         self.step_count = 0
         print(f"Reset returned observations for {len(encoded_obs)} agents")
-        return encoded_obs, {}
+        return encoded_obs, info
 
     def step(self, action_dict):
         print(f"RLLibEnvWrapper step called with actions for {len(action_dict)} agents")
@@ -71,9 +71,6 @@ class RLLibEnvWrapper(MultiAgentEnv):
 
         self.step_count += 1
         
-        # if self.step_count >= 100:  # Adjust this value as needed
-        #     truncated = {agent_id: True for agent_id in truncated}
-        #     truncated["__all__"] = True
         print(f"Step returned: obs={len(encoded_obs)}, rewards={len(rewards)}, terminated={terminated['__all__']}")
         return encoded_obs, rewards, terminated, truncated, info
 

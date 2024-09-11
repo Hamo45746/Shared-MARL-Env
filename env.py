@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 
 
 
-class Environment(gym.core.Env):
+class Environment(gym.Env):
     def __init__(self, config_path, render_mode="human"):
         super(Environment, self).__init__()
         # Load configuration from YAML
