@@ -64,7 +64,8 @@ config = (
 
 # Set up multi-agent policies
 policies = {
-    f"policy_{i}": PolicySpec() for i in range(num_agents)
+    f"policy_{i}": PolicySpec(observation_space=obs_space, action_space=action_space)
+    for i in range(num_agents)
 }
 
 config = config.multi_agent(
