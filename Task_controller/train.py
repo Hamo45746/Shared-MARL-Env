@@ -27,9 +27,9 @@ def env_creator(env_config):
 logdir = "./custom_ray_results"
 # Update the policies in the config
 num_agents = 10  # Adjust based on your environment
-obs_shape = (5, 256)  # Adjusted for encoded observation space (4 layers + 1 battery layer, 256 encoding size)
+obs_shape = (5 * 256,)  # Adjusted for encoded observation space (4 layers + 1 battery layer, 256 encoding size)
 action_space = spaces.Discrete((2 * 15 + 1) ** 2)  # Assuming max_steps_per_action is 15
-obs_space = spaces.Box(low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32)
+obs_space = spaces.Box(low=-np.inf, high=np.inf, shape=(5 * 256,), dtype=np.float32)
 
 # Register the environment
 register_env("custom_multi_agent_env", env_creator)
@@ -41,24 +41,24 @@ config = (
         enable_env_runner_and_connector_v2=True,
     )
     .environment("custom_multi_agent_env")
-    .env_runners(num_env_runners=4)
+    .env_runners(num_env_runners=1)
     .training(
-        model={
-            "fcnet_hiddens": [64, 64],
-            "fcnet_activation": "tanh",
-        },
         lr=1e-5,
         gamma=0.99,
         lambda_=0.95,
         clip_param=0.2,
         vf_clip_param=10.0,
         entropy_coeff=0.01,
-        train_batch_size=4096,
-        sgd_minibatch_size=256,
-        num_sgd_iter=1,
+        train_batch_size=100,  # Adjusted based on expected episode length and number of agents
+        sgd_minibatch_size=32,
+        num_sgd_iter=3,  # Moderate number of SGD steps
+    )
+    .rollouts(
+        num_rollout_workers=1,  # Only 1 worker
+        rollout_fragment_length=10,  # Match with episode length
+        sample_timeout_s=300  # Allow more time for slow environments
     )
     .resources(num_gpus=1)
-    .rollouts(num_rollout_workers=4)
     .debugging(log_level="DEBUG")
 )
 
@@ -68,9 +68,13 @@ policies = {
     for i in range(num_agents)
 }
 
+def policy_mapping_fn(agent_id, episode, **kwargs):
+    # This function maps each agent to a policy based on its agent_id
+    return f"policy_{agent_id}"
+
 config = config.multi_agent(
     policies=policies,
-    policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: f"policy_{agent_id}",
+    policy_mapping_fn=policy_mapping_fn,
 )
 
 # Set environment config

@@ -3,13 +3,14 @@ env_config:
   config_path: "config.yaml"
   ae_folder_path: "/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data/AE_save_06_09"
 
-num_workers: 4
+num_workers: 1
 framework: torch
 lr: 0.0003
-train_batch_size: 4000
-sgd_minibatch_size: 128
-num_sgd_iter: 30
-rollout_fragment_length: 200
+train_batch_size: 400
+sgd_minibatch_size: 32
+num_sgd_iter: 3
+rollout_fragment_length: 45
+sample_timeout_s: 300
 batch_mode: truncate_episodes
 num_gpus: 1
 
@@ -25,33 +26,62 @@ multiagent:
       - None
       - Box
       - [-inf, inf]
-      - [5, 256]
-      - {}
+      - [1280]  # Flattened observation space
+      - {}  # Modify action space if necessary
     policy_1:
       - None
       - Box
       - [-inf, inf]
-      - [5, 256]
+      - [1280]  # Flattened observation space
       - {}
     policy_2:
       - None
       - Box
       - [-inf, inf]
-      - [5, 256]
+      - [1280]  # Flattened observation space
       - {}
     policy_3:
       - None
       - Box
       - [-inf, inf]
-      - [5, 256]
+      - [1280]  # Flattened observation space
       - {}
     policy_4:
       - None
       - Box
       - [-inf, inf]
-      - [5, 256]
+      - [1280]  # Flattened observation space
       - {}
-  policy_mapping_fn: policy_mapping_fn
+    policy_5:
+      - None
+      - Box
+      - [-inf, inf]
+      - [1280]  # Flattened observation space
+      - {}
+    policy_6:
+      - None
+      - Box
+      - [-inf, inf]
+      - [1280]  # Flattened observation space
+      - {}
+    policy_7:
+      - None
+      - Box
+      - [-inf, inf]
+      - [1280]  # Flattened observation space
+      - {}
+    policy_8:
+      - None
+      - Box
+      - [-inf, inf]
+      - [1280]  # Flattened observation space
+      - {}
+    policy_9:
+      - None
+      - Box
+      - [-inf, inf]
+      - [1280]  # Flattened observation space
+      - {}
 
 evaluation_interval: 10
 evaluation_duration: 5
