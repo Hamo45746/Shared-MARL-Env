@@ -5,14 +5,15 @@ env_config:
 
 num_workers: 1
 framework: torch
-lr: 0.0003
-train_batch_size: 400
-sgd_minibatch_size: 32
-num_sgd_iter: 3
-rollout_fragment_length: 45
-sample_timeout_s: 300
-batch_mode: truncate_episodes
-num_gpus: 1
+# lr: 1e-4
+# train_batch_size: 1
+# sgd_minibatch_size: 1
+# num_sgd_iter: 1
+# rollout_fragment_length: 1
+# sample_timeout_s: 350
+# batch_mode: complete_episodes
+# num_gpus: 1
+# reuse_actors: True
 
 model:
   fcnet_hiddens: [256, 256]

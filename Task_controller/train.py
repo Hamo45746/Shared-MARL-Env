@@ -36,27 +36,34 @@ register_env("custom_multi_agent_env", env_creator)
 
 config = (
     PPOConfig()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
+    # .api_stack(
+        # enable_rl_module_and_learner=True,
+        # enable_env_runner_and_connector_v2=True,
+    # )
+    .environment("custom_multi_agent_env", observation_space=obs_space, action_space=action_space)
+    .env_runners(
+        num_env_runners=1, 
+        # remote_worker_envs=True,
+        num_envs_per_env_runner=1
+
     )
-    .environment("custom_multi_agent_env")
-    .env_runners(num_env_runners=1)
     .training(
-        lr=1e-5,
+        lr=1e-4,
         gamma=0.99,
         lambda_=0.95,
-        clip_param=0.2,
-        vf_clip_param=10.0,
-        entropy_coeff=0.01,
+        # clip_param=0.2,
+        # vf_clip_param=10.0,
+        # entropy_coeff=0.01,
         train_batch_size=100,  # Adjusted based on expected episode length and number of agents
-        sgd_minibatch_size=32,
-        num_sgd_iter=3,  # Moderate number of SGD steps
+        sgd_minibatch_size=100,
+        num_sgd_iter=1,  # Moderate number of SGD steps
     )
+    .framework("torch")
     .rollouts(
         num_rollout_workers=1,  # Only 1 worker
-        rollout_fragment_length=10,  # Match with episode length
-        sample_timeout_s=300  # Allow more time for slow environments
+        rollout_fragment_length=100,  # Match with episode length
+        batch_mode="complete_episodes",
+        # sample_timeout_s=300  # Allow more time for slow environments
     )
     .resources(num_gpus=1)
     .debugging(log_level="DEBUG")
@@ -95,6 +102,10 @@ for i in range(50):
     print(f"Timesteps this iteration: {result.get('timesteps_total', 0)}")
     print(f"Episode Reward Mean: {result.get('episode_reward_mean', 0)}")
     print(f"Episode Length Mean: {result.get('episode_len_mean', 0)}")
+    print(f"Agent Steps Sampled: {result.get('num_agent_steps_sampled', 0)}")
+    print(f"Agent Steps Trained: {result.get('num_agent_steps_trained', 0)}")
+    print(f"Env Steps Sampled: {result.get('num_env_steps_sampled', 0)}")
+    print(f"Env Steps Trained: {result.get('num_env_steps_trained', 0)}")
     
     # Save checkpoint every 10 iterations
     if (i + 1) % 10 == 0:

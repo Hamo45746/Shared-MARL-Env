@@ -10,7 +10,6 @@ class RLLibEnvWrapper(MultiAgentEnv):
         self.env = env
         self.num_agents = len(self.env.agents)
         self.D = self.env.D  # Number of layers in the state
-        self.step_count = 0
         self._agent_ids = set(range(self.num_agents))
 
         # Set up device
@@ -74,18 +73,19 @@ class RLLibEnvWrapper(MultiAgentEnv):
         observations, _ = self.env.reset(seed=seed, options=options)
         battery_levels = self.env.get_battery_levels()
         encoded_obs = self._encode_observations(observations, battery_levels)
-        self.step_count = 0
         print(f"Reset returned observations for {len(encoded_obs)} agents")
         return encoded_obs, {}
 
     def step(self, action_dict):
-        print(f"RLLibEnvWrapper step called with actions for {len(action_dict)} agents")
+        # print(f"RLLibEnvWrapper step called with actions for {len(action_dict)} agents")
         observations, rewards, terminated, truncated, info = self.env.step(action_dict)
         battery_levels = self.env.get_battery_levels()
         encoded_obs = self._encode_observations(observations, battery_levels)
 
-        self.step_count += 1
-        
+        if terminated["__all__"]:
+            for agent_id in action_dict:
+                info[agent_id] = {"episode_done": True}
+            
         print(f"Step returned: obs={len(encoded_obs)}, rewards={len(rewards)}, terminated={terminated['__all__']}")
         return encoded_obs, rewards, terminated, truncated, info
 
