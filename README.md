@@ -15,6 +15,8 @@ velocity agent: Current working environment where continuous agent uses velocity
 SB3 integration: Branch of the current working environment to integrate with MARLlib.  \
 marllib integration: Branch of the current working environment to integrate with MARLlib.  \
 rllib integration: Branch of the current velocity agent environmnet agent to integrate with RLlib. \
+main: Isn't really main branch currently - see most recent commits. \
+task allocation main: Main branch for the task allocation area of the project.\
 
 ## MARL/Rl open source libraries for use to look into integrating for benchmarking:
 ### Stable Baselines3: https://stable-baselines3.readthedocs.io/en/master/guide/quickstart.html
