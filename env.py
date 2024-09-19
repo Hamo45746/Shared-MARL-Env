@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 
 
 
-class Environment(gym.core.Env):
+class Environment(gym.Env):
     def __init__(self, config_path, render_mode="human"):
         super(Environment, self).__init__()
         # Load configuration from YAML
@@ -62,7 +62,7 @@ class Environment(gym.core.Env):
         if self.agent_type == 'task_allocation':
             self.agent_paths = {agent_id: [] for agent_id in range(self.num_agents)}
             self.current_waypoints = {agent_id: None for agent_id in range(self.num_agents)}
-            
+
         self.initialise_agents()
         self.initialise_targets()
         self.initialise_jammers()

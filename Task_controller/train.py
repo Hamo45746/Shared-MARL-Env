@@ -9,6 +9,7 @@ from gymnasium import spaces
 from ray.tune.logger import DEFAULT_LOGGERS
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.policy.policy import PolicySpec
+from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 
 # Set environment variables
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
@@ -31,15 +32,25 @@ obs_shape = (5 * 256,)  # Adjusted for encoded observation space (4 layers + 1 b
 action_space = spaces.Discrete((2 * 15 + 1) ** 2)  # Assuming max_steps_per_action is 15
 obs_space = spaces.Box(low=-np.inf, high=np.inf, shape=(5 * 256,), dtype=np.float32)
 
+# Set up multi-agent policies
+policies = {
+    f"policy_{i}": PolicySpec(observation_space=obs_space, action_space=action_space)
+    for i in range(num_agents)
+}
+
+def policy_mapping_fn(agent_id, episode, **kwargs):
+    # This function maps each agent to a policy based on its agent_id
+    return f"policy_{agent_id}"
+
 # Register the environment
 register_env("custom_multi_agent_env", env_creator)
 
 config = (
     PPOConfig()
-    # .api_stack(
-        # enable_rl_module_and_learner=True,
-        # enable_env_runner_and_connector_v2=True,
-    # )
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
     .environment("custom_multi_agent_env", observation_space=obs_space, action_space=action_space)
     .env_runners(
         num_env_runners=1, 
@@ -54,35 +65,29 @@ config = (
         # clip_param=0.2,
         # vf_clip_param=10.0,
         # entropy_coeff=0.01,
-        train_batch_size=100,  # Adjusted based on expected episode length and number of agents
-        sgd_minibatch_size=100,
+        train_batch_size=10,  # Adjusted based on expected episode length and number of agents
+        sgd_minibatch_size=10,
         num_sgd_iter=1,  # Moderate number of SGD steps
+        # _enable_learner_api=False,
     )
     .framework("torch")
     .rollouts(
+        env_runner_cls=MultiAgentEnvRunner,
         num_rollout_workers=1,  # Only 1 worker
-        rollout_fragment_length=100,  # Match with episode length
-        batch_mode="complete_episodes",
+        rollout_fragment_length='auto',  # Match with episode length
+        batch_mode="truncate_episodes",
         # sample_timeout_s=300  # Allow more time for slow environments
     )
     .resources(num_gpus=1)
     .debugging(log_level="DEBUG")
+    .multi_agent(
+        policies=policies,
+        policy_mapping_fn=policy_mapping_fn,
+        policies_to_train=None
+    )
+    # .rl_module(_enable_rl_module_api=False)
 )
 
-# Set up multi-agent policies
-policies = {
-    f"policy_{i}": PolicySpec(observation_space=obs_space, action_space=action_space)
-    for i in range(num_agents)
-}
-
-def policy_mapping_fn(agent_id, episode, **kwargs):
-    # This function maps each agent to a policy based on its agent_id
-    return f"policy_{agent_id}"
-
-config = config.multi_agent(
-    policies=policies,
-    policy_mapping_fn=policy_mapping_fn,
-)
 
 # Set environment config
 config.env_config = {
@@ -93,7 +98,7 @@ config.env_config = {
 # Build the algorithm
 algo = config.build()
 
-for i in range(50):
+for i in range(300):
     print(f"Iteration: {i}")
     result = algo.train()
     
@@ -102,10 +107,10 @@ for i in range(50):
     print(f"Timesteps this iteration: {result.get('timesteps_total', 0)}")
     print(f"Episode Reward Mean: {result.get('episode_reward_mean', 0)}")
     print(f"Episode Length Mean: {result.get('episode_len_mean', 0)}")
-    print(f"Agent Steps Sampled: {result.get('num_agent_steps_sampled', 0)}")
-    print(f"Agent Steps Trained: {result.get('num_agent_steps_trained', 0)}")
-    print(f"Env Steps Sampled: {result.get('num_env_steps_sampled', 0)}")
-    print(f"Env Steps Trained: {result.get('num_env_steps_trained', 0)}")
+    # print(f"Agent Steps Sampled: {result.get('num_agent_steps_sampled', 0)}")
+    # print(f"Agent Steps Trained: {result.get('num_agent_steps_trained', 0)}")
+    # print(f"Env Steps Sampled: {result.get('num_env_steps_sampled', 0)}")
+    # print(f"Env Steps Trained: {result.get('num_env_steps_trained', 0)}")
     
     # Save checkpoint every 10 iterations
     if (i + 1) % 10 == 0:
