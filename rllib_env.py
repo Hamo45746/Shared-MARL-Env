@@ -20,6 +20,7 @@ from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.policy.policy import Policy
 from ray.tune.registry import register_env
 from ray.rllib.algorithms.algorithm import Algorithm
+import matplotlib.pyplot as plt
 
 class Environment(MultiAgentEnv):
     def __init__(self, config_path, render_mode="human"):
@@ -60,6 +61,8 @@ class Environment(MultiAgentEnv):
         
         # Assumes static environment map - this is for task allocation
         self.path_processor = PathProcessor(self.map_matrix, self.X, self.Y)
+        self.explored_cells = set()  # Set to track explored cells
+        self.seen_targets = set()  # Set to track unique targets seen by any agent
 
         # Initialise environment 
         self.initialise_agents()
@@ -68,6 +71,7 @@ class Environment(MultiAgentEnv):
         self.define_action_space()
         self.define_observation_space()
 
+        self.total_targets = len(self.target_layer.targets) 
         # Set global state layers
         self.global_state[0] = self.map_matrix
         self.update_global_state()
@@ -115,14 +119,13 @@ class Environment(MultiAgentEnv):
         elif self.agent_type == 'task_allocation':
             self.action_space = spaces.Discrete((2 * self.agents[0].max_distance + 1) ** 2)
         else:
-            self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
-
+            self.action_space = spaces.Box(low=-0.5, high=0.5, shape=(2,), dtype=np.float32)
 
     def define_observation_space(self):
         if self.agent_type == 'continuous':
             self.observation_space = spaces.Dict({
                 "map": spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32),
-                "velocity": spaces.Box(low=-10.0, high=10.0, shape=(2,), dtype=np.float32),
+                "velocity": spaces.Box(low=-8.0, high=8.0, shape=(2,), dtype=np.float32),
                 "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32)
         })
         elif self.agent_type == "discrete":
@@ -170,7 +173,10 @@ class Environment(MultiAgentEnv):
 
     def reset(self, seed=None, options: dict = None):
         """ Reset the environment for a new episode"""
-        info = {}
+        # Preserve the last episode's metrics in class variables
+        self.last_seen_targets = len(self.seen_targets)
+        self.last_map_explored_percentage = self.calculate_explored_percentage()
+
         super().reset(seed=self.seed_value if seed is None else seed)
         self._seed(self.seed_value if seed is None else seed)
         # Reset global state
@@ -185,9 +191,12 @@ class Environment(MultiAgentEnv):
         
         self.target_layer.update()
         self.agent_layer.update()
-        # Update layers in global state
         self.update_global_state()
         self.current_step = 0
+
+        # Reset seen targets and explored cells
+        self.seen_targets = set()
+        self.explored_cells = set()
 
         observations = {}
         for agent_id in range(self.num_agents):
@@ -200,8 +209,8 @@ class Environment(MultiAgentEnv):
             }
         
         encoded_observations = self.encode_observation(observations)
-            
-        return encoded_observations, info
+
+        return encoded_observations, {}
 
     def step(self, actions_dict):
         if self.agent_type == 'task_allocation':
@@ -211,8 +220,6 @@ class Environment(MultiAgentEnv):
         
     
     def task_allocation_step(self, actions_dict):
-        # print("\nStarting task_allocation_step")
-        # print(f"Current agent positions: {[tuple(self.agent_layer.get_position(i)) for i in range(self.num_agents)]}")
     
         for agent_id, action in actions_dict.items():
             agent = self.agents[agent_id]
@@ -221,12 +228,6 @@ class Environment(MultiAgentEnv):
             self.current_waypoints[agent_id] = goal
             new_path = self.path_processor.get_path(start, goal)
             self.agent_paths[agent_id] = new_path
-            
-            # print(f"  Path length: {len(new_path)}")
-            # if len(new_path) > 0:
-            #     print(f"  First few steps: {new_path[:min(5, len(new_path))]}")
-            # # else:
-            #     print("  Empty path!")
 
         # Find the maximum path length
         max_path_length = max(len(path) for path in self.agent_paths.values())
@@ -315,6 +316,9 @@ class Environment(MultiAgentEnv):
         self.update_jammed_areas()
         self.check_jammer_destruction()
 
+        # Update exploration metrics
+        self.update_exploration_metrics()
+
         # Collect final local states and calculate rewards
         local_states, rewards = self.collect_local_states_and_rewards()
         encoded_observations = self.encode_observation(observations)
@@ -323,11 +327,20 @@ class Environment(MultiAgentEnv):
         self.current_step += 1
         
         terminated = {agent_id: self.is_episode_done() for agent_id in range(self.num_agents)}
+        terminated["__all__"] = self.is_episode_done()
         truncated = {agent_id: False for agent_id in range(self.num_agents)}
+        truncated["__all__"] = False
         info = {}
 
-        terminated["__all__"] = self.is_episode_done()
-        truncated["__all__"] = False
+        if terminated["__all__"]:
+            info["__common__"] = {
+                "unique_targets_seen": len(self.seen_targets),
+                "map_explored_percentage": self.calculate_explored_percentage()
+            }
+            # Store or log these metrics before they get reset
+            self.last_seen_targets = len(self.seen_targets)
+            self.last_map_explored_percentage = self.calculate_explored_percentage()
+        
         np.set_printoptions(threshold=2000, suppress=True, precision=1, linewidth=2000)
     
         # print("Raw Observations")
@@ -347,6 +360,40 @@ class Environment(MultiAgentEnv):
         
         # If i'm collecting observations I have to return observations. Once the auto encoder is trained I can return encoded observation
         return encoded_observations, rewards, terminated, truncated, info
+    
+    def update_exploration_metrics(self):
+        """
+        Update exploration metrics by checking each agent's observations.
+        """
+        for agent in self.agent_layer.agents:
+            agent_obs = agent.get_observation_state()["map"]
+            agent_pos = agent.current_position()
+            obs_half_range = self.obs_range // 2
+
+            # Add observed cells to the explored cells set
+            for dx in range(-obs_half_range, obs_half_range + 1):
+                for dy in range(-obs_half_range, obs_half_range + 1):
+                    cell = (int(agent_pos[0] + dx), int(agent_pos[1] + dy))
+                    if agent.inbounds(cell[0], cell[1]):
+                        self.explored_cells.add(cell)
+
+            # Check if agent has found a target
+            for target_id, target in enumerate(self.target_layer.targets):
+                target_pos = target.current_position()
+                if (
+                    agent_pos[0] - obs_half_range <= target_pos[0] <= agent_pos[0] + obs_half_range
+                    and agent_pos[1] - obs_half_range <= target_pos[1] <= agent_pos[1] + obs_half_range
+                ):
+                    self.seen_targets.add(target_id)
+
+
+    def calculate_explored_percentage(self):
+        """
+        Calculate the percentage of the map explored by agents.
+        """
+        total_cells = self.X * self.Y
+        explored_percentage = len(self.explored_cells) / total_cells * 100
+        return explored_percentage
     
 
     def update_observations(self): #Alex had this one
@@ -443,6 +490,11 @@ class Environment(MultiAgentEnv):
         max_steps = 500  # or any other logic to end the episode
         if self.current_step >= max_steps:
             return True
+        
+        all_targets_found = len(self.seen_targets) >= self.total_targets
+        if all_targets_found:
+            return True
+        
         return False
 
 
@@ -486,6 +538,11 @@ class Environment(MultiAgentEnv):
             )
             col = (255, 0, 0)
             pygame.draw.circle(self.screen, col, center, int(self.pixel_scale / 1.5))
+
+            # If the target has been seen, draw an extra circle around it
+            if i in self.seen_targets:
+                # Draw an extra circle to highlight the seen target
+                pygame.draw.circle(self.screen, (0, 255, 0), center, int(self.pixel_scale), width=2)  # Green circle
 
 
     def draw_jammers(self):
@@ -653,24 +710,12 @@ class Environment(MultiAgentEnv):
         self.draw_jammers()
         self.draw_waypoints()
 
-        # observation = pygame.surfarray.pixels3d(self.screen)
-        # new_observation = np.copy(observation)
-        # del observation
-        # if self.render_modes == "human":
-        #     pygame.event.pump()
-        #     pygame.display.update()
-        # elif mode == "human":
-        #     pygame.display.flip()
-
-        # return (new_observation,
-        #     np.transpose(new_observation, axes=(1, 0, 2))
-        #     if self.render_modes == "rgb_array"
-        #     else None
-        # )
         if mode == "rgb_array":
             return pygame.surfarray.array3d(self.screen).transpose((1, 0, 2))  # Ensure consistent shape
         elif mode == "human":
-            pygame.display.flip()
+            pygame.event.pump()
+            pygame.display.update()
+            #pygame.display.flip()
         return None
 
 
@@ -776,29 +821,120 @@ class Environment(MultiAgentEnv):
     #                     other_agent.update_local_state(current_obs, current_pos) #This is to observation only
     #                     agent.communicated = True 
 
-    #this is to share full state
+    # # #this is to share full state
+    # def share_and_update_observations(self):
+    #     """
+    #     Updates each agent classes internal observation state and internal local (entire env) state.
+    #     Will merge current observations of agents within communication range into each agents local state.
+    #     This function should be run in the step function.
+    #     """
+    #     for i, agent in enumerate(self.agent_layer.agents):
+    #         # safely_observe returns the current observation of agent i - but that should be called before this function
+    #         current_obs = agent.get_observation_state()
+    #         current_pos = agent.current_position()
+    #         # agent.set_observation_state(current_obs)
+    #         for j, other_agent in enumerate(self.agent_layer.agents):
+    #             if i != j:
+    #                 other_pos = other_agent.current_position()
+    #                 agent_id = self.agent_name_mapping[agent]
+    #                 other_agent_id = self.agent_name_mapping[other_agent]
+
+    #                 if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(other_agent_id):
+    #                     #other_agent.update_local_state(current_obs, current_pos) #This is to observation only
+    #                     agent.update_local_state(other_agent.local_state, other_pos) #Changed this to share full state. 
+    #                     agent.communicated = True 
+
     def share_and_update_observations(self):
         """
-        Updates each agent classes internal observation state and internal local (entire env) state.
-        Will merge current observations of agents within communication range into each agents local state.
-        This function should be run in the step function.
+        Updates each agent's internal observation state and local state.
+        Selectively shares the map and jammer layers fully, while sharing
+        only the observation space for agent and target layers.
         """
+        # Create communication networks based on agents within communication range
+        self.update_networks()
+
+        # Iterate over each communication network
+        for network in self.networks:
+            # Aggregate observations within the network
+            aggregated_state = self.aggregate_network_state(network)
+
+            # Distribute the aggregated state to each agent in the network
+            for agent_id in network:
+                agent = self.agent_layer.agents[agent_id]
+                agent.update_local_state(aggregated_state, agent.current_position())
+                agent.communicated = True
+
+    def update_networks(self):
+        """
+        Updates communication networks based on current agent positions and their communication range.
+        """
+        self.networks = []  # Reset existing networks
+        visited_agents = set()
+
+        # Iterate through each agent to form networks
         for i, agent in enumerate(self.agent_layer.agents):
-            # safely_observe returns the current observation of agent i - but that should be called before this function
-            current_obs = agent.get_observation_state()
-            current_pos = agent.current_position()
-            # agent.set_observation_state(current_obs)
-            for j, other_agent in enumerate(self.agent_layer.agents):
-                if i != j:
-                    other_pos = other_agent.current_position()
-                    agent_id = self.agent_name_mapping[agent]
-                    other_agent_id = self.agent_name_mapping[other_agent]
+            if i not in visited_agents:
+                # Find all agents connected to this agent
+                network = set(self.get_connected_agents(i))
+                network.add(i)
+                if len(network) > 1:
+                    self.networks.append(network)
+                    visited_agents.update(network)
 
-                    if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(other_agent_id):
-                        #other_agent.update_local_state(current_obs, current_pos) #This is to observation only
-                        agent.update_local_state(other_agent.local_state, other_pos) #Changed this to share full state. 
-                        agent.communicated = True 
+    def aggregate_network_state(self, network):
+        """
+        Aggregates the local states of agents within a communication network.
+        """
+        aggregated_state = np.full_like(self.agents[0].local_state, fill_value=-20)
 
+        # Aggregate observed states for all agents in the network
+        for agent_id in network:
+            agent = self.agent_layer.agents[agent_id]
+            for layer in range(aggregated_state.shape[0]):
+                # Aggregate based on layer type
+                if layer == 0:  # Map layer: share full state
+                    aggregated_state[layer] = np.maximum(aggregated_state[layer], agent.local_state[layer])
+                elif layer == 3:  # Jammer layer: aggregate jammer positions
+                    jammer_positions = np.argwhere(agent.local_state[layer] != -20)
+                    for x, y in jammer_positions:
+                        aggregated_state[layer, x, y] = agent.local_state[layer, x, y]
+                else:  # Agent and target layers: aggregate observed areas only
+                    obs = agent.get_observation_state()["map"][layer]
+                    ox, oy = agent.current_position()
+                    obs_half_range = self.obs_range // 2
+                    for dx in range(-obs_half_range, obs_half_range + 1):
+                        for dy in range(-obs_half_range, obs_half_range + 1):
+                            global_x = ox + dx
+                            global_y = oy + dy
+                            global_x = int(global_x)
+                            global_y = int(global_y)
+                            if agent.inbounds(global_x, global_y):
+                                aggregated_state[layer, global_x, global_y] = max(
+                                    aggregated_state[layer, global_x, global_y],
+                                    obs[obs_half_range + dx, obs_half_range + dy]
+                                )
+        return aggregated_state
+
+    def get_connected_agents(self, agent_index):
+        """
+        Finds all agents that are within communication range of the specified agent.
+
+        Parameters:
+        - agent_index (int): Index of the agent whose connections are being checked.
+
+        Returns:
+        - List of agent indices that are within communication range of the specified agent.
+        """
+        connected_agents = []
+        agent_pos = self.agent_layer.agents[agent_index].current_position()
+
+        for i, other_agent in enumerate(self.agent_layer.agents):
+            if i != agent_index:
+                other_pos = other_agent.current_position()
+                if self.within_comm_range(agent_pos, other_pos):
+                    connected_agents.append(i)
+
+        return connected_agents
 
     def print_local_state_section(self, agent, other_pos):
         """
@@ -914,13 +1050,12 @@ class Environment(MultiAgentEnv):
         np.random.seed(seed)
         random.seed(seed)
 
-    def run_simulation(self, max_steps=100):
+    def run_simulation(self, max_steps=500):
         running = True
         step_count = 0
         collected_data = []
 
         while running and step_count < max_steps:
-            #print(f"Step: {step_count}")
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
@@ -933,7 +1068,6 @@ class Environment(MultiAgentEnv):
             step_count += 1
 
             if terminated.get("__all__", False) or truncated.get("__all__", False):
-                print("here")
                 break
 
         pygame.image.save(self.screen, "outputs/environment_snapshot.png")
@@ -957,11 +1091,13 @@ class Environment(MultiAgentEnv):
         trainer.restore(checkpoint_dir)
 
         # # Get the policy from the trainer
-        # policy = trainer.get_policy("policy_0") # This is for centralised learning - remove for decentralised 
+        policy = trainer.get_policy("policy_0") # This is for CENTRALISED learning - remove for decentralised 
 
         running = True
         step_count = 0
         collected_data = []
+        targets_seen_over_time = []
+        map_explored_over_time = []
 
         while running and step_count < max_steps:
             for event in pygame.event.get():
@@ -977,7 +1113,7 @@ class Environment(MultiAgentEnv):
                     "velocity": np.array(encoded_obs["velocity"]).reshape(1, -1),
                     "goal": np.array(encoded_obs["goal"]).reshape(1, -1)
                 }
-                policy = trainer.get_policy(f"policy_{agent_id}") # This is for decentralised learning - remove for centralised 
+                #policy = trainer.get_policy(f"policy_{agent_id}") # This is for decentralised learning - remove for CENTRALISED
                 action = policy.compute_single_action(obs)[0]
                 action_dict[agent_id] = action
 
@@ -985,6 +1121,10 @@ class Environment(MultiAgentEnv):
             collected_data.append(observations)
             self.render()
             step_count += 1
+
+            # Collect metrics for plotting
+            targets_seen_over_time.append(len(self.seen_targets))
+            map_explored_over_time.append(self.calculate_explored_percentage())
 
             if terminated.get("__all__", False) or truncated.get("__all__", False):
                 break
@@ -998,4 +1138,37 @@ class Environment(MultiAgentEnv):
         self.reset()
         pygame.quit()
 
+        # Plot the collected metrics
+        self.plot_simulation_metrics(targets_seen_over_time, map_explored_over_time, iteration)
+
         return collected_data
+    
+    def plot_simulation_metrics(self, targets_seen, map_explored, iteration=None):
+        plt.figure(figsize=(12, 5))
+
+        # Plot unique targets seen
+        plt.subplot(1, 2, 1)
+        plt.plot(targets_seen, label='Unique Targets Seen')
+        plt.xlabel('Step')
+        plt.ylabel('Unique Targets Seen')
+        plt.title('Unique Targets Seen During Simulation')
+        plt.legend()
+
+        # Plot map explored percentage
+        plt.subplot(1, 2, 2)
+        plt.plot(map_explored, label='Map Explored Percentage')
+        plt.xlabel('Step')
+        plt.ylabel('Map Explored (%)')
+        plt.title('Map Explored Percentage During Simulation')
+        plt.legend()
+
+        if iteration is not None:
+            plt.suptitle(f'Simulation Metrics - Iteration {iteration}')
+
+        # Save and show the plot
+        plt.tight_layout()
+        if iteration is not None:
+            plt.savefig(f'simulation_metrics_iteration_{iteration}.png')
+        else:
+            plt.savefig(f'simulation_metrics.png')
+        plt.show()

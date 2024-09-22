@@ -29,55 +29,79 @@ class ContinuousAgent(BaseAgent):
         self.change_angle = False
         self.goal_area = None
         self.previous_distance_to_goal = None
+        self.valid_move = True
 
     @property
     def observation_space(self):
         return spaces.Dict({
             "map": spaces.Box(low=-20, high=1, shape=self._obs_shape, dtype=np.float32),
-            "velocity": spaces.Box(low=-10.0, high=10.0, shape=(2,), dtype=np.float32),
+            "velocity": spaces.Box(low=-8.0, high=8.0, shape=(2,), dtype=np.float32),
             "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32),
         })
     @property
     def action_space(self):
-        return spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
+        return spaces.Box(low=-0.5, high=0.5, shape=(2,), dtype=np.float32)
 
     def step(self, action):
-        # Convert action to acceleration (assuming action is in range [-1, 1] and maps to [-2, 2] km/h)
+        # Convert action to acceleration (assuming action is in range [-1, 1] and maps to [-1, 1] km/h)
         acceleration = action #acceleration = action * 2.0
+        previous_velocity = self.velocity.copy()
         # Adjust velocity
         self.velocity += acceleration
         # Clamp velocity to the desired range
-        self.velocity = np.clip(self.velocity, -2.0, 2.0)  # Adjust as per your requirements
+        self.velocity = np.clip(self.velocity, -8.0, 8.0)  # Adjust as per your requirements
 
         # Determine the new direction based on the constraints
         # Determine the number of sub-steps based on the current velocity
         speed = np.linalg.norm(self.velocity)
         num_sub_steps = max(1, int((speed // 2) * 2))
-
         sub_step_velocity = self.velocity / num_sub_steps
+        self.valid_move = True
 
-        valid_move = True
+        # for _ in range(num_sub_steps):
+        #     # Update position based on sub-step velocity
+        #     self.temp_pos = self.current_pos + sub_step_velocity
 
+        #     # Check bounds and obstacles for each sub-step
+        #     if self.inbounds(self.temp_pos[0], self.temp_pos[1]) and not self.inbuilding(self.temp_pos[0], self.temp_pos[1]):
+        #         self.last_pos[:] = self.current_pos
+        #         self.current_pos[:] = self.temp_pos
+        #         self.path.append((self.current_pos[0], self.current_pos[1]))
+        #     else:
+        #         self.valid_move = False
+        #         break  # Exit the loop if an invalid move is detected
+
+        # # If the final position after all sub-steps is invalid, reset to the last valid position
+        # if not self.valid_move:
+            # # The following check is just for the very first move, it's so that the last_pos isn't (0,0)
+            # lx, ly = self.last_pos
+            # if lx == 0: 
+            #     self.current_pos[:] = self.current_pos
+            # else:
+            #     print("here")
+            #     self.current_pos[:] = self.last_pos
+
+        # Check all sub-steps before making the move
         for _ in range(num_sub_steps):
-            # Update position based on sub-step velocity
             self.temp_pos = self.current_pos + sub_step_velocity
 
-            # Check bounds and obstacles for each sub-step
-            if self.inbounds(self.temp_pos[0], self.temp_pos[1]) and not self.inbuilding(self.temp_pos[0], self.temp_pos[1]):
-                self.last_pos[:] = self.current_pos
-                self.current_pos[:] = self.temp_pos
-                self.path.append((self.current_pos[0], self.current_pos[1]))
-            else:
-                valid_move = False
-                break  # Exit the loop if an invalid move is detected
+            if not (self.inbounds(self.temp_pos[0], self.temp_pos[1]) and not self.inbuilding(self.temp_pos[0], self.temp_pos[1])):
+                self.valid_move = False
+                break
 
-        # If the final position after all sub-steps is invalid, reset to the last valid position
-        if not valid_move:
+        # If move is invalid, revert and penalize or inform the agent
+        if not self.valid_move:
+            # The following check is just for the very first move, it's so that the last_pos isn't (0,0)
             lx, ly = self.last_pos
-            if lx == 0:
+            if lx == 0: 
                 self.current_pos[:] = self.current_pos
             else:
-                self.current_pos[:] = self.last_pos
+                return self.current_pos
+
+        # Update only if all sub-steps are valid
+        self.last_pos[:] = self.current_pos
+        self.current_pos[:] = self.temp_pos
+        self.path.append((self.current_pos[0], self.current_pos[1]))
 
         return self.current_pos
 
@@ -101,57 +125,74 @@ class ContinuousAgent(BaseAgent):
     def current_position(self):
         return self.current_pos
 
-    #this is just to share observations 
+    # # #this is to share full_state
     # def update_local_state(self, observed_state, observer_position):
     #     observer_x, observer_y = observer_position
-    #     obs_half_range = self._obs_range // 2
-    #     observed_map = observed_state["map"]
-
-    #     for layer in range(observed_map.shape[0]):
-    #         for dx in range(-obs_half_range, obs_half_range + 1):
-    #             for dy in range(-obs_half_range, obs_half_range + 1):
-    #                 global_x = observer_x + dx
-    #                 global_y = observer_y + dy
-    #                 global_x1 = int(global_x)
-    #                 global_y1 = int(global_y)
-    #                 obs_x = obs_half_range + dx
-    #                 obs_y = obs_half_range + dy
-    #                 if self.inbounds(global_x, global_y):
+    #     for layer in range(observed_state.shape[0]):
+    #         for x in range(self.X):
+    #             for y in range(self.Y):
+    #                 # Check if the current position is within bounds
+    #                 if self.inbounds(x, y):
+    #                     # If it's the map layer (layer 0)
     #                     if layer == 0:
-    #                         #this if statement means that the map layer will only be updated if the current agent doesn't already have
-    #                         # a known value there - this means that the other agent won't take priority over the current agents info
-    #                         if self.local_state[layer, global_x1, global_y1] == -20:
-    #                             self.local_state[layer, global_x1, global_y1] = observed_map[layer, obs_x, obs_y]
+    #                         # Update only if the local state is unknown (-20) and the observed state is known (not -20)
+    #                         if self.local_state[layer, x, y] == -20 and observed_state[layer, x, y] != 20:
+    #                             self.local_state[layer, x, y] = observed_state[layer, x, y]
+    #                             # Add the coordinate to the observed areas
+    #                             self.observed_areas.add((x, y))
     #                     else:
-    #                         observed_value = observed_state[layer, dx, dy]
-    #                         current_value = self.local_state[layer, global_x, global_y]
-    #                         if observed_value > current_value or observed_value == 0:
-    #                             self.local_state[layer, global_x, global_y] = observed_value
+    #                         observed_value = observed_state[layer, x, y]
+    #                         current_value = self.local_state[layer, x, y]
+    #                         # Update if observed value is newer (greater) or if it's the most recent information (0)
+    #                         if observed_value != -20 and (observed_value > current_value or observed_value == 0):
+    #                             self.local_state[layer, x, y] = observed_value
 
-    #this is to share full_state
     def update_local_state(self, observed_state, observer_position):
+        """
+        Updates the agent's local state based on observed data from another agent.
+        Handles map, jammer, agent, and target layers differently based on sharing strategy.
+        """
         observer_x, observer_y = observer_position
+
         for layer in range(observed_state.shape[0]):
-            for x in range(self.X):
-                for y in range(self.Y):
-                    # Check if the current position is within bounds
-                    if self.inbounds(x, y):
-                        # If it's the map layer (layer 0)
-                        if layer == 0:
-                            # Update only if the local state is unknown (-20) and the observed state is known (not -20)
-                            if self.local_state[layer, x, y] == -20 and observed_state[layer, x, y] != 20:
+            # Full state sharing for the map layer
+            if layer == 0:
+                for x in range(self.X):
+                    for y in range(self.Y):
+                        if self.inbounds(x, y):
+                            if self.local_state[layer, x, y] == -20 and observed_state[layer, x, y] != -20:
                                 self.local_state[layer, x, y] = observed_state[layer, x, y]
-                                # Add the coordinate to the observed areas
+                                # Add the coordinate to the observed areas - This is for reward 
                                 self.observed_areas.add((x, y))
-                        else:
-                            observed_value = observed_state[layer, x, y]
-                            current_value = self.local_state[layer, x, y]
-                            # Update if observed value is newer (greater) or if it's the most recent information (0)
+
+            # Share only positions for jammers, not the full state
+            elif layer == 3:  # Jammer layer
+                jammer_positions = np.argwhere(observed_state[layer] != -20)
+                for x, y in jammer_positions:
+                    if self.inbounds(x, y):
+                        self.local_state[layer, x, y] = observed_state[layer, x, y]
+
+            # Share only observation space for agent and target layers
+            else:
+                obs_half_range = self._obs_range // 2
+                for dx in range(-obs_half_range, obs_half_range + 1):
+                    for dy in range(-obs_half_range, obs_half_range + 1):
+                        global_x = observer_x + dx
+                        global_y = observer_y + dy
+                        global_x = int(global_x)
+                        global_y = int(global_y)
+                        obs_x = obs_half_range + dx
+                        obs_y = obs_half_range + dy
+
+                        if self.inbounds(global_x, global_y):
+                            observed_value = observed_state[layer, obs_x, obs_y]
+                            current_value = self.local_state[layer, global_x, global_y]
+
                             if observed_value != -20 and (observed_value > current_value or observed_value == 0):
-                                self.local_state[layer, x, y] = observed_value
+                                self.local_state[layer, global_x, global_y] = observed_value
 
     def get_next_action(self):
-        action = self.random_state.uniform(-1, 1, size=(2,))
+        action = self.random_state.uniform(-0.5, 0.5, size=(2,))
         return action
     
     def set_observation_state(self, observation):
@@ -187,7 +228,7 @@ class ContinuousAgent(BaseAgent):
         return False
     
     def calls_obstacle_avoidance(self):
-        threshold = 5
+        threshold = 4
         x, y = self.current_pos
         for dx in range(-threshold, threshold + 1):
             for dy in range(-threshold, threshold + 1):
