@@ -5,11 +5,14 @@ class RewardCalculator:
     """
     Class designed to calculate the reward for all agents over a single task allocation step.
     """
-    def __init__(self, env, destroyed_jammers=set()):
+    def __init__(self, env, destroyed_jammers=set(), prev_observed_cells=None):
         self.env = env
         self.num_agents = len(env.agents)
         self.accumulated_rewards = {i: 0.0 for i in range(self.num_agents)}
-        self.prev_observed_cells = [np.full(env.global_state[1].shape, -20, dtype=np.float16) for _ in range(self.num_agents)]
+        if prev_observed_cells == None:
+            self.prev_observed_cells = [np.full(env.global_state[1].shape, -20, dtype=np.float16) for _ in range(self.num_agents)]
+        else:
+            self.prev_observed_cells = prev_observed_cells
         self.prev_jammer_states = np.array([jammer.get_destroyed() for jammer in env.jammers], dtype=bool)
         self.step_rewards = {i: 0.0 for i in range(self.num_agents)}
         self.destroyed_jammers = destroyed_jammers
@@ -123,7 +126,7 @@ class RewardCalculator:
 
     def reset(self):
         """
-        Reset the reward calculator. Should be called at step end.
+        Reset the reward calculator. Should be called at step end. CURRENTLY UNNEEDED
         """
         for i in range(self.num_agents):
             self.accumulated_rewards[i] = 0.0
@@ -135,3 +138,6 @@ class RewardCalculator:
     def episode_reset(self):
         self.reset()
         self.destroyed_jammers.clear()
+        
+    def get_observed_cells(self):
+        return self.prev_observed_cells

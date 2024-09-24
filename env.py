@@ -80,7 +80,8 @@ class Environment(gym.Env):
         self.agent_to_network = {}
         self.comm_matrix = None
         self.jammed_agents = set()
-        
+        # Array, index is agent_id, cell contains agentlayer array of cells that have been seen by each agent
+        self.prev_observed_cells = None
     
     def load_map(self): # NEW
         original_map = np.load(self.config['map_path'])[:, :, 0]
@@ -271,7 +272,7 @@ class Environment(gym.Env):
         
     
     def task_allocation_step(self, actions_dict):
-        reward_calculator = RewardCalculator(self, self.jammer_layer.destroyed_jammers)
+        reward_calculator = RewardCalculator(self, self.jammer_layer.destroyed_jammers, self.prev_observed_cells)
 
         # Compute paths for all non-terminated agents based on their actions (waypoints)
         for agent_id, action in actions_dict.items():
@@ -343,6 +344,8 @@ class Environment(gym.Env):
 
         # Get final rewards
         rewards = reward_calculator.get_rewards()
+        self.prev_observed_cells = reward_calculator.get_observed_cells()
+        
         observations = self.get_obs()
         
         done = {agent_id: agent.is_terminated() for agent_id in range(self.num_agents)}
@@ -1162,4 +1165,4 @@ def visualize_agent_states(env, step):
 
 # config_path = 'config.yaml' 
 # env = Environment(config_path)
-# Environment.run_simulation(env, max_steps=10)
+# Environment.run_simulation(env, max_steps=5)
