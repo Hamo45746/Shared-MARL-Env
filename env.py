@@ -11,8 +11,6 @@ from skimage.transform import resize, rotate
 from layer import AgentLayer, JammerLayer, TargetLayer
 # from gym.utils import seeding
 from gymnasium.utils import seeding
-# from Continuous_controller.agent_controller import AgentController
-from Task_controller.agent_controller import DiscreteAgentController
 from Task_controller.reward import RewardCalculator
 from Continuous_controller.reward import calculate_continuous_reward
 # from gym.spaces import Dict as GymDict, Box, Discrete
@@ -273,7 +271,7 @@ class Environment(gym.Env):
         
     
     def task_allocation_step(self, actions_dict):
-        reward_calculator = RewardCalculator(self)
+        reward_calculator = RewardCalculator(self, self.jammer_layer.destroyed_jammers)
 
         # Compute paths for all non-terminated agents based on their actions (waypoints)
         for agent_id, action in actions_dict.items():
@@ -409,26 +407,6 @@ class Environment(gym.Env):
             observations[agent_id] = obs
         return observations
     
-
-    def collect_rewards(self):
-        # full_states = {}
-        rewards = {}
-        for agent_id in range(self.num_agents):
-            agent = self.agent_layer.agents[agent_id]
-            # full_states[agent_id] = agent.get_state()  # This returns the full_state
-            if agent.is_terminated():
-                rewards[agent_id] = 0
-            
-            if self.agent_type == "discrete":
-                reward = DiscreteAgentController.calculate_reward(agent)
-            elif self.agent_type == "task_allocation":
-                reward = DiscreteAgentController.calculate_reward(agent)  # TODO: Implement task allocation reward
-            else: 
-                reward = calculate_continuous_reward(agent, self)
-            rewards[agent_id] = reward
-        
-        return rewards #, full_states (was before rewards if uncommented)
-    
     
     def is_episode_done(self):
         return all(agent.is_terminated() for agent in self.agents)
@@ -461,9 +439,11 @@ class Environment(gym.Env):
     def check_jammer_destruction(self):
         for agent_id in range(self.num_agents):
             agent_pos = self.agent_layer.get_position(agent_id)
-            for jammer in self.jammers:
+            for jammer_id, jammer in enumerate(self.jammers):
                 if not jammer.get_destroyed() and jammer.current_position() == tuple(agent_pos):
+                    jammer.destroyed_by = agent_id
                     jammer.set_destroyed()
+                    self.jammer_layer.destroyed_jammers.add(jammer_id)
                     self.update_jammed_areas()
                     
                     
@@ -1182,4 +1162,4 @@ def visualize_agent_states(env, step):
 
 # config_path = 'config.yaml' 
 # env = Environment(config_path)
-# Environment.run_simulation(env, max_steps=100)
+# Environment.run_simulation(env, max_steps=10)

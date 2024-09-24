@@ -137,6 +137,7 @@ class JammerLayer:
         self.nagents = len(jammers)
         self.layer_state = np.full((xs, ys), -20.0, dtype=np.float16)
         self.activation_times = activation_times or [0] * len(jammers)  # Default to immediate activation
+        self.destroyed_jammers = set()
 
     def activate_jammers(self, current_time):
         """Activate jammers based on the current time and their respective activation times."""
