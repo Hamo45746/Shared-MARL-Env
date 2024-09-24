@@ -71,6 +71,7 @@ config["multiagent"]["policy_mapping_fn"] = policy_mapping_fn
 # Initialize the PPO trainer
 trainer = PPO(config=config)
 
+
 # Lists to store metrics for plotting
 targets_seen_over_time_min = []
 targets_seen_over_time_mean = []
@@ -83,6 +84,7 @@ map_explored_over_time_max = []
 for i in range(200):
     print(f"Training iteration {i}")
     result = trainer.train()
+
     # Access the last episode's custom metrics
     targets_found_min = result['env_runners']['custom_metrics'].get("unique_targets_seen_min")
     targets_found_mean = result['env_runners']['custom_metrics'].get("unique_targets_seen_mean")
@@ -111,7 +113,7 @@ for i in range(200):
           f"Map Explored Percentage mean: {map_explored_percentage_mean:.2f}%"
           f"Map Explored Percentage max: {map_explored_percentage_max:.2f}%")
     
-    if (i + 1) % 20 == 0:
+    if (i + 1) % 1 == 0:
         checkpoint_dir = trainer.save(logdir)
         latest_folder = max(glob.glob(os.path.join('/Users/alexandramartinwallace/ray_results/', '*/')), key=os.path.getmtime)
         params_path = os.path.join(latest_folder, "params.pkl")

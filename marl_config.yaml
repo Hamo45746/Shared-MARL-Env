@@ -48,8 +48,8 @@ multiagent:
         }
       - {
           "type": "box",
-          "low": -1.0,
-          "high": 1.0,
+          "low": -0.5,
+          "high": 0.5,
           "shape": [2]
         }
       - {}

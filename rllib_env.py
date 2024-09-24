@@ -274,6 +274,7 @@ class Environment(MultiAgentEnv):
         return local_states, rewards, terminated, truncated, info
     
     def regular_step(self, actions_dict):
+        print(actions_dict)
         # Update target positions and layer state
         for i, target in enumerate(self.target_layer.targets):
             action = target.get_next_action()
@@ -487,7 +488,7 @@ class Environment(MultiAgentEnv):
     #need to update this, doing it for testing
     def is_episode_done(self):
         # Example condition: end episode after a fixed number of steps
-        max_steps = 500  # or any other logic to end the episode
+        max_steps = 800  # or any other logic to end the episode
         if self.current_step >= max_steps:
             return True
         
@@ -1092,6 +1093,7 @@ class Environment(MultiAgentEnv):
 
         # # Get the policy from the trainer
         policy = trainer.get_policy("policy_0") # This is for CENTRALISED learning - remove for decentralised 
+    
 
         running = True
         step_count = 0
@@ -1114,7 +1116,7 @@ class Environment(MultiAgentEnv):
                     "goal": np.array(encoded_obs["goal"]).reshape(1, -1)
                 }
                 #policy = trainer.get_policy(f"policy_{agent_id}") # This is for decentralised learning - remove for CENTRALISED
-                action = policy.compute_single_action(obs)[0]
+                action = policy.compute_single_action(obs, explore=False)[0]
                 action_dict[agent_id] = action
 
             observations, rewards, terminated, truncated, self.info = self.step(action_dict)
@@ -1172,3 +1174,4 @@ class Environment(MultiAgentEnv):
         else:
             plt.savefig(f'simulation_metrics.png')
         plt.show()
+        plt.close()

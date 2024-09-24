@@ -20,7 +20,7 @@ def calculate_continuous_reward(agent, env):
         reward -= 3
 
     percentage_new_information = agent.gains_information() 
-    reward += (percentage_new_information*3)
+    reward += (percentage_new_information*5)
 
     # # Check if the agent gains new information
     # if agent.gains_information():
