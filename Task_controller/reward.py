@@ -36,7 +36,7 @@ class RewardCalculator:
             return
         agent_state = self.env.agents[agent_id].full_state[1:]
         new_observed = np.sum((agent_state > -20) & (self.prev_observed_cells[agent_id] == -20))
-        self.step_rewards[agent_id] += new_observed * 0.1
+        self.step_rewards[agent_id] += new_observed * 1
         self.prev_observed_cells[agent_id] = np.maximum(self.prev_observed_cells[agent_id], agent_state)
 
     def update_target_reward(self, agent_id):

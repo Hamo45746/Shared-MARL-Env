@@ -237,6 +237,7 @@ class Environment(gym.Env):
         self.agent_to_network = {}
         self.comm_matrix = None
         self.jammed_agents = set()
+        self.prev_observed_cells = None
         # Initialise observations for all agents
         self.update_all_agents_obs()
 
