@@ -18,6 +18,7 @@ from Continuous_controller.reward import calculate_continuous_reward
 from gymnasium import spaces
 from path_processor_simple import PathProcessor
 import matplotlib.pyplot as plt
+from numba import jit
 
 
 
@@ -777,154 +778,146 @@ class Environment(gym.Env):
         xolo, yolo = abs(np.clip(xld, -self.obs_range // 2, 0)), abs(np.clip(yld, -self.obs_range // 2, 0))
         xohi, yohi = xolo + (xhi - xlo), yolo + (yhi - ylo)
         return xlo, xhi + 1, ylo, yhi + 1, xolo, xohi + 1, yolo, yohi + 1
-          
+
+                   
     ## COMMUNICATION FUNCTIONS ##                    
     def share_and_update_observations(self):
-        active_agents = [agent_id for agent_id, agent in enumerate(self.agents) if not agent.is_terminated()]
-        
-        # First update each agent's own observation
-        for i in active_agents:
-            agent = self.agents[i]
-            current_obs = self.safely_observe(i)
-            current_pos = agent.current_position()
-            agent.set_observation_state(current_obs)
-            agent.update_full_state(current_obs, current_pos)
+        # Update each agent's own observation
+        for i, agent in enumerate(self.agents):
+            if not agent.is_terminated():
+                current_obs = self.safely_observe(i)
+                current_pos = agent.current_position()
+                agent.set_observation_state(current_obs)
+                agent.update_full_state(current_obs, current_pos)
 
         # Update networks
         self.update_networks()
 
         # Share information within each network
         for network in self.networks:
-            active_network = [agent_id for agent_id in network if not self.agents[agent_id].is_terminated()]
-            if not active_network:
-                continue
+            self.share_info_in_network(network)
             
-            combined_state = None
-            for agent_id in active_network:
+    
+    def share_info_in_network(self, network):
+        combined_state = None
+        for agent_id in network:
+            if not self.agents[agent_id].is_terminated():
                 if combined_state is None:
                     combined_state = self.agents[agent_id].full_state.copy()
                 else:
-                    self.agents[agent_id].merge_full_states(combined_state)
                     for layer in range(1, combined_state.shape[0]):
                         mask = (self.agents[agent_id].full_state[layer] > combined_state[layer]) | (self.agents[agent_id].full_state[layer] == 0)
                         combined_state[layer][mask] = self.agents[agent_id].full_state[layer][mask]
 
-            # Distribute the combined information to all active agents in the network
-            for agent_id in active_network:
+        # Distribute the combined information to all active agents in the network
+        for agent_id in network:
+            if not self.agents[agent_id].is_terminated():
                 self.agents[agent_id].full_state = combined_state.copy()
     
     
     def update_networks(self):
         """
-        Incrementally updates the networks based on agent movements and jamming status.
+        Incrementally updates the networks based on agent movements, jamming status, and termination status.
         """
-        self.update_comm_matrix()
-        self.update_jammed_agents()
+        new_networks = []
+        agent_to_network = {}
 
-        active_agents = [i for i, agent in enumerate(self.agents) if not agent.is_terminated()]
+        for i, agent in enumerate(self.agents):
+            if agent.is_terminated():
+                continue
 
-        for i in active_agents:
             connected_agents = self.get_connected_agents(i)
             if not connected_agents:
-                if i in self.agent_to_network:
-                    self.remove_from_network(i, self.agent_to_network[i])
-                self.create_new_network([i])
-            elif i not in self.agent_to_network:
-                self.add_to_existing_or_new_network(i, connected_agents)
+                new_network = {i}
+                new_networks.append(new_network)
+                agent_to_network[i] = new_network
             else:
-                current_network = self.agent_to_network[i]
-                for j in connected_agents:
-                    if j not in current_network:
-                        other_network = self.agent_to_network.get(j)
-                        if other_network is not None and other_network != current_network:
-                            if j in other_network:
-                                self.merge_networks(current_network, other_network)
-                            else:
-                                current_network.add(j)
-                                self.agent_to_network[j] = current_network
-                        else:
-                            current_network.add(j)
-                            self.agent_to_network[j] = current_network
+                existing_network = None
+                for connected in connected_agents:
+                    if connected in agent_to_network:
+                        existing_network = agent_to_network[connected]
+                        break
 
-        # Remove terminated agents from networks
-        for network in self.networks:
-            terminated_agents = [agent_id for agent_id in network if self.agents[agent_id].is_terminated()]
-            for agent_id in terminated_agents:
-                if agent_id in network:
-                    self.remove_from_network(agent_id, network)
+                if existing_network is None:
+                    new_network = {i} | set(connected_agents)
+                    new_networks.append(new_network)
+                    for agent_id in new_network:
+                        agent_to_network[agent_id] = new_network
+                else:
+                    existing_network.add(i)
+                    agent_to_network[i] = existing_network
+                    for connected in connected_agents:
+                        if connected not in existing_network:
+                            existing_network.add(connected)
+                            agent_to_network[connected] = existing_network
 
-        self.networks = [net for net in self.networks if net]
-        
+        self.networks = new_networks
+        self.agent_to_network = agent_to_network
+
+
+    # def get_connected_agents(self, agent_id):
+    #     """Returns a list of active agents that agent_id can directly communicate with."""
+    #     connected = []
+    #     for j, other_agent in enumerate(self.agents):
+    #         if agent_id != j and not other_agent.is_terminated() and \
+    #         self.within_comm_range(self.agents[agent_id].current_position(), other_agent.current_position()) and \
+    #         not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(j):
+    #             connected.append(j)
+    #     return connected
     
-    def update_comm_matrix(self):
-        n_agents = self.agent_layer.n_agents()
-        
-        # Resize comm_matrix if the number of agents has changed
-        if self.comm_matrix is None or self.comm_matrix.shape[0] != n_agents:
-            self.comm_matrix = np.zeros((n_agents, n_agents), dtype=bool)
-        
-        for i in range(n_agents):
-            for j in range(i+1, n_agents):
-                in_range = self.within_comm_range(
-                    self.agent_layer.get_position(i),
-                    self.agent_layer.get_position(j)
-                )
-                self.comm_matrix[i, j] = self.comm_matrix[j, i] = in_range
-
-
-    def update_jammed_agents(self):
-        agent_positions = self.agent_layer.agent_positions
-        self.jammed_agents = self.jammed_areas[agent_positions[:, 0], agent_positions[:, 1]]
-
-
     def get_connected_agents(self, agent_id):
-        """Returns a list of agents that agent_id can directly communicate with."""
-        n_agents = self.agent_layer.n_agents()
-        return [j for j in range(n_agents) 
-                if j != agent_id and self.comm_matrix[agent_id, j] and 
-                j not in self.jammed_agents and agent_id not in self.jammed_agents and
-                not self.agents[j].is_terminated()]
+        """Returns a list of active agents that agent_id can directly communicate with."""
+        connected = []
+        connected = []
+        agent_pos = np.array(self.agents[agent_id].current_position())
+        for j, other_agent in enumerate(self.agents):
+            if agent_id != j and not other_agent.is_terminated():
+                other_pos = np.array(other_agent.current_position())
+                if np.linalg.norm(agent_pos - other_pos) <= self.comm_range/2 and \
+                   not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(j):
+                    connected.append(j)
+        return connected
 
 
-    def remove_from_network(self, agent_id, network):
-        network.remove(agent_id)
-        del self.agent_to_network[agent_id]
+    # def remove_from_network(self, agent_id, network):
+    #     network.remove(agent_id)
+    #     del self.agent_to_network[agent_id]
 
 
-    def create_new_network(self, agents):
-        new_network = set(agents)
-        if new_network:  # Only add non-empty networks
-            self.networks.append(new_network)
-            for agent in agents:
-                self.agent_to_network[agent] = new_network
+    # def create_new_network(self, agents):
+    #     new_network = set(agents)
+    #     if new_network:  # Only add non-empty networks
+    #         self.networks.append(new_network)
+    #         for agent in agents:
+    #             self.agent_to_network[agent] = new_network
 
 
-    def add_to_existing_or_new_network(self, agent_id, connected_agents):
-        for connected in connected_agents:
-            if connected in self.agent_to_network:
-                network = self.agent_to_network[connected]
-                network.add(agent_id)
-                self.agent_to_network[agent_id] = network
-                return
-        # If no existing network found, create a new one
-        self.create_new_network([agent_id] + list(connected_agents))
+    # def add_to_existing_or_new_network(self, agent_id, connected_agents):
+    #     for connected in connected_agents:
+    #         if connected in self.agent_to_network:
+    #             network = self.agent_to_network[connected]
+    #             network.add(agent_id)
+    #             self.agent_to_network[agent_id] = network
+    #             return
+    #     # If no existing network found, create a new one
+    #     self.create_new_network([agent_id] + list(connected_agents))
 
 
-    def merge_networks(self, network1, network2):
-        merged = network1.union(network2)
+    # def merge_networks(self, network1, network2):
+    #     merged = network1.union(network2)
         
-        if network1 in self.networks:
-            self.networks.remove(network1)
-        if network2 in self.networks:
-            self.networks.remove(network2)
+    #     if network1 in self.networks:
+    #         self.networks.remove(network1)
+    #     if network2 in self.networks:
+    #         self.networks.remove(network2)
         
-        self.networks.append(merged)
+    #     self.networks.append(merged)
         
-        # Update agent_to_network mapping
-        for agent in merged:
-            self.agent_to_network[agent] = merged
+    #     # Update agent_to_network mapping
+    #     for agent in merged:
+    #         self.agent_to_network[agent] = merged
         
-        return merged  # Return the merged network
+    #     return merged  # Return the merged network
 
     
     
@@ -945,8 +938,7 @@ class Environment(gym.Env):
         - bool: True if communication is blocked, False otherwise.
         """
         x, y = self.agent_layer.agents[agent_id].current_position()
-        x_int, y_int = int(x), int(y)
-        return self.jammed_areas[x_int, y_int]
+        return self.jammed_areas[int(x), int(y)]
     
     
     # JAMMING FUNCTIONS #
@@ -1164,6 +1156,6 @@ def visualize_agent_states(env, step):
     plt.close()
 
 
-# config_path = 'config.yaml' 
-# env = Environment(config_path)
-# Environment.run_simulation(env, max_steps=5)
+config_path = 'config.yaml' 
+env = Environment(config_path)
+Environment.run_simulation(env, max_steps=5)
