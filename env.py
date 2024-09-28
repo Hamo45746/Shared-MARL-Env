@@ -18,7 +18,6 @@ from Continuous_controller.reward import calculate_continuous_reward
 from gymnasium import spaces
 from path_processor_simple import PathProcessor
 import matplotlib.pyplot as plt
-from numba import jit
 
 
 
@@ -76,7 +75,7 @@ class Environment(gym.Env):
         self.current_step = 0
         self.render_modes = render_mode
         self.screen = None
-        # pygame.init() # Comment this out when not rendering
+        pygame.init() # Comment this out when not rendering
         self.networks = []
         self.agent_to_network = {}
         self.comm_matrix = None
@@ -338,7 +337,7 @@ class Environment(gym.Env):
             reward_calculator.post_step_update()
 
             self.current_step += 1
-            # self.render()
+            self.render()
             # print(f"battery: {self.get_battery_levels()}")
 
             if not active_agents:
@@ -1156,6 +1155,6 @@ def visualize_agent_states(env, step):
     plt.close()
 
 
-config_path = 'config.yaml' 
-env = Environment(config_path)
-Environment.run_simulation(env, max_steps=5)
+# config_path = 'config.yaml' 
+# env = Environment(config_path)
+# Environment.run_simulation(env, max_steps=5)
