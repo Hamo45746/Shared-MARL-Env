@@ -16,8 +16,10 @@ framework: torch
 # reuse_actors: True
 
 model:
-  fcnet_hiddens: [512, 512]
+  # use_lstm: True
+  fcnet_hiddens: [1024, 1024]
   fcnet_activation: relu
+  vf_share_layers: True
 
 local_dir: "./custom_ray_results"
 

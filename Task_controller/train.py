@@ -59,24 +59,24 @@ config = (
 
     )
     .training(
-        lr=1e-4,
-        # gamma=0.99,
-        # lambda_=0.95,
+        lr=1e-3,
+        gamma=0.99,
+        lambda_=0.95,
         # clip_param=0.2,
         vf_clip_param=1000.0,
-        # entropy_coeff=0.01,
-        train_batch_size=25,  # Adjusted based on expected episode length and number of agents
-        sgd_minibatch_size=25,
-        num_sgd_iter=1,  # Moderate number of SGD steps
+        entropy_coeff=0.1,
+        train_batch_size=100,  # Adjusted based on expected episode length and number of agents
+        sgd_minibatch_size=100,
+        num_sgd_iter=3,  # Moderate number of SGD steps
         # _enable_learner_api=False,
     )
     .framework("torch")
     .rollouts(
         # env_runner_cls=MultiAgentEnvRunner,
         num_rollout_workers=1,  # Only 1 worker
-        rollout_fragment_length=25,  # Match with episode length
+        rollout_fragment_length=100,  # Match with episode length
         batch_mode="truncate_episodes",
-        sample_timeout_s=300  # Allow more time for slow environments
+        sample_timeout_s=500  # Allow more time for slow environments
     )
     .resources(num_gpus=1)
     .debugging(log_level="DEBUG")
@@ -98,7 +98,7 @@ config.env_config = {
 # Build the algorithm
 algo = config.build()
 
-for i in range(3000):
+for i in range(10000):
     print(f"Iteration: {i}")
     result = algo.train()
     
@@ -114,11 +114,11 @@ for i in range(3000):
     
     # Save checkpoint every 10 iterations
     if (i + 1) % 10 == 0:
-        checkpoint_dir = algo.save_to_path(logdir)
+        checkpoint_dir = algo.save(logdir)
         print(f"Checkpoint saved at {checkpoint_dir}")
 
 # Save final checkpoint
-final_checkpoint_dir = algo.save_to_path(logdir)
+final_checkpoint_dir = algo.save(logdir)
 print(f"Final checkpoint saved at {final_checkpoint_dir}")
 
 algo.stop()
