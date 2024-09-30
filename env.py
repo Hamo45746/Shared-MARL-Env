@@ -349,7 +349,7 @@ class Environment(gym.Env):
 
         # Get final rewards
         # rewards = reward_calculator.get_rewards()
-        rewards = self.reward_calculator.calculate_step_rewards()
+        rewards = self.reward_calculator.calculate_final_rewards()
         # self.prev_observed_cells = reward_calculator.get_observed_cells()
         
         observations = self.get_obs()
