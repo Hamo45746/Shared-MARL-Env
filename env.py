@@ -529,6 +529,8 @@ class Environment(gym.Env):
         """
         # Where self.jammers is a list of jammer class objects
         for jammer in self.jammer_layer.jammers:
+            if jammer.active == 0 or jammer.is_destroyed:
+                continue
             x = jammer.position[0]
             y = jammer.position[1]
             center = (
