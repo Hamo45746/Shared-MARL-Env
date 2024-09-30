@@ -219,7 +219,7 @@ class Environment(gym.Env):
         # Load and process the map
         self.map_matrix = self.load_map()
 
-        self.global_state.fill(0)
+        self.global_state.fill(-20.0)
         self.global_state[0] = self.map_matrix
         
         self.path_processor = PathProcessor(self.map_matrix, self.X, self.Y) # MUST HAVE
@@ -235,8 +235,6 @@ class Environment(gym.Env):
         self.update_global_state()
         self.current_step = 0
         
-        self.reward_calculator.reset()
-        
         self.networks = []
         self.agent_to_network = {}
         self.comm_matrix = None
@@ -244,6 +242,8 @@ class Environment(gym.Env):
         self.prev_observed_cells = None
         # Initialise observations for all agents
         self.update_all_agents_obs()
+        
+        self.reward_calculator.reset()
 
         return self.get_obs(), {}
 
