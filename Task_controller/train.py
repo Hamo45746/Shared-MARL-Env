@@ -66,16 +66,16 @@ config = (
         # clip_param=0.2,
         vf_clip_param=1000.0,
         entropy_coeff=0.1,
-        train_batch_size=100,  # Adjusted based on expected episode length and number of agents
-        sgd_minibatch_size=100,
-        num_sgd_iter=3,  # Moderate number of SGD steps
+        train_batch_size=25,  # Adjusted based on expected episode length and number of agents
+        sgd_minibatch_size=25,
+        num_sgd_iter=1,  # Moderate number of SGD steps
         # _enable_learner_api=False,
     )
     .framework("torch")
     .rollouts(
         # env_runner_cls=MultiAgentEnvRunner,
         num_rollout_workers=1,  # Only 1 worker
-        rollout_fragment_length=100,  # Match with episode length
+        rollout_fragment_length=25,  # Match with episode length
         batch_mode="truncate_episodes",
         sample_timeout_s=500  # Allow more time for slow environments
     )

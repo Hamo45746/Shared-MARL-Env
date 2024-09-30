@@ -11,7 +11,8 @@ from skimage.transform import resize, rotate
 from layer import AgentLayer, JammerLayer, TargetLayer
 # from gym.utils import seeding
 from gymnasium.utils import seeding
-from Task_controller.reward import RewardCalculator
+# from Task_controller.reward import RewardCalculator
+from Task_controller.simplified_reward import RewardCalculator
 from Continuous_controller.reward import calculate_continuous_reward
 # from gym.spaces import Dict as GymDict, Box, Discrete
 # from gym import spaces
@@ -28,7 +29,7 @@ class Environment(gym.Env):
         with open(config_path, 'r') as file:
             self.config = yaml.safe_load(file)
         
-        # Initialize environment parameters
+        # Initialise environment parameters
         self.D = self.config['grid_size']['D']
         self.obs_range = self.config['obs_range']
         self.pixel_scale = self.config['pixel_scale']
@@ -75,13 +76,14 @@ class Environment(gym.Env):
         self.current_step = 0
         self.render_modes = render_mode
         self.screen = None
-        pygame.init() # Comment this out when not rendering
+        # pygame.init() # Comment this out when not rendering
         self.networks = []
         self.agent_to_network = {}
         self.comm_matrix = None
         self.jammed_agents = set()
         # Array, index is agent_id, cell contains agentlayer array of cells that have been seen by each agent
-        self.prev_observed_cells = None
+        # self.prev_observed_cells = None # Not needed with simplified_reward.py
+        self.reward_calculator = RewardCalculator(self)
     
     def load_map(self): # NEW
         original_map = np.load(self.config['map_path'])[:, :, 0]
@@ -233,6 +235,8 @@ class Environment(gym.Env):
         self.update_global_state()
         self.current_step = 0
         
+        self.reward_calculator.reset()
+        
         self.networks = []
         self.agent_to_network = {}
         self.comm_matrix = None
@@ -273,7 +277,7 @@ class Environment(gym.Env):
         
     
     def task_allocation_step(self, actions_dict):
-        reward_calculator = RewardCalculator(self, self.jammer_layer.destroyed_jammers, self.prev_observed_cells)
+        # reward_calculator = RewardCalculator(self, self.jammer_layer.destroyed_jammers, self.prev_observed_cells)
 
         # Compute paths for all non-terminated agents based on their actions (waypoints)
         for agent_id, action in actions_dict.items():
@@ -290,7 +294,7 @@ class Environment(gym.Env):
 
         # Move agents and targets for max_path_length steps
         for step in range(max_path_length):
-            reward_calculator.pre_step_update()
+            # reward_calculator.pre_step_update()
 
             active_agents = [agent_id for agent_id, agent in enumerate(self.agents) if not agent.is_terminated()]
 
@@ -317,7 +321,7 @@ class Environment(gym.Env):
 
             # Check for jammer destruction
             self.check_jammer_destruction()
-            reward_calculator.update_jammer_reward()
+            # reward_calculator.update_jammer_reward()
 
             # Update global state
             self.update_global_state()
@@ -326,26 +330,27 @@ class Environment(gym.Env):
             self.share_and_update_observations()
 
             # Update rewards based on exploration and target observation
-            for agent_id in active_agents:
-                reward_calculator.update_exploration_reward(agent_id)
-                reward_calculator.update_target_reward(agent_id)
+            # for agent_id in active_agents:
+            #     reward_calculator.update_exploration_reward(agent_id)
+            #     reward_calculator.update_target_reward(agent_id)
 
             # Update communication rewards
-            reward_calculator.update_communication_reward()
+            # reward_calculator.update_communication_reward()
 
-            # Finalise rewards for this step
-            reward_calculator.post_step_update()
+            # # Finalise rewards for this step
+            # reward_calculator.post_step_update()
 
             self.current_step += 1
-            self.render()
+            # self.render()
             # print(f"battery: {self.get_battery_levels()}")
 
             if not active_agents:
                 break
 
         # Get final rewards
-        rewards = reward_calculator.get_rewards()
-        self.prev_observed_cells = reward_calculator.get_observed_cells()
+        # rewards = reward_calculator.get_rewards()
+        rewards = self.reward_calculator.calculate_step_rewards()
+        # self.prev_observed_cells = reward_calculator.get_observed_cells()
         
         observations = self.get_obs()
         
