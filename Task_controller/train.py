@@ -40,7 +40,8 @@ policies = {
 
 def policy_mapping_fn(agent_id, episode, **kwargs):
     # This function maps each agent to a policy based on its agent_id
-    return f"policy_{agent_id}"
+    # return f"policy_{agent_id}" # use this for training individual policies per agent.
+    return f"policy_0" # Use this for training one shared policy.
 
 # Register the environment
 register_env("custom_multi_agent_env", env_creator)
@@ -83,7 +84,7 @@ config = (
     .multi_agent(
         policies=policies,
         policy_mapping_fn=policy_mapping_fn,
-        policies_to_train=None
+        # policies_to_train=None
     )
     # .rl_module(_enable_rl_module_api=False)
 )

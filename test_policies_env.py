@@ -62,13 +62,15 @@ def run_simulation_with_policy(env, checkpoint_dir, params_path, max_steps=100, 
     running = True
     step_count = 0
     # collected_data = []
-
+    policy = algo.get_policy(f"policy_0") # Use this for single shared policy
+    
     while running and step_count < max_steps:
         action_dict = {}
+        
         for agent_id, obs in obs_dict.items():
             # action = trainer.compute_single_action(obs, policy_id=policy_mapping_fn(agent_id), explore=True)
             # action = algo.compute_single_action(obs, policy_id=policy_mapping_fn(agent_id), explore=True)
-            policy = algo.get_policy(f"policy_{agent_id}")
+            # policy = algo.get_policy(f"policy_{agent_id}") # Use this for individual per agent policies.
             action = policy.compute_single_action(obs, explore=True, clip_action=True)[0]
             action_dict[agent_id] = action
         # action = trainer.compute_actions(obs_dict, explore=False)

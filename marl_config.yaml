@@ -31,66 +31,66 @@ multiagent:
       - [-inf, inf]
       - [1280]  # Flattened observation space
       - {}  # Modify action space if necessary
-    policy_1:
-      - None
-      - Box
-      - [-inf, inf]
-      - [1280]  # Flattened observation space
-      - {}
-    policy_2:
-      - None
-      - Box
-      - [-inf, inf]
-      - [1280]  # Flattened observation space
-      - {}
-    policy_3:
-      - None
-      - Box
-      - [-inf, inf]
-      - [1280]  # Flattened observation space
-      - {}
-    policy_4:
-      - None
-      - Box
-      - [-inf, inf]
-      - [1280]  # Flattened observation space
-      - {}
-    policy_5:
-      - None
-      - Box
-      - [-inf, inf]
-      - [1280]  # Flattened observation space
-      - {}
-    policy_6:
-      - None
-      - Box
-      - [-inf, inf]
-      - [1280]  # Flattened observation space
-      - {}
-    policy_7:
-      - None
-      - Box
-      - [-inf, inf]
-      - [1280]  # Flattened observation space
-      - {}
-    policy_8:
-      - None
-      - Box
-      - [-inf, inf]
-      - [1280]  # Flattened observation space
-      - {}
-    policy_9:
-      - None
-      - Box
-      - [-inf, inf]
-      - [1280]  # Flattened observation space
-      - {}
+    # policy_1: # Uncomment these for training a policy per agent
+    #   - None
+    #   - Box
+    #   - [-inf, inf]
+    #   - [1280]  # Flattened observation space
+    #   - {}
+    # policy_2:
+    #   - None
+    #   - Box
+    #   - [-inf, inf]
+    #   - [1280]  # Flattened observation space
+    #   - {}
+    # policy_3:
+    #   - None
+    #   - Box
+    #   - [-inf, inf]
+    #   - [1280]  # Flattened observation space
+    #   - {}
+    # policy_4:
+    #   - None
+    #   - Box
+    #   - [-inf, inf]
+    #   - [1280]  # Flattened observation space
+    #   - {}
+    # policy_5:
+    #   - None
+    #   - Box
+    #   - [-inf, inf]
+    #   - [1280]  # Flattened observation space
+    #   - {}
+    # policy_6:
+    #   - None
+    #   - Box
+    #   - [-inf, inf]
+    #   - [1280]  # Flattened observation space
+    #   - {}
+    # policy_7:
+    #   - None
+    #   - Box
+    #   - [-inf, inf]
+    #   - [1280]  # Flattened observation space
+    #   - {}
+    # policy_8:
+    #   - None
+    #   - Box
+    #   - [-inf, inf]
+    #   - [1280]  # Flattened observation space
+    #   - {}
+    # policy_9:
+    #   - None
+    #   - Box
+    #   - [-inf, inf]
+    #   - [1280]  # Flattened observation space
+    #   - {}
 
 evaluation_interval: 10
-evaluation_duration: 5
+evaluation_duration: 50
 evaluation_num_workers: 1
 evaluation_config:
-  explore: false
+  explore: true
 
-checkpoint_freq: 50
+checkpoint_freq: 10
 checkpoint_at_end: true
