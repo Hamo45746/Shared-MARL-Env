@@ -17,8 +17,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 config_path = '/home/rppl/Documents/SAAB_thesis/Shared-MARL-Env/config.yaml'
-checkpoint_dir = '/home/rppl/Documents/SAAB_thesis/Shared-MARL-Env/custom_ray_results/' # TODO: CHANGE THESE PATHS 
-params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-09-26_19-36-27leycfxt5/params.pkl'
+checkpoint_dir = '/home/rppl/Documents/SAAB_thesis/Shared-MARL-Env/custom_ray_results/'
+# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-09-26_19-36-27leycfxt5/params.pkl'
+params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-09-30_11-31-23pf54fj0l/params.pkl'
 
 num_agents = 10
 
@@ -71,7 +72,7 @@ def run_simulation_with_policy(env, checkpoint_dir, params_path, max_steps=100, 
             # action = trainer.compute_single_action(obs, policy_id=policy_mapping_fn(agent_id), explore=True)
             # action = algo.compute_single_action(obs, policy_id=policy_mapping_fn(agent_id), explore=True)
             # policy = algo.get_policy(f"policy_{agent_id}") # Use this for individual per agent policies.
-            action = policy.compute_single_action(obs, explore=True, clip_action=True)[0]
+            action = policy.compute_single_action(obs, explore=True)[0]
             action_dict[agent_id] = action
         # action = trainer.compute_actions(obs_dict, explore=False)
  

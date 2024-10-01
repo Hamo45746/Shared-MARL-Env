@@ -33,9 +33,14 @@ action_space = spaces.Discrete((2 * 15 + 1) ** 2)  # Assuming max_steps_per_acti
 obs_space = spaces.Box(low=-np.inf, high=np.inf, shape=(5 * 256,), dtype=np.float32)
 
 # Set up multi-agent policies
+# policies = {
+#     f"policy_{i}": PolicySpec(observation_space=obs_space, action_space=action_space)
+#     for i in range(num_agents)
+# }
+
+#Setup one shared policy
 policies = {
-    f"policy_{i}": PolicySpec(observation_space=obs_space, action_space=action_space)
-    for i in range(num_agents)
+    f"policy_0": PolicySpec(observation_space=obs_space, action_space=action_space)
 }
 
 def policy_mapping_fn(agent_id, episode, **kwargs):
