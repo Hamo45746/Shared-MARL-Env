@@ -8,7 +8,7 @@ class RewardCalculator:
         self.prev_agent_positions = {i: env.agents[i].current_position() for i in range(self.num_agents)}
         self.prev_target_positions = [target.current_position() for target in env.targets]
 
-    def calculate_final_rewards(self):
+    def calculate_final_rewards(self, actions_dict):
         rewards = {}
         for agent_id in range(self.num_agents):
             if self.env.agents[agent_id].is_terminated():
@@ -17,6 +17,10 @@ class RewardCalculator:
 
             agent = self.env.agents[agent_id]
             reward = 0.0
+            
+            # Penalty for invalid action
+            if agent_id in actions_dict:
+                reward += self.invalid_action_penalty(agent_id, actions_dict[agent_id])
 
             # Reward for observed targets and jammers in full state and local observation
             reward += self.observation_reward(agent)
@@ -38,6 +42,13 @@ class RewardCalculator:
         # Update previous states for next step
         self.update_previous_states()
         return rewards
+    
+    def invalid_action_penalty(self, agent_id, action):
+        agent = self.env.agents[agent_id]
+        valid_actions = agent.get_valid_actions()
+        if action not in valid_actions:
+            return -50.0  # Significant penalty for invalid action
+        return 0.0
 
     def observation_reward(self, agent):
         full_state = agent.get_observation()['full_state']
@@ -69,7 +80,7 @@ class RewardCalculator:
             if agent_id in network:
                 base_reward = len(network) * 5
                 if agent.battery < 30:
-                    battery_factor = 1 + 3 * (30 - agent.battery) / 30
+                    battery_factor = 1 + 2 * (30 - agent.battery) / 30
                     return base_reward * battery_factor
                 return base_reward
         return 0

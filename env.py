@@ -44,14 +44,6 @@ class Environment(gym.Env):
         self.global_state = np.zeros((self.D,) + self.map_matrix.shape, dtype=np.float16)
         self.global_state[0] = self.map_matrix
         
-        # Initialise Autoencoder
-        # self.autoencoder = autoencoder.EnvironmentAutoencoder()
-        # ae_folder_path = '' # Change for location of AE
-        # self.autoencoder.load_all_autoencoders(ae_folder_path)
-        # # Set all autoencoders to eval
-        # for i in range (0, 3):
-        #     self.autoencoder.autoencoders[i].eval()
-        
         # Initialise agents, targets, and jammers
         self.num_agents = self.config['n_agents']
         self.agent_type = self.config.get('agent_type', 'discrete')
@@ -82,7 +74,6 @@ class Environment(gym.Env):
         self.comm_matrix = None
         self.jammed_agents = set()
         # Array, index is agent_id, cell contains agentlayer array of cells that have been seen by each agent
-        # self.prev_observed_cells = None # Not needed with simplified_reward.py
         self.reward_calculator = RewardCalculator(self)
     
     def load_map(self): # NEW
@@ -277,8 +268,6 @@ class Environment(gym.Env):
         
     
     def task_allocation_step(self, actions_dict):
-        # reward_calculator = RewardCalculator(self, self.jammer_layer.destroyed_jammers, self.prev_observed_cells)
-
         # Compute paths for all non-terminated agents based on their actions (waypoints)
         for agent_id, action in actions_dict.items():
             if not self.agents[agent_id].is_terminated():
@@ -294,7 +283,6 @@ class Environment(gym.Env):
 
         # Move agents and targets for max_path_length steps
         for step in range(max_path_length):
-            # reward_calculator.pre_step_update()
 
             active_agents = [agent_id for agent_id, agent in enumerate(self.agents) if not agent.is_terminated()]
 
@@ -321,24 +309,12 @@ class Environment(gym.Env):
 
             # Check for jammer destruction
             self.check_jammer_destruction()
-            # reward_calculator.update_jammer_reward()
 
             # Update global state
             self.update_global_state()
 
             # Update observations and share them
             self.share_and_update_observations()
-
-            # Update rewards based on exploration and target observation
-            # for agent_id in active_agents:
-            #     reward_calculator.update_exploration_reward(agent_id)
-            #     reward_calculator.update_target_reward(agent_id)
-
-            # Update communication rewards
-            # reward_calculator.update_communication_reward()
-
-            # # Finalise rewards for this step
-            # reward_calculator.post_step_update()
 
             self.current_step += 1
             # self.render()
@@ -348,9 +324,7 @@ class Environment(gym.Env):
                 break
 
         # Get final rewards
-        # rewards = reward_calculator.get_rewards()
-        rewards = self.reward_calculator.calculate_final_rewards()
-        # self.prev_observed_cells = reward_calculator.get_observed_cells()
+        rewards = self.reward_calculator.calculate_final_rewards(actions_dict)
         
         observations = self.get_obs()
         
@@ -860,16 +834,6 @@ class Environment(gym.Env):
         self.networks = new_networks
         self.agent_to_network = agent_to_network
 
-
-    # def get_connected_agents(self, agent_id):
-    #     """Returns a list of active agents that agent_id can directly communicate with."""
-    #     connected = []
-    #     for j, other_agent in enumerate(self.agents):
-    #         if agent_id != j and not other_agent.is_terminated() and \
-    #         self.within_comm_range(self.agents[agent_id].current_position(), other_agent.current_position()) and \
-    #         not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(j):
-    #             connected.append(j)
-    #     return connected
     
     def get_connected_agents(self, agent_id):
         """Returns a list of active agents that agent_id can directly communicate with."""
@@ -883,48 +847,6 @@ class Environment(gym.Env):
                    not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(j):
                     connected.append(j)
         return connected
-
-
-    # def remove_from_network(self, agent_id, network):
-    #     network.remove(agent_id)
-    #     del self.agent_to_network[agent_id]
-
-
-    # def create_new_network(self, agents):
-    #     new_network = set(agents)
-    #     if new_network:  # Only add non-empty networks
-    #         self.networks.append(new_network)
-    #         for agent in agents:
-    #             self.agent_to_network[agent] = new_network
-
-
-    # def add_to_existing_or_new_network(self, agent_id, connected_agents):
-    #     for connected in connected_agents:
-    #         if connected in self.agent_to_network:
-    #             network = self.agent_to_network[connected]
-    #             network.add(agent_id)
-    #             self.agent_to_network[agent_id] = network
-    #             return
-    #     # If no existing network found, create a new one
-    #     self.create_new_network([agent_id] + list(connected_agents))
-
-
-    # def merge_networks(self, network1, network2):
-    #     merged = network1.union(network2)
-        
-    #     if network1 in self.networks:
-    #         self.networks.remove(network1)
-    #     if network2 in self.networks:
-    #         self.networks.remove(network2)
-        
-    #     self.networks.append(merged)
-        
-    #     # Update agent_to_network mapping
-    #     for agent in merged:
-    #         self.agent_to_network[agent] = merged
-        
-    #     return merged  # Return the merged network
-
     
     
     def within_comm_range(self, agent1, agent2):
@@ -1002,10 +924,6 @@ class Environment(gym.Env):
         for x, y in zip(jammed_indices[0], jammed_indices[1]):
             self.jammed_positions.add((int(x), int(y)))
 
-    # def _seed(self, seed=None):
-    #     self.np_random, seed_ = seeding.np_random(seed)
-    #     np.random.seed(seed)
-    #     random.seed(seed)
     
     def seed(self, seed=None): # This version for MARLlib (gym)
         self.np_random, seed = seeding.np_random(seed)
