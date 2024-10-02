@@ -71,16 +71,16 @@ config = (
         # clip_param=0.2,
         vf_clip_param=1000.0,
         entropy_coeff=0.1,
-        train_batch_size=25,  # Adjusted based on expected episode length and number of agents
-        sgd_minibatch_size=25,
+        train_batch_size=250,  # Adjusted based on expected episode length and number of agents
+        sgd_minibatch_size=250,
         num_sgd_iter=1,  # Moderate number of SGD steps
         # _enable_learner_api=False,
     )
     .framework("torch")
     .rollouts(
         # env_runner_cls=MultiAgentEnvRunner,
-        num_rollout_workers=1,  # Only 1 worker
-        rollout_fragment_length=25,  # Match with episode length
+        num_rollout_workers=5,
+        rollout_fragment_length=50,  # Match with avg episode length
         batch_mode="truncate_episodes",
         sample_timeout_s=500  # Allow more time for slow environments
     )
@@ -98,13 +98,13 @@ config = (
 # Set environment config
 config.env_config = {
     "config_path": "config.yaml",
-    "ae_folder_path": "/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data/AE_save_06_09"
+    "ae_folder_path": "home/rppl/Documents/SAAB_thesis/AE_save_06_09"
 }
 
 # Build the algorithm
 algo = config.build()
 
-for i in range(10000):
+for i in range(100000):
     print(f"Iteration: {i}")
     result = algo.train()
     

@@ -19,6 +19,8 @@ from Continuous_controller.reward import calculate_continuous_reward
 from gymnasium import spaces
 from path_processor_simple import PathProcessor
 import matplotlib.pyplot as plt
+import os
+from PIL import Image
 
 
 
@@ -68,7 +70,7 @@ class Environment(gym.Env):
         self.current_step = 0
         self.render_modes = render_mode
         self.screen = None
-        # pygame.init() # Comment this out when not rendering
+        pygame.init() # Comment this out when not rendering
         self.networks = []
         self.agent_to_network = {}
         self.comm_matrix = None
@@ -317,7 +319,8 @@ class Environment(gym.Env):
             self.share_and_update_observations()
 
             self.current_step += 1
-            # self.render()
+            self.render()
+            # self.save_render_image(self.current_step)
             # print(f"battery: {self.get_battery_levels()}")
 
             if not active_agents:
@@ -996,6 +999,24 @@ class Environment(gym.Env):
         
         full_state_section = agent.full_state[1:2, x_start:x_end, y_start:y_end]
         print(full_state_section)
+
+
+    def save_render_image(self, step):
+        """Save an image of the current render frame."""
+        if self.screen is None:
+            return
+
+        image_dir = "episode_images"
+        os.makedirs(image_dir, exist_ok=True)
+
+        pygame.display.flip() # Update full display surface to screen
+        pygame_surface = pygame.display.get_surface()
+        
+        # Convert pygame surface to PIL image
+        image_str = pygame.image.tostring(pygame_surface, 'RGB')
+        image = Image.frombytes('RGB', pygame_surface.get_size(), image_str)
+
+        image.save(f"{image_dir}/step_{step:04d}.png")
     
     
 def print_agent_full_state_region(agent, global_state, region_size=20):

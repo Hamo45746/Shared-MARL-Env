@@ -63,7 +63,7 @@ def setup_logging():
         )
 
         # Test logging
-        logging.info(f"Logging initialized. Log file: {log_file_path}")
+        logging.info(f"Logging initialised. Log file: {log_file_path}")
     except Exception as e:
         print(f"Error setting up logging: {e}")
         logging.basicConfig(
@@ -144,12 +144,10 @@ class FlattenedMultiAgentH5Dataset(Dataset):
             return {f'layer_{i}': full_state_tensor[i] for i in range(full_state_tensor.shape[0])}
 
 def get_cpu_temp():
-
     temps = psutil.sensors_temperatures()
     if 'coretemp' in temps:
         return max(temp.current for temp in temps['coretemp'])
     return None
- 
 
 def init_worker():
     global interrupt_flag
@@ -249,53 +247,6 @@ def load_progress(all_configs):
         if os.path.exists(filepath) and is_dataset_complete(filepath, STEPS_PER_EPISODE):
             progress.add(filename)
     return progress
-
-# def process_config(args):
-#     config, config_path, h5_folder, steps_per_episode = args
-#     lock_fd = None
-#     try:
-#         map_name = os.path.splitext(os.path.basename(config['map_path']))[0]
-#         filename = f"data_m{map_name}_s{config['seed']}_t{config['n_targets']}_j{config['n_jammers']}_a{config['n_agents']}.h5"
-#         filepath = os.path.join(h5_folder, filename)
-#         lock_file = f"{filepath}.lock"
-
-#         # Try to acquire the lock
-#         lock_fd = acquire_lock(lock_file)
-#         if lock_fd is None:
-#             print(f"File {filename} is being processed by another worker. Skipping.")
-#             return None
-
-#         # Check if the file already exists and is complete
-#         if os.path.exists(filepath) and is_dataset_complete(filepath, steps_per_episode):
-#             print(f"File {filename} already exists and is complete. Skipping.")
-#             return filepath
-
-#         # If the file doesn't exist or is incomplete, collect the data
-#         filepath = collect_data_for_config(config, config_path, steps_per_episode, h5_folder)
-
-#         if is_dataset_complete(filepath, steps_per_episode):
-#             # Verify that the file contains data for all 4 layers
-#             with h5py.File(filepath, 'r') as f:
-#                 first_step = f['data']['0']
-#                 first_agent = first_step[list(first_step.keys())[0]]
-#                 full_state = first_agent['full_state'][()]
-#                 if full_state.shape[0] != 4:
-#                     logging.error(f"Incorrect number of layers in {filepath}: expected 4, got {full_state.shape[0]}")
-#                     return None
-#             return filepath
-#         else:
-#             return None
-
-#     except Exception as e:
-#         logging.error(f"Error processing config {config}: {str(e)}")
-#         log_error()
-#         return None
-
-#     finally:
-#         # Always release the lock if it was acquired
-#         if lock_fd is not None:
-#             release_lock(lock_fd)
-
 
 def process_config_wrapper(args):
     try:

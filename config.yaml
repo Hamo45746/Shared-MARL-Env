@@ -32,11 +32,11 @@ generate_rand_map: true
 
 # Example locations
 # agent_positions:
-#  - [1, 17]
-#  - [3, 17]
-#  - [23, 37]
-#  - [31, 13]
-#  - [61, 19]
+#  - [200, 150]
+#  - [200, 151]
+#  - [200, 152]
+#  - [200, 153]
+#  - [200, 154]
 #target_positions:
 #- [18, 39]
 #jammer_positions:

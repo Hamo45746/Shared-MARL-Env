@@ -78,9 +78,9 @@ class RewardCalculator:
         agent = self.env.agents[agent_id]
         for network in self.env.networks:
             if agent_id in network:
-                base_reward = len(network) * 5
+                base_reward = len(network) * 3
                 if agent.battery < 30:
-                    battery_factor = 1 + 2 * (30 - agent.battery) / 30
+                    battery_factor = 1 + (30 - agent.battery) / 30
                     return base_reward * battery_factor
                 return base_reward
         return 0
