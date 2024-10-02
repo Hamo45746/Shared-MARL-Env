@@ -29,7 +29,7 @@ logdir = "./custom_ray_results"
 # Update the policies in the config
 num_agents = 10  # Adjust based on your environment
 obs_shape = (5 * 256,)  # Adjusted for encoded observation space (4 layers + 1 battery layer, 256 encoding size)
-action_space = spaces.Discrete((2 * 15 + 1) ** 2)  # Assuming max_steps_per_action is 15
+action_space = spaces.Box(low=np.array([0, 0]), high=np.array([2*80, 2*80]), dtype=np.int32)
 obs_space = spaces.Box(low=-np.inf, high=np.inf, shape=(5 * 256,), dtype=np.float32)
 
 # Set up multi-agent policies

@@ -16,7 +16,7 @@ class TaskAllocationAgent(DiscreteAgent):
         n_layers=4,
         seed=10,
         flatten=False,
-        max_steps_per_action=15,
+        max_steps_per_action=80,
         initial_battery=100,
         move_battery_cost=0.1,
         communicate_battery_cost=0.05
@@ -28,7 +28,7 @@ class TaskAllocationAgent(DiscreteAgent):
         self.steps_taken = 0
         self.path_preprocessor = path_preprocessor
         self.randomiser = randomiser
-        self._action_space = spaces.Discrete((2 * self.max_distance + 1) ** 2)
+        self._action_space = spaces.Box(low=np.array([0, 0]), high=np.array([2*self.max_distance, 2*self.max_distance]), dtype=np.int32)
         self.battery = initial_battery
         self.move_battery_cost = move_battery_cost
         self.communicate_battery_cost = communicate_battery_cost
@@ -57,19 +57,17 @@ class TaskAllocationAgent(DiscreteAgent):
         if self.is_terminated():
             return self.current_pos
         
-        waypoint = self.action_to_waypoint(action)
+        waypoint = self.action_to_absolute_waypoint(action)
         if not self.path:
             self.path = self.compute_path(tuple(self.current_pos), waypoint)
         
         if self.path:
             next_pos = self.path.pop(0)
-            # print(f"Current pos: {self.current_pos}. Next pos: {next_pos}. Via action: {self.motion_range[action]}")
             discrete_action = self.determine_action(tuple(self.current_pos), next_pos)
             self.current_pos = super().step(discrete_action)
             self.battery -= self.move_battery_cost
         
         gc.collect()
-        print(self.battery)
         return self.current_pos
 
     def compute_path(self, start, goal):
@@ -99,30 +97,31 @@ class TaskAllocationAgent(DiscreteAgent):
             return 4  # Stay (in case current_pos == next_pos)
 
     def action_to_waypoint(self, action):
-        dx = (action % (2 * self.max_distance + 1)) - self.max_distance
-        dy = (action // (2 * self.max_distance + 1)) - self.max_distance
+        # Convert action to relative coordinates within the max_distance square
+        dx = action[0] - self.max_distance
+        dy = action[1] - self.max_distance
+        
+        # Calculate environment coordinates
         x = np.clip(self.current_pos[0] + dx, 0, self.xs - 1)
         y = np.clip(self.current_pos[1] + dy, 0, self.ys - 1)
-        return (x, y)
+        
+        return (int(x), int(y))
 
     def get_valid_actions(self):
         valid_actions = []
-        for action in range(self._action_space.n):
-            waypoint = self.action_to_waypoint(action)
-            if not self.inbuilding(*waypoint):
-                valid_actions.append(action)
+        for ax in range(2 * self.max_distance + 1):
+            for ay in range(2 * self.max_distance + 1):
+                x, y = self.action_to_waypoint((ax, ay))
+                if not self.inbuilding(x, y):
+                    valid_actions.append(np.array([ax, ay]))
         return valid_actions
 
     def get_next_action(self):
         valid_actions = self.get_valid_actions()
         if not valid_actions:
-            # print("No valid actions available!")
             return self._action_space.sample()  # Return a random action if no valid actions
 
-        action = self.randomiser.choice(valid_actions)
-        # waypoint = self.action_to_waypoint(action)
-        # print(f"TaskAllocationAgent get_next_action returned: {action}, waypoint: {waypoint}")
-        return action
+        return self.randomiser.choice(valid_actions)
 
     def inbuilding(self, x, y):
         return self.full_state[0][x, y] == 0.0
