@@ -279,12 +279,15 @@ class Environment(gym.Env):
                 self.current_waypoints[agent_id] = goal
                 self.agent_paths[agent_id] = self.path_processor.get_path(start, goal)
 
-        # Find the maximum path length among non-terminated agents
-        max_path_length = min(len(path) for agent_id, path in self.agent_paths.items() 
-                            if (not self.agents[agent_id].is_terminated() and path))
+        # Find min path length among non-terminated agents with valid paths
+        valid_path_lengths = [len(path) for agent_id, path in self.agent_paths.items()
+                            if not self.agents[agent_id].is_terminated() and path]
+        
+        # If there are no valid paths, set min_path_length to 0
+        min_path_length = min(valid_path_lengths) if valid_path_lengths else 0
 
-        # Move agents and targets for max_path_length steps
-        for step in range(max_path_length):
+        # Move agents and targets for min_path_length steps
+        for step in range(min_path_length):
 
             active_agents = [agent_id for agent_id, agent in enumerate(self.agents) if not agent.is_terminated()]
 
