@@ -77,10 +77,15 @@ class RewardCalculator:
     def check_invalid_action(self, agent_id, action):
         agent = self.env.agents[agent_id]
         valid_actions = agent.get_valid_actions()
-        if action not in valid_actions:
+        
+        # Convert action to numpy array if it's not already
+        action = np.array(action)
+        
+        # Check if action is in valid_actions
+        if not np.any(np.all(action == valid_actions, axis=1)):
             return -50.0  # Significant penalty for invalid action
         return 0.0
-
+    
     def reset(self):
         self.prev_team_metrics = None
         self.prev_agent_contributions = None
