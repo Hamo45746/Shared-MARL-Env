@@ -29,13 +29,13 @@ class RewardCalculator:
             reward += self.jammer_destruction_reward(agent_id)
 
             # Reward for being in a communication network
-            reward += self.communication_network_reward(agent_id)
+            # reward += self.communication_network_reward(agent_id)
 
             # Reward for moving closer to jammers
             reward += self.jammer_proximity_reward(agent_id)
 
             # Reward for target tracking (movement-based, not observation-based)
-            reward += self.target_tracking_reward(agent_id)
+            # reward += self.target_tracking_reward(agent_id)
 
             rewards[agent_id] = reward
 
@@ -46,7 +46,10 @@ class RewardCalculator:
     def invalid_action_penalty(self, agent_id, action):
         agent = self.env.agents[agent_id]
         valid_actions = agent.get_valid_actions()
-        if action not in valid_actions:
+
+        action = np.array(action)
+        is_valid = any(np.all(action == valid_action) for valid_action in valid_actions)
+        if not is_valid:
             return -50.0  # Significant penalty for invalid action
         return 0.0
 
@@ -71,7 +74,7 @@ class RewardCalculator:
         for jammer_id, (prev_state, current_state) in enumerate(zip(self.prev_jammer_states,
                                                                     [j.get_destroyed() for j in self.env.jammers])):
             if not prev_state and current_state and self.env.jammers[jammer_id].destroyed_by == agent_id:
-                reward += 100  # 100 points for destroying a jammer
+                reward += 300  # 100 points for destroying a jammer
         return reward
 
     def communication_network_reward(self, agent_id):

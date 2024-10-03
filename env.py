@@ -70,7 +70,7 @@ class Environment(gym.Env):
         self.current_step = 0
         self.render_modes = render_mode
         self.screen = None
-        pygame.init() # Comment this out when not rendering
+        # pygame.init() # Comment this out when not rendering
         self.networks = []
         self.agent_to_network = {}
         self.comm_matrix = None
@@ -280,8 +280,8 @@ class Environment(gym.Env):
                 self.agent_paths[agent_id] = self.path_processor.get_path(start, goal)
 
         # Find the maximum path length among non-terminated agents
-        max_path_length = max(len(path) for agent_id, path in self.agent_paths.items() 
-                            if not self.agents[agent_id].is_terminated())
+        max_path_length = min(len(path) for agent_id, path in self.agent_paths.items() 
+                            if (not self.agents[agent_id].is_terminated() and path))
 
         # Move agents and targets for max_path_length steps
         for step in range(max_path_length):
@@ -319,7 +319,7 @@ class Environment(gym.Env):
             self.share_and_update_observations()
 
             self.current_step += 1
-            self.render()
+            # self.render()
             # self.save_render_image(self.current_step)
             # print(f"battery: {self.get_battery_levels()}")
 

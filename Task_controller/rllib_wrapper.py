@@ -29,7 +29,7 @@ class RLLibEnvWrapper(MultiAgentEnv):
             for i in range(self.num_agents)
         }
         self._action_spaces = {
-            i: gym.spaces.Box(low=np.array([0, 0]), high=np.array([2*80, 2*80]), dtype=np.int32)
+            i: gym.spaces.Box(low=np.array([0, 0]), high=np.array([2*40, 2*40]), dtype=np.int32)
             for i in range(self.num_agents)
         }
 
