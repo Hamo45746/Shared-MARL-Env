@@ -25,7 +25,7 @@ class RLLibEnvWrapper(MultiAgentEnv):
 
         # Define action and observation spaces
         self._observation_spaces = {
-            i: gym.spaces.Box(low=-np.inf, high=np.inf, shape=(5 * 256,), dtype=np.float32)
+            i: gym.spaces.Box(low=-np.inf, high=np.inf, shape=(4 * 256,), dtype=np.float32)
             for i in range(self.num_agents)
         }
         self._action_spaces = {
@@ -63,8 +63,8 @@ class RLLibEnvWrapper(MultiAgentEnv):
             encoded_full_state.append(encoded_layer)
         
         # Add battery information as a repeated 256-element vector
-        battery_vector = np.full(256, battery, dtype=np.float32)
-        encoded_full_state.append(battery_vector)
+        # battery_vector = np.full(256, battery, dtype=np.float32)
+        # encoded_full_state.append(battery_vector)
         
         return np.concatenate(encoded_full_state).flatten()
 
@@ -94,10 +94,10 @@ class RLLibEnvWrapper(MultiAgentEnv):
         for agent_id, obs in observations.items():
             if self.env.agents[agent_id].is_terminated():
                 # Terminated state: map layer = all 1's, other layers = -20's, battery = 0
-                terminated_state = np.zeros((5, 256), dtype=np.float32)
+                terminated_state = np.zeros((4, 256), dtype=np.float32)
                 terminated_state[0, :] = 1.0  # Map layer with all 1's
                 terminated_state[1:4, :] = -20.0  # Other layers with -20's
-                terminated_state[4, :] = 0.0  # Battery layer with 0
+                # terminated_state[4, :] = 0.0  # Battery layer with 0
                 encoded_observations[agent_id] = terminated_state.flatten()
             else:
                 full_state = obs['full_state']

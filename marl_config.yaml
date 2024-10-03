@@ -29,7 +29,7 @@ multiagent:
       - None
       - Box
       - [-inf, inf]
-      - [1280]  # Flattened observation space
+      - [1024]  # Flattened observation space
       - {}  # Modify action space if necessary
     # policy_1: # Uncomment these for training a policy per agent
     #   - None
