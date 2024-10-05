@@ -50,10 +50,10 @@ config["callbacks"] = CustomMetricsCallback
 # Update the policies in the config
 num_agents = 5  # Example, adjust based on your environment
 obs_shape = (4, 32) #NEED TO ADJUST TO ENCODED OBSERVATION SPACE
-action_space = spaces.Box(low=-5, high=5, shape=(2,), dtype=np.float32)
+action_space = spaces.Box(low=-0.5, high=0.5, shape=(2,), dtype=np.float32)
 obs_space = spaces.Dict({
     "encoded_map": spaces.Box(low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32),
-    "velocity": spaces.Box(low=-30.0, high=30.0, shape=(2,), dtype=np.float32),
+    "velocity": spaces.Box(low=-8.0, high=8.0, shape=(2,), dtype=np.float32),
     "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32)
 })
 # This is the config for cnetralised training - one policy

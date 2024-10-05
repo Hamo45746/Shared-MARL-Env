@@ -3,16 +3,14 @@ from gymnasium import spaces
 from base_agent import BaseAgent
 
 class ContinuousAgent(BaseAgent):
-    def __init__(self, xs, ys, map_matrix, randomiser, real_world_pixle_scale, obs_range=3, n_layers=4, seed=10, flatten=False):
+    def __init__(self, xs, ys, map_matrix, randomiser, obs_range=3, n_layers=4, seed=10, flatten=False):
         self.random_state = randomiser
         self.xs = xs
         self.ys = ys
-        self.real_world_pixle_scale = real_world_pixle_scale
         self.current_pos = np.zeros(2, dtype=np.float32)
         self.last_pos = np.zeros(2, dtype=np.float32)
         self.temp_pos = np.zeros(2, dtype=np.float32)
         self.velocity = np.zeros(2, dtype=np.float32)  # Add velocity
-        self.real_velocity = np.zeros(2, dtype=np.float32)
         self.map_matrix = map_matrix
         self.terminal = False
         self._obs_range = obs_range
@@ -36,29 +34,30 @@ class ContinuousAgent(BaseAgent):
         self.stuck_steps = 0
         self.max_stuck_steps = 40
         self.communication_timer = 30
+        self.max_velocity = 2
 
     @property
     def observation_space(self):
         return spaces.Dict({
             "map": spaces.Box(low=-20, high=1, shape=self._obs_shape, dtype=np.float32),
-            "velocity": spaces.Box(low=-30.0, high=30.0, shape=(2,), dtype=np.float32),
+            "velocity": spaces.Box(low=-8.0, high=8.0, shape=(2,), dtype=np.float32),
             "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32),
         })
     @property
     def action_space(self):
-        return spaces.Box(low=-5, high=5, shape=(2,), dtype=np.float32)
+        return spaces.Box(low=-0.5, high=0.5, shape=(2,), dtype=np.float32)
 
     def step(self, action):
         #print("action", action)
         # Convert action to acceleration (assuming action is in range [-1, 1] and maps to [-1, 1] km/h)
         acceleration = action #acceleration = action * 2.0
         # Adjust velocity
-        self.real_velocity += acceleration
-        #print(self.velocity)
+        self.velocity += acceleration
+        print(self.velocity)
         # Clamp velocity to the desired range
-        self.real_velocity = np.clip(self.velocity, -30.0, 30.0)  # Adjust as per your requirements
-        self.velocity = self.real_velocity / self.real_world_pixle_scale
+        self.velocity = np.clip(self.velocity, -8.0, 8.0)  # Adjust as per your requirements
         #print(self.velocity)
+
         # Determine the new direction based on the constraints
         # Determine the number of sub-steps based on the current velocity
         speed = np.linalg.norm(self.velocity)
@@ -87,7 +86,7 @@ class ContinuousAgent(BaseAgent):
                     #print(f"Agent stuck for {self.stuck_steps} steps. Resetting velocity.")
                     self.velocity = np.zeros(2)
                     self.stuck_steps = 0 
-                    #print("let free")
+                    print("let free")
                 return self.current_pos
         else:
             self.stuck_steps = 0
@@ -187,8 +186,7 @@ class ContinuousAgent(BaseAgent):
                                 self.local_state[layer, global_x, global_y] = observed_value
 
     def get_next_action(self):
-        # The 5 is based on real world acceleration number
-        action = self.random_state.uniform(5, 5, size=(2,))
+        action = self.random_state.uniform(-0.5, 0.5, size=(2,))
         return action
     
     def set_observation_state(self, observation):

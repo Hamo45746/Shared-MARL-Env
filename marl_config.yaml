@@ -35,8 +35,8 @@ multiagent:
           },
           "velocity": {
             "type": "box",
-            "low": -30.0,
-            "high": 30.0,
+            "low": -10.0,
+            "high": 10.0,
             "shape": [2]
           },
           "goal": {
@@ -48,8 +48,8 @@ multiagent:
         }
       - {
           "type": "box",
-          "low": -5,
-          "high": 5,
+          "low": -0.5,
+          "high": 0.5,
           "shape": [2]
         }
       - {}

@@ -14,21 +14,17 @@ def calculate_continuous_reward(agent, env):
     if not agent.valid_move:
         reward -= 5
 
-    #Compined velocity and percentage reward
+    #velocity reward - not going to use this - or maybe i should??
     velocity_norm = np.linalg.norm(agent.observation_state["velocity"])
-    max_velocity = 16.0
+    if velocity_norm > 2:
+        #print('here')
+        reward -= 10
+
     percentage_new_information = agent.gains_information() 
-
-    # Large positive reward for new area and under max velocity.
-    # Very small percentage for over max velocity 
-    if velocity_norm <= max_velocity:
-        reward += percentage_new_information*3
+    if percentage_new_information > 0:
+        reward += (percentage_new_information*2)
     else:
-        capped_percentage = max_velocity / velocity_norm
-        reward += percentage_new_information * capped_percentage 
-
-    if percentage_new_information == 0:
-        reward -= 4
+        reward -= 5
 
     obs_half_range = agent._obs_range // 2
     agent_pos = agent.current_position()

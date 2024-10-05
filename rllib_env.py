@@ -37,7 +37,6 @@ class Environment(MultiAgentEnv):
         self.comm_range = self.config['comm_range']
         self.use_task_allocation = self.config.get('use_task_allocation_with_continuous', False)
         self.using_goals = self.config.get('using_goals', False)
-        self.real_world_pixle_scale = self.config['real_word_pixel_scale']
 
         self.seed_value = self.config.get('seed', None)
         if self.seed_value == "None":
@@ -100,7 +99,7 @@ class Environment(MultiAgentEnv):
     def initialise_agents(self):
         agent_positions = self.config.get('agent_positions')
         self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, 
-                                                self.path_processor, self.real_world_pixle_scale, agent_positions, agent_type=self.agent_type, randinit=True)
+                                                self.path_processor, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
         self.agent_name_mapping = dict(zip(self.agents, list(range(self.num_agents))))
 
@@ -125,13 +124,13 @@ class Environment(MultiAgentEnv):
         elif self.agent_type == 'task_allocation':
             self.action_space = spaces.Discrete((2 * self.agents[0].max_distance + 1) ** 2)
         else:
-            self.action_space = spaces.Box(low=5, high=5, shape=(2,), dtype=np.float32)
+            self.action_space = spaces.Box(low=-0.5, high=0.5, shape=(2,), dtype=np.float32)
 
     def define_observation_space(self):
         if self.agent_type == 'continuous':
             self.observation_space = spaces.Dict({
                 "map": spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32),
-                "velocity": spaces.Box(low=-30.0, high=30.0, shape=(2,), dtype=np.float32),
+                "velocity": spaces.Box(low=-8.0, high=8.0, shape=(2,), dtype=np.float32),
                 "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32)
         })
         elif self.agent_type == "discrete":
@@ -315,7 +314,7 @@ class Environment(MultiAgentEnv):
             if self.use_task_allocation and agent_id in self.task_goals:
                 agent.set_goal_area(self.task_goals[agent_id])
 
-            if np.linalg.norm(agent.velocity) > 5:
+            if np.linalg.norm(agent.velocity) > 0.2:
                 current_direction = np.arctan2(agent.velocity[1], agent.velocity[0])
                 desired_direction = np.arctan2(action[1], action[0])
                 angle_diff = desired_direction - current_direction
