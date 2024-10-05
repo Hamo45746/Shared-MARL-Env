@@ -25,7 +25,8 @@ class CustomMetricsCallback(DefaultCallbacks):
         episode.custom_metrics["map_explored_percentage"] = map_explored_percentage
 
 def env_creator(env_config):
-    return Environment(config_path=env_config["config_path"], render_mode=env_config.get("render_mode", "human"))
+    return Environment(config_path=env_config["config_path"], render_mode=None)
+    #return Environment(config_path=env_config["config_path"], render_mode=env_config.get("render_mode", "human"))
 
 register_env("custom_multi_agent_env", env_creator)
 
@@ -49,10 +50,10 @@ config["callbacks"] = CustomMetricsCallback
 # Update the policies in the config
 num_agents = 5  # Example, adjust based on your environment
 obs_shape = (4, 32) #NEED TO ADJUST TO ENCODED OBSERVATION SPACE
-action_space = spaces.Box(low=-0.5, high=0.5, shape=(2,), dtype=np.float32)
+action_space = spaces.Box(low=-5, high=5, shape=(2,), dtype=np.float32)
 obs_space = spaces.Dict({
     "encoded_map": spaces.Box(low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32),
-    "velocity": spaces.Box(low=-8.0, high=8.0, shape=(2,), dtype=np.float32),
+    "velocity": spaces.Box(low=-30.0, high=30.0, shape=(2,), dtype=np.float32),
     "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32)
 })
 # This is the config for cnetralised training - one policy
@@ -67,21 +68,10 @@ config["multiagent"]["policy_mapping_fn"] = policy_mapping_fn
 # }
 # config["multiagent"]["policy_mapping_fn"] = policy_mapping_fn
 
-
 # Initialize the PPO trainer
 trainer = PPO(config=config)
-
-
-# Lists to store metrics for plotting
-targets_seen_over_time_min = []
-targets_seen_over_time_mean = []
-targets_seen_over_time_max = []
-map_explored_over_time_min = []
-map_explored_over_time_mean = []
-map_explored_over_time_max = []
-
 # Train the agents
-for i in range(200):
+for i in range(300):
     print(f"Training iteration {i}")
     result = trainer.train()
 
@@ -92,14 +82,6 @@ for i in range(200):
     map_explored_percentage_min = result['env_runners']['custom_metrics'].get("map_explored_percentage_min")
     map_explored_percentage_mean = result['env_runners']['custom_metrics'].get("map_explored_percentage_mean")
     map_explored_percentage_max = result['env_runners']['custom_metrics'].get("map_explored_percentage_max")
-
-    # Append metrics to lists for plotting
-    targets_seen_over_time_min.append(targets_found_min)
-    targets_seen_over_time_mean.append(targets_found_mean)
-    targets_seen_over_time_max.append(targets_found_max)
-    map_explored_over_time_min.append(map_explored_percentage_min)
-    map_explored_over_time_mean.append(map_explored_percentage_mean)
-    map_explored_over_time_max.append(map_explored_percentage_max)
 
     print(f"Iteration: {i}, "
           f"Episode Reward Mean: {result['env_runners']['episode_reward_mean']}, "
@@ -113,42 +95,16 @@ for i in range(200):
           f"Map Explored Percentage mean: {map_explored_percentage_mean:.2f}%"
           f"Map Explored Percentage max: {map_explored_percentage_max:.2f}%")
     
-    if (i + 1) % 1 == 0:
+    #need to checkpoint more often 
+    if (i + 1) % 20 == 0:
+        checkpoint_dir = trainer.save(logdir)
+
+    if (i + 1) % 50 == 0:
         checkpoint_dir = trainer.save(logdir)
         latest_folder = max(glob.glob(os.path.join('/Users/alexandramartinwallace/ray_results/', '*/')), key=os.path.getmtime)
         params_path = os.path.join(latest_folder, "params.pkl")
         env2 = Environment(config_path="config.yaml")
-        env2.run_simulation_with_policy(checkpoint_dir=checkpoint_dir, params_path=params_path, max_steps=100, iteration=i)
+        env2.run_simulation_with_policy(checkpoint_dir=checkpoint_dir, params_path=params_path, max_steps=700, iteration=i)
 
 #Ensure TensorBoard logs are being written
 final_checkpoint_dir = trainer.save(logdir)
-
-# Plot the metrics
-plt.figure(figsize=(12, 5))
-
-# Plot unique targets seen
-plt.subplot(1, 2, 1)
-plt.plot(targets_seen_over_time_min, label='Unique Targets Seen_min')
-plt.plot(targets_seen_over_time_mean, label='Unique Targets Seen_mean')
-plt.plot(targets_seen_over_time_max, label='Unique Targets Seen_max')
-plt.xlabel('Iteration')
-plt.ylabel('Unique Targets Seen')
-plt.title('Unique Targets Seen Over Training')
-plt.legend()
-
-# Plot map explored percentage
-plt.subplot(1, 2, 2)
-plt.plot(map_explored_over_time_min, label='Map Explored Percentage_min')
-plt.plot(map_explored_over_time_mean, label='Map Explored Percentage_mean')
-plt.plot(map_explored_over_time_max, label='Map Explored Percentage_max')
-plt.xlabel('Iteration')
-plt.ylabel('Map Explored (%)')
-plt.title('Map Explored Percentage Over Training')
-plt.legend()
-
-# Save the plot to a file
-plt.tight_layout()
-plt.savefig('training_metrics.png')
-plt.show()
-plt.close()
-

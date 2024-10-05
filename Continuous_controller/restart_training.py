@@ -46,10 +46,10 @@ config["callbacks"] = CustomMetricsCallback
 # Update the policies in the config
 num_agents = 5
 obs_shape = (4, 32)  # Adjust based on your encoded observation space
-action_space = spaces.Box(low=-0.5, high=0.5, shape=(2,), dtype=np.float32)
+action_space = spaces.Box(low=-5, high=5, shape=(2,), dtype=np.float32)
 obs_space = spaces.Dict({
     "encoded_map": spaces.Box(low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32),
-    "velocity": spaces.Box(low=-8.0, high=8.0, shape=(2,), dtype=np.float32),
+    "velocity": spaces.Box(low=-30.0, high=30.0, shape=(2,), dtype=np.float32),
     "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32)
 })
 
@@ -78,7 +78,7 @@ if os.path.exists(checkpoint_dir):
     trainer.restore(checkpoint_dir)
 
 # Resume Training from the last checkpoint
-for i in range(200, 400):  # Continue training from iteration 200 onwards
+for i in range(300, 450):  # Continue training from iteration 200 onwards
     print(f"Training iteration {i}")
     result = trainer.train()
 
@@ -113,12 +113,13 @@ for i in range(200, 400):  # Continue training from iteration 200 onwards
     # Save the checkpoint every 20 iterations
     if (i + 1) % 20 == 0:
         checkpoint_dir = trainer.save("/Users/alexandramartinwallace/Documents/Uni/METR4911/Working/Shared-MARL-Env/custom_ray_results")
+
+    if (i + 1) % 50 == 0:
+        checkpoint_dir = trainer.save(logdir)
         latest_folder = max(glob.glob(os.path.join('/Users/alexandramartinwallace/ray_results/', '*/')), key=os.path.getmtime)
         params_path = os.path.join(latest_folder, "params.pkl")
         env2 = Environment(config_path="config.yaml")
         env2.run_simulation_with_policy(checkpoint_dir=checkpoint_dir, params_path=params_path, max_steps=100, iteration=i)
-
-
 # Ensure TensorBoard logs are being written
 final_checkpoint_dir = trainer.save("/Users/alexandramartinwallace/Documents/Uni/METR4911/Working/Shared-MARL-Env/custom_ray_results")
 

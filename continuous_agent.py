@@ -3,14 +3,16 @@ from gymnasium import spaces
 from base_agent import BaseAgent
 
 class ContinuousAgent(BaseAgent):
-    def __init__(self, xs, ys, map_matrix, randomiser, obs_range=3, n_layers=4, seed=10, flatten=False):
+    def __init__(self, xs, ys, map_matrix, randomiser, real_world_pixle_scale, obs_range=3, n_layers=4, seed=10, flatten=False):
         self.random_state = randomiser
         self.xs = xs
         self.ys = ys
+        self.real_world_pixle_scale = real_world_pixle_scale
         self.current_pos = np.zeros(2, dtype=np.float32)
         self.last_pos = np.zeros(2, dtype=np.float32)
         self.temp_pos = np.zeros(2, dtype=np.float32)
         self.velocity = np.zeros(2, dtype=np.float32)  # Add velocity
+        self.real_velocity = np.zeros(2, dtype=np.float32)
         self.map_matrix = map_matrix
         self.terminal = False
         self._obs_range = obs_range
@@ -29,57 +31,40 @@ class ContinuousAgent(BaseAgent):
         self.change_angle = False
         self.goal_area = None
         self.previous_distance_to_goal = None
+        self.goal_step_counter = 0
         self.valid_move = True
+        self.stuck_steps = 0
+        self.max_stuck_steps = 40
+        self.communication_timer = 30
 
     @property
     def observation_space(self):
         return spaces.Dict({
             "map": spaces.Box(low=-20, high=1, shape=self._obs_shape, dtype=np.float32),
-            "velocity": spaces.Box(low=-8.0, high=8.0, shape=(2,), dtype=np.float32),
+            "velocity": spaces.Box(low=-30.0, high=30.0, shape=(2,), dtype=np.float32),
             "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32),
         })
     @property
     def action_space(self):
-        return spaces.Box(low=-0.5, high=0.5, shape=(2,), dtype=np.float32)
+        return spaces.Box(low=-5, high=5, shape=(2,), dtype=np.float32)
 
     def step(self, action):
+        #print("action", action)
         # Convert action to acceleration (assuming action is in range [-1, 1] and maps to [-1, 1] km/h)
         acceleration = action #acceleration = action * 2.0
-        previous_velocity = self.velocity.copy()
         # Adjust velocity
-        self.velocity += acceleration
+        self.real_velocity += acceleration
+        #print(self.velocity)
         # Clamp velocity to the desired range
-        self.velocity = np.clip(self.velocity, -8.0, 8.0)  # Adjust as per your requirements
-
+        self.real_velocity = np.clip(self.velocity, -30.0, 30.0)  # Adjust as per your requirements
+        self.velocity = self.real_velocity / self.real_world_pixle_scale
+        #print(self.velocity)
         # Determine the new direction based on the constraints
         # Determine the number of sub-steps based on the current velocity
         speed = np.linalg.norm(self.velocity)
         num_sub_steps = max(1, int((speed // 2) * 2))
         sub_step_velocity = self.velocity / num_sub_steps
         self.valid_move = True
-
-        # for _ in range(num_sub_steps):
-        #     # Update position based on sub-step velocity
-        #     self.temp_pos = self.current_pos + sub_step_velocity
-
-        #     # Check bounds and obstacles for each sub-step
-        #     if self.inbounds(self.temp_pos[0], self.temp_pos[1]) and not self.inbuilding(self.temp_pos[0], self.temp_pos[1]):
-        #         self.last_pos[:] = self.current_pos
-        #         self.current_pos[:] = self.temp_pos
-        #         self.path.append((self.current_pos[0], self.current_pos[1]))
-        #     else:
-        #         self.valid_move = False
-        #         break  # Exit the loop if an invalid move is detected
-
-        # # If the final position after all sub-steps is invalid, reset to the last valid position
-        # if not self.valid_move:
-            # # The following check is just for the very first move, it's so that the last_pos isn't (0,0)
-            # lx, ly = self.last_pos
-            # if lx == 0: 
-            #     self.current_pos[:] = self.current_pos
-            # else:
-            #     print("here")
-            #     self.current_pos[:] = self.last_pos
 
         # Check all sub-steps before making the move
         for _ in range(num_sub_steps):
@@ -91,12 +76,22 @@ class ContinuousAgent(BaseAgent):
 
         # If move is invalid, revert and penalize or inform the agent
         if not self.valid_move:
+            #print("invalid")
+            self.stuck_steps += 1
             # The following check is just for the very first move, it's so that the last_pos isn't (0,0)
             lx, ly = self.last_pos
             if lx == 0: 
                 self.current_pos[:] = self.current_pos
             else:
+                if self.stuck_steps > self.max_stuck_steps:
+                    #print(f"Agent stuck for {self.stuck_steps} steps. Resetting velocity.")
+                    self.velocity = np.zeros(2)
+                    self.stuck_steps = 0 
+                    #print("let free")
                 return self.current_pos
+        else:
+            self.stuck_steps = 0
+
 
         # Update only if all sub-steps are valid
         self.last_pos[:] = self.current_pos
@@ -174,7 +169,7 @@ class ContinuousAgent(BaseAgent):
 
             # Share only observation space for agent and target layers
             else:
-                obs_half_range = self._obs_range // 2
+                obs_half_range = self._obs_range 
                 for dx in range(-obs_half_range, obs_half_range + 1):
                     for dy in range(-obs_half_range, obs_half_range + 1):
                         global_x = observer_x + dx
@@ -192,7 +187,8 @@ class ContinuousAgent(BaseAgent):
                                 self.local_state[layer, global_x, global_y] = observed_value
 
     def get_next_action(self):
-        action = self.random_state.uniform(-0.5, 0.5, size=(2,))
+        # The 5 is based on real world acceleration number
+        action = self.random_state.uniform(5, 5, size=(2,))
         return action
     
     def set_observation_state(self, observation):
@@ -201,6 +197,7 @@ class ContinuousAgent(BaseAgent):
     def set_goal_area(self, goal_area):
         self.goal_area = goal_area
         self.previous_distance_to_goal = self.calculate_distance_to_goal()
+        self.goal_step_counter = 0
 
     def calculate_distance_to_goal(self):
         if self.goal_area is not None:

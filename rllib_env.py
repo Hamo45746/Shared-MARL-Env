@@ -36,6 +36,8 @@ class Environment(MultiAgentEnv):
         self.map_scale = self.config['map_scale'] # Scaling factor of map resolution
         self.comm_range = self.config['comm_range']
         self.use_task_allocation = self.config.get('use_task_allocation_with_continuous', False)
+        self.using_goals = self.config.get('using_goals', False)
+        self.real_world_pixle_scale = self.config['real_word_pixel_scale']
 
         self.seed_value = self.config.get('seed', None)
         if self.seed_value == "None":
@@ -71,6 +73,10 @@ class Environment(MultiAgentEnv):
         self.define_action_space()
         self.define_observation_space()
 
+        self.goals = {}
+        if self.using_goals:
+            self.initialise_goals() 
+
         self.total_targets = len(self.target_layer.targets) 
         # Set global state layers
         self.global_state[0] = self.map_matrix
@@ -94,7 +100,7 @@ class Environment(MultiAgentEnv):
     def initialise_agents(self):
         agent_positions = self.config.get('agent_positions')
         self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, 
-                                                self.path_processor, agent_positions, agent_type=self.agent_type, randinit=True)
+                                                self.path_processor, self.real_world_pixle_scale, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
         self.agent_name_mapping = dict(zip(self.agents, list(range(self.num_agents))))
 
@@ -119,13 +125,13 @@ class Environment(MultiAgentEnv):
         elif self.agent_type == 'task_allocation':
             self.action_space = spaces.Discrete((2 * self.agents[0].max_distance + 1) ** 2)
         else:
-            self.action_space = spaces.Box(low=-0.5, high=0.5, shape=(2,), dtype=np.float32)
+            self.action_space = spaces.Box(low=5, high=5, shape=(2,), dtype=np.float32)
 
     def define_observation_space(self):
         if self.agent_type == 'continuous':
             self.observation_space = spaces.Dict({
                 "map": spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32),
-                "velocity": spaces.Box(low=-8.0, high=8.0, shape=(2,), dtype=np.float32),
+                "velocity": spaces.Box(low=-30.0, high=30.0, shape=(2,), dtype=np.float32),
                 "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32)
         })
         elif self.agent_type == "discrete":
@@ -137,6 +143,20 @@ class Environment(MultiAgentEnv):
                 'local_obs': spaces.Box(low=-20, high=1, shape=(self.D, self.obs_range, self.obs_range), dtype=np.float32),
                 'full_state': spaces.Box(low=-20, high=1, shape=(self.D, self.X, self.Y), dtype=np.float32)
             })
+
+    def initialise_goals(self):
+        segment_width = self.X // self.num_agents  # Divide the map width into segments
+        for agent_id in range(self.num_agents):
+            while True:
+                # Randomly select a coordinate within the agent's segment
+                x = np.random.randint(segment_width * agent_id, segment_width * (agent_id + 1))
+                y = np.random.randint(0, self.Y)
+                if self.map_matrix[x, y] == 1:  # Ensure the position is free space
+                    self.goals[agent_id] = np.array([x, y], dtype=np.float32)
+                    break
+            self.agents[agent_id].goal_area = self.goals.get(agent_id) 
+            self.agents[agent_id].previous_distance_to_goal = self.agents[agent_id].calculate_distance_to_goal()
+
 
     def encode_observation(self, observations):
         encoded_observations = {}
@@ -177,8 +197,8 @@ class Environment(MultiAgentEnv):
         self.last_seen_targets = len(self.seen_targets)
         self.last_map_explored_percentage = self.calculate_explored_percentage()
 
-        super().reset(seed=self.seed_value if seed is None else seed)
         self._seed(self.seed_value if seed is None else seed)
+        super().reset(seed=self.seed_value if seed is None else seed)
         # Reset global state
         self.global_state.fill(0)
         self.global_state[0] = self.map_matrix # Uncomment above code if map_matrix is changed by sim
@@ -188,6 +208,9 @@ class Environment(MultiAgentEnv):
         self.initialise_agents()
         self.initialise_targets()
         self.initialise_jammers()
+
+        if self.using_goals:
+            self.initialise_goals()  #ONLY DO THIS IF USING GOALS
         
         self.target_layer.update()
         self.agent_layer.update()
@@ -202,6 +225,12 @@ class Environment(MultiAgentEnv):
         for agent_id in range(self.num_agents):
             obs = self.safely_observe(agent_id)
             self.agents[agent_id].set_observation_state(obs)
+            if self.using_goals:
+                self.agents[agent_id].goal_area = self.goals.get(agent_id) 
+                self.agents[agent_id].previous_distance_to_goal = self.agents[agent_id].calculate_distance_to_goal()
+            else:
+                self.agents[agent_id].goal_area = None
+
             observations[agent_id] = {
                 "map": obs['map'],
                 "velocity": obs['velocity'],
@@ -274,7 +303,6 @@ class Environment(MultiAgentEnv):
         return local_states, rewards, terminated, truncated, info
     
     def regular_step(self, actions_dict):
-        print(actions_dict)
         # Update target positions and layer state
         for i, target in enumerate(self.target_layer.targets):
             action = target.get_next_action()
@@ -287,17 +315,18 @@ class Environment(MultiAgentEnv):
             if self.use_task_allocation and agent_id in self.task_goals:
                 agent.set_goal_area(self.task_goals[agent_id])
 
-            current_direction = np.arctan2(agent.velocity[1], agent.velocity[0])
-            desired_direction = np.arctan2(action[1], action[0])
-            angle_diff = desired_direction - current_direction
-            angle_diff = np.arctan2(np.sin(angle_diff), np.cos(angle_diff))  
+            if np.linalg.norm(agent.velocity) > 5:
+                current_direction = np.arctan2(agent.velocity[1], agent.velocity[0])
+                desired_direction = np.arctan2(action[1], action[0])
+                angle_diff = desired_direction - current_direction
+                angle_diff = np.arctan2(np.sin(angle_diff), np.cos(angle_diff))  
 
-            # Check the angle change constraint
-            if np.abs(angle_diff) > np.deg2rad(75):
-                # Flag the angle change for reward penalty
-                agent.change_angle = True
-            else:
-                agent.change_angle = False
+                # Check the angle change constraint
+                if np.abs(angle_diff) > np.deg2rad(90):
+                    # Flag the angle change for reward penalty
+                    agent.change_angle = True
+                else:
+                    agent.change_angle = False
 
             self.agent_layer.move_agent(agent_id, action)
             
@@ -341,24 +370,7 @@ class Environment(MultiAgentEnv):
             # Store or log these metrics before they get reset
             self.last_seen_targets = len(self.seen_targets)
             self.last_map_explored_percentage = self.calculate_explored_percentage()
-        
-        np.set_printoptions(threshold=2000, suppress=True, precision=1, linewidth=2000)
     
-        # print("Raw Observations")
-        # for agent_id, obs in observations.items():
-        #     print(f"Agent {agent_id}: {obs}")
-
-        # # print("Encoded Observations")
-        # encoded_obs = {}
-        # for agent_id, obs in encoded_observations.items():
-        #     encoded_obs[agent_id] = obs["encoded_map"]
-        #     print(f"Agent {agent_id}: {encoded_obs[agent_id]}")
-        
-        # print("Decoded Observations")
-        # for agent_id, obs in decoded_obs.items():
-        #     decoded_obs[agent_id] = obs["map"]
-        #     print(f"Agent {agent_id}: {decoded_obs[agent_id]}")
-        
         # If i'm collecting observations I have to return observations. Once the auto encoder is trained I can return encoded observation
         return encoded_observations, rewards, terminated, truncated, info
     
@@ -488,7 +500,7 @@ class Environment(MultiAgentEnv):
     #need to update this, doing it for testing
     def is_episode_done(self):
         # Example condition: end episode after a fixed number of steps
-        max_steps = 800  # or any other logic to end the episode
+        max_steps = 900  # or any other logic to end the episode
         if self.current_step >= max_steps:
             return True
         
@@ -594,6 +606,35 @@ class Environment(MultiAgentEnv):
                 ),
             )
             
+    def draw_goal_areas(self):
+        for agent_id, goal in self.goals.items():
+            goal_rect = pygame.Rect(
+                self.pixel_scale * goal[0],
+                self.pixel_scale * goal[1],
+                self.pixel_scale * 2,
+                self.pixel_scale * 2,
+            )
+            pygame.draw.rect(self.screen, (128, 0, 128), goal_rect) 
+
+    def draw_goal_range(self):
+        """
+        Use pygame to draw jammers and jamming regions.
+        REF: PettingZoo's pursuit example: PettingZoo/sisl/pursuit/pursuit_base.py
+        """
+        for agent_id, goal in self.goals.items():
+            x, y = goal[0], goal[1]
+            center = (
+                int(self.pixel_scale * x + self.pixel_scale / 2),
+                int(self.pixel_scale * y + self.pixel_scale / 2),
+            )
+            goal_radius_pixels = 40 * self.pixel_scale #for a goal radius of 40
+            # Semi-transparent green ellipse for jamming radius
+            goal_area = pygame.Rect(center[0] - goal_radius_pixels / 2,
+                                       center[1] - goal_radius_pixels / 2,
+                                       goal_radius_pixels,
+                                       goal_radius_pixels
+                                    )
+            pygame.draw.ellipse(self.screen, (128, 0, 128), goal_area, width=1)
 
     def draw_waypoints(self):
         """
@@ -711,6 +752,10 @@ class Environment(MultiAgentEnv):
         self.draw_jammers()
         self.draw_waypoints()
 
+        if self.using_goals:
+            self.draw_goal_areas()
+            self.draw_goal_range()
+            
         if mode == "rgb_array":
             return pygame.surfarray.array3d(self.screen).transpose((1, 0, 2))  # Ensure consistent shape
         elif mode == "human":
@@ -743,10 +788,27 @@ class Environment(MultiAgentEnv):
     def safely_observe(self, agent_id):
         obs = self.collect_obs(self.agent_layer, agent_id)
         obs = obs.transpose((0,2,1))
-        #obs = np.clip(obs, self.observation_space[agent_id].low, self.observation_space[agent_id].high)
         obs = np.clip(obs, self.observation_space["map"].low, self.observation_space["map"].high)
         velocity = self.agents[agent_id].velocity
+
         goal_info = self.agents[agent_id].goal_area if self.use_task_allocation else np.zeros((2,))
+
+        if self.using_goals and self.agents[agent_id].goal_area is not None:
+            #print("self.agents[agent_id].goal_area", self.agents[agent_id].goal_area )
+            #print(self.agents[agent_id].current_pos)
+            goal_vector = self.agents[agent_id].goal_area - self.agents[agent_id].current_position()
+            distance_to_goal = np.linalg.norm(goal_vector)
+            max_distance = np.linalg.norm(np.array([self.X, self.Y]))
+            normalised_distance = distance_to_goal / max_distance
+            goal_direction = np.arctan2(goal_vector[1], goal_vector[0])  # Calculate angle to goal
+            if np.linalg.norm(self.agents[agent_id].velocity) > 0:
+                current_direction = np.arctan2(self.agents[agent_id].velocity[1], self.agents[agent_id].velocity[0])
+            else:
+                current_direction = 0
+            heading_angle = goal_direction - current_direction
+            normalised_heading_angle = np.sin(heading_angle)
+            goal_info = np.array([normalised_distance, normalised_heading_angle])  # Store as a unit vector
+        #print("goal_info", goal_info)
         return {"map": obs, "velocity": velocity, "goal": goal_info}
 
     def collect_obs(self, agent_layer, agent_id):
@@ -800,51 +862,6 @@ class Environment(MultiAgentEnv):
         xohi, yohi = xolo + (xhi - xlo), yolo + (yhi - ylo)
         return xlo, xhi + 1, ylo, yhi + 1, xolo, xohi + 1, yolo, yohi + 1
 
-    #to share observations only 
-    # def share_and_update_observations(self):
-    #     """
-    #     Updates each agent classes internal observation state and internal local (entire env) state.
-    #     Will merge current observations of agents within communication range into each agents local state.
-    #     This function should be run in the step function.
-    #     """
-    #     for i, agent in enumerate(self.agent_layer.agents):
-    #         # safely_observe returns the current observation of agent i - but that should be called before this function
-    #         current_obs = agent.get_observation_state()
-    #         current_pos = agent.current_position()
-    #         # agent.set_observation_state(current_obs)
-    #         for j, other_agent in enumerate(self.agent_layer.agents):
-    #             if i != j:
-    #                 other_pos = other_agent.current_position()
-    #                 agent_id = self.agent_name_mapping[agent]
-    #                 other_agent_id = self.agent_name_mapping[other_agent]
-
-    #                 if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(other_agent_id):
-    #                     other_agent.update_local_state(current_obs, current_pos) #This is to observation only
-    #                     agent.communicated = True 
-
-    # # #this is to share full state
-    # def share_and_update_observations(self):
-    #     """
-    #     Updates each agent classes internal observation state and internal local (entire env) state.
-    #     Will merge current observations of agents within communication range into each agents local state.
-    #     This function should be run in the step function.
-    #     """
-    #     for i, agent in enumerate(self.agent_layer.agents):
-    #         # safely_observe returns the current observation of agent i - but that should be called before this function
-    #         current_obs = agent.get_observation_state()
-    #         current_pos = agent.current_position()
-    #         # agent.set_observation_state(current_obs)
-    #         for j, other_agent in enumerate(self.agent_layer.agents):
-    #             if i != j:
-    #                 other_pos = other_agent.current_position()
-    #                 agent_id = self.agent_name_mapping[agent]
-    #                 other_agent_id = self.agent_name_mapping[other_agent]
-
-    #                 if self.within_comm_range(current_pos, other_pos) and not self.is_comm_blocked(agent_id) and not self.is_comm_blocked(other_agent_id):
-    #                     #other_agent.update_local_state(current_obs, current_pos) #This is to observation only
-    #                     agent.update_local_state(other_agent.local_state, other_pos) #Changed this to share full state. 
-    #                     agent.communicated = True 
-
     def share_and_update_observations(self):
         """
         Updates each agent's internal observation state and local state.
@@ -862,8 +879,12 @@ class Environment(MultiAgentEnv):
             # Distribute the aggregated state to each agent in the network
             for agent_id in network:
                 agent = self.agent_layer.agents[agent_id]
-                agent.update_local_state(aggregated_state, agent.current_position())
-                agent.communicated = True
+                if agent.communication_timer >= 30:
+                    agent.update_local_state(aggregated_state, agent.current_position())
+                    agent.communicated = True
+                    agent.communication_timer = 0
+                else:
+                    agent.communication_timer += 1
 
     def update_networks(self):
         """
@@ -952,7 +973,6 @@ class Environment(MultiAgentEnv):
         y_end = int(y_end)
         
         local_state_section = agent.local_state[:, x_start:x_end, y_start:y_end]
-        print(local_state_section)
     
     
     def within_comm_range(self, agent1, agent2):
@@ -1051,7 +1071,7 @@ class Environment(MultiAgentEnv):
         np.random.seed(seed)
         random.seed(seed)
 
-    def run_simulation(self, max_steps=500):
+    def run_simulation(self, max_steps=100):
         running = True
         step_count = 0
         collected_data = []
@@ -1077,7 +1097,7 @@ class Environment(MultiAgentEnv):
 
         return collected_data
     
-    def run_simulation_with_policy(self, checkpoint_dir, params_path, max_steps=100, iteration=None):
+    def run_simulation_with_policy(self, checkpoint_dir, params_path, max_steps=900, iteration=None):
         # Load the configuration from the params.pkl file
         with open(params_path, "rb") as f:
             config = pickle.load(f)
@@ -1093,8 +1113,8 @@ class Environment(MultiAgentEnv):
 
         # # Get the policy from the trainer
         policy = trainer.get_policy("policy_0") # This is for CENTRALISED learning - remove for decentralised 
+        #policies = {agent_id: trainer.get_policy("policy_0") for agent_id in range(self.num_agents)} #this is for CTDE
     
-
         running = True
         step_count = 0
         collected_data = []
@@ -1111,12 +1131,14 @@ class Environment(MultiAgentEnv):
                 obs = self.safely_observe(agent_id)
                 encoded_obs = self.encode_observation({agent_id: obs})[agent_id]  # Encode observation
                 obs = {
-                    "encoded_map": encoded_obs["encoded_map"].reshape(1, 4, 32),  # Adjust the shape for the policy
-                    "velocity": np.array(encoded_obs["velocity"]).reshape(1, -1),
-                    "goal": np.array(encoded_obs["goal"]).reshape(1, -1)
+                    "encoded_map": encoded_obs["encoded_map"].reshape(4, 32).astype(np.float32),  # Adjust the shape for the policy
+                    "velocity": np.array(encoded_obs["velocity"], dtype=np.float32),
+                    "goal": np.array(encoded_obs["goal"], dtype=np.float32)
                 }
-                #policy = trainer.get_policy(f"policy_{agent_id}") # This is for decentralised learning - remove for CENTRALISED
-                action = policy.compute_single_action(obs, explore=False)[0]
+                #policy = trainer.get_policy(f"policy_{agent_id}") # This is for decentralised learning and execuition - remove for CENTRALISED
+                #action = policies[agent_id].compute_single_action(obs, explore=False)[0] #This is for CTDE
+                #action = policy.compute_single_action(obs, explore=False)[0] # This is for CTCE
+                action = trainer.compute_single_action(obs, policy_id="policy_0", explore=False) #this choses action in the right range
                 action_dict[agent_id] = action
 
             observations, rewards, terminated, truncated, self.info = self.step(action_dict)

@@ -6,6 +6,7 @@ grid_size:
 
 pixel_scale: 4 #Going down reduces the pixel_size, which reduces the map
 map_scale: 0.18 #Going up makes to map larger
+real_word_pixel_scale: 12 #what size in meters one pixles is in the real world
 
 obs_range: 17 #13
 comm_range: 40 #10
@@ -13,8 +14,10 @@ comm_range: 40 #10
 agent_type: 'continuous'
 #agent_type: 'task_allocation'
 use_task_allocation_with_continuous: false
+using_goals: false #Change this to use or not use goals 
 
 map_path: 'maps/city_image_1.npy'
+#map_path: 'maps/city_image_4.npy'
 #map_path: 'maps/city_image_2.npy'
 #map_path: 'maps/city_image_3.npy'
 

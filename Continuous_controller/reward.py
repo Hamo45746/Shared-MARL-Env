@@ -2,65 +2,76 @@ import numpy as np
 
 def calculate_continuous_reward(agent, env):
     reward = 0
-
-    # Check if the agent hits a building
-    if agent.inbuilding(agent.current_position()[0], agent.current_position()[1]):
-         reward -= 30
-
     # Check if the agent hits another agent or target
     for other_agent in env.agent_layer.agents:
          if other_agent != agent and np.array_equal(agent.current_position, other_agent.current_position):
-             reward -= 10
+             reward -= 1
 
     for target in env.target_layer.targets:
          if np.array_equal(agent.current_position, target.current_position):
-             reward -= 10
+             reward -= 1
 
     if not agent.valid_move:
-        reward -= 3
+        reward -= 5
 
+    #Compined velocity and percentage reward
+    velocity_norm = np.linalg.norm(agent.observation_state["velocity"])
+    max_velocity = 16.0
     percentage_new_information = agent.gains_information() 
-    reward += (percentage_new_information*5)
 
-    # # Check if the agent gains new information
-    # if agent.gains_information():
-    #     reward += 10
+    # Large positive reward for new area and under max velocity.
+    # Very small percentage for over max velocity 
+    if velocity_norm <= max_velocity:
+        reward += percentage_new_information*3
+    else:
+        capped_percentage = max_velocity / velocity_norm
+        reward += percentage_new_information * capped_percentage 
+
+    if percentage_new_information == 0:
+        reward -= 4
 
     obs_half_range = agent._obs_range // 2
     agent_pos = agent.current_position()
 
-    # Check if the agent finds a target
-    for target in env.target_layer.targets:
-        target_pos = target.current_position()
-        if (agent_pos[0] - obs_half_range <= target_pos[0] <= agent_pos[0] + obs_half_range and 
-            agent_pos[1] - obs_half_range <= target_pos[1] <= agent_pos[1] + obs_half_range):
-            reward += 100
-
-
-    # # Check if the agent finds a target
+    # # Check if the agent finds a target - maybe give it a big bonus reward if it finds all targets 
     # for target in env.target_layer.targets:
-    #     if target.current_position() in agent.get_observation_state():
-    #         reward += 50
+    #     target_pos = target.current_position()
+    #     if (agent_pos[0] - obs_half_range <= target_pos[0] <= agent_pos[0] + obs_half_range and 
+    #         agent_pos[1] - obs_half_range <= target_pos[1] <= agent_pos[1] + obs_half_range):
+    #         reward += 60
 
     # Check if the agent communicates information to other drones
-    if agent.communicates_information():
-        reward += 10
+    # Agents only get this reward for one time step when they communicate and then they don't get it 
+    # again for another 30 time steps - so it needs to be larger 
+    # if agent.communicates_information():
+    #     reward += 8
 
-    # Check if the agent calls the obstacle avoidance method
-    if agent.calls_obstacle_avoidance():
-        reward -= 10
+    # # Check if the agent calls the obstacle avoidance method
+    # if agent.calls_obstacle_avoidance():
+    #     print("obs avoidance")
+    #     reward -= 10
 
-    # check if the agent has to change it's angle choice 
-    if agent.angle_change():
-        reward -= 2
+    # check if the agent has to0 large angle choice 
+    # if agent.angle_change():
+    #     reward -= 2
 
-    if agent.goal_area is not None:
+    if env.using_goals and agent.goal_area is not None:
         current_distance_to_goal = agent.calculate_distance_to_goal()
         if current_distance_to_goal is not None and agent.previous_distance_to_goal is not None:
-            if current_distance_to_goal < agent.previous_distance_to_goal:
-                reward += 20  # Reward for moving closer to the goal
+            if agent.goal_step_counter < 60:
+                if current_distance_to_goal < 40:
+                    reward += 100 
+                    print("within 40")
+                    agent.goal_step_counter += 1
+                elif current_distance_to_goal < agent.previous_distance_to_goal:
+                    print("getting closer")
+                    reward += 40
+                elif current_distance_to_goal >= agent.previous_distance_to_goal:
+                    print("getting futher way")
+                    reward -= 3
             else:
-                reward -= 5  # Penalty for moving away from the goal
+                print("post goal reward")
+                reward += 5
             agent.previous_distance_to_goal = current_distance_to_goal
 
     #Jammer reward for removing it - If its near the same zone as a jammer it will remove it 
