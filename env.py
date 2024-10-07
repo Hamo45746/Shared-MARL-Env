@@ -188,6 +188,7 @@ class Environment(gym.Env):
 
 
     def define_action_space(self):
+        "NOT UPDATED TO MOST RECENT TASK ALLOC ACITON SPACE"
         if self.agent_type == 'discrete':
             self.action_space = spaces.Discrete(len(self.agents[0].eactions))
         elif self.agent_type == 'task_allocation':
@@ -220,6 +221,8 @@ class Environment(gym.Env):
         
         if seed is not None:
             self.seed_value = seed
+        else:
+            self.seed_value = np.random.randint(0, 1000000)
         self.seed(self.seed_value)
 
         # Load and process the map
@@ -260,16 +263,26 @@ class Environment(gym.Env):
         return self.get_obs(), {}
 
 
+    # def get_obs(self):
+    #     observations = {}
+    #     for agent_id, agent in enumerate(self.agents):
+    #         if agent.is_terminated():
+    #             observations[agent_id] = {
+    #                 'local_obs': np.full(self.observation_space['local_obs'].shape, -20, dtype=np.float16),
+    #                 'full_state': np.full(self.observation_space['full_state'].shape, -20, dtype=np.float16)
+    #             }
+    #         else:
+    #             observations[agent_id] = agent.get_observation()
+    #     return observations
+
+
     def get_obs(self):
         observations = {}
         for agent_id, agent in enumerate(self.agents):
             if agent.is_terminated():
-                observations[agent_id] = {
-                    'local_obs': np.full(self.observation_space['local_obs'].shape, -20, dtype=np.float16),
-                    'full_state': np.full(self.observation_space['full_state'].shape, -20, dtype=np.float16)
-                }
+                observations[agent_id] = np.full(self.observation_space['full_state'].shape, -20, dtype=np.float16)
             else:
-                observations[agent_id] = agent.get_observation()
+                observations[agent_id] = agent.get_observation()['full_state']
         return observations
     
     
@@ -300,7 +313,7 @@ class Environment(gym.Env):
 
         # Find min path length among non-terminated agents with valid paths
         valid_path_lengths = [len(path) for agent_id, path in self.agent_paths.items()
-                            if not self.agents[agent_id].is_terminated() and path]
+                            if not self.agents[agent_id].is_terminated() and path != []]
         
         # If there are no valid paths, set min_path_length to 0
         min_path_length = min(valid_path_lengths) if valid_path_lengths else 0

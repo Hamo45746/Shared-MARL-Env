@@ -21,7 +21,9 @@ checkpoint_dir = '/home/rppl/Documents/SAAB_thesis/Shared-MARL-Env/custom_ray_re
 # params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-09-26_19-36-27leycfxt5/params.pkl'
 # params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-09-30_11-31-23pf54fj0l/params.pkl'
 # params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-01_12-21-59a397lzbr/params.pkl'
-params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-02_16-06-385k0zuxpi/params.pkl'
+# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-02_16-06-385k0zuxpi/params.pkl'
+# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-03_18-32-210lb7aswp/params.pkl'
+params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-07_13-22-48pgrbf7s2/params.pkl'
 
 num_agents = 10
 
@@ -81,4 +83,4 @@ def run_simulation_with_policy(env, checkpoint_dir, params_path, max_steps=100, 
         
 
 # Run the simulation
-run_simulation_with_policy(env, checkpoint_dir=checkpoint_dir, params_path=params_path, max_steps=50)
+run_simulation_with_policy(env, checkpoint_dir=checkpoint_dir, params_path=params_path, max_steps=500)

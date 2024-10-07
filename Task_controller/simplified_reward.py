@@ -19,9 +19,9 @@ class RewardCalculator:
                 continue
 
             # Penalty for invalid action
-            if agent_id in actions_dict:
-                invalid_action_penalty = self.check_invalid_action(agent_id, actions_dict[agent_id])
-                rewards[agent_id] += invalid_action_penalty
+            # if agent_id in actions_dict:
+            #     invalid_action_penalty = self.check_invalid_action(agent_id, actions_dict[agent_id])
+            #     rewards[agent_id] += invalid_action_penalty
 
             # Calculate improvements in metrics
             if self.prev_team_metrics is not None and self.prev_agent_contributions is not None:
@@ -51,8 +51,8 @@ class RewardCalculator:
                     rewards[agent_id] += 300  # Significant reward for destroying a jammer
 
             # Communication network reward
-            network_size = len(self.env.networks[agent_id]) if agent_id in self.env.networks else 0
-            rewards[agent_id] += network_size 
+            # network_size = len(self.env.networks[agent_id]) if agent_id in self.env.networks else 0
+            # rewards[agent_id] += network_size 
 
         # Completion bonus (team-wide)
         completion_bonus = 0

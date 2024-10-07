@@ -28,7 +28,9 @@ class TaskAllocationAgent(DiscreteAgent):
         self.steps_taken = 0
         self.path_preprocessor = path_preprocessor
         self.randomiser = randomiser
-        self._action_space = spaces.Box(low=np.array([0, 0]), high=np.array([2*self.max_distance, 2*self.max_distance]), dtype=np.int32)
+        self._action_space = spaces.Box(low=np.array([-self.max_distance, -self.max_distance]),
+                                        high=np.array([self.max_distance, self.max_distance]),
+                                        dtype=np.int32)
         self.battery = initial_battery
         self.move_battery_cost = move_battery_cost
         self.communicate_battery_cost = communicate_battery_cost
@@ -98,8 +100,7 @@ class TaskAllocationAgent(DiscreteAgent):
 
     def action_to_waypoint(self, action):
         # Convert action to relative coordinates within the max_distance square
-        dx = action[0] - self.max_distance
-        dy = action[1] - self.max_distance
+        dx, dy = action
         
         # Calculate environment coordinates
         x = np.clip(self.current_pos[0] + dx, 0, self.xs - 1)

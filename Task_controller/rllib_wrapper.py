@@ -16,20 +16,24 @@ class RLLibEnvWrapper(MultiAgentEnv):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"Using device: {self.device}")
 
-        # Initialise Autoencoder
-        self.autoencoder = autoencoder.EnvironmentAutoencoder()
-        self.autoencoder.load_all_autoencoders(ae_folder_path)
-        for i in range(3):
-            self.autoencoder.autoencoders[i].to(self.device)
-            self.autoencoder.autoencoders[i].eval()
+        # # Initialise Autoencoder
+        # self.autoencoder = autoencoder.EnvironmentAutoencoder()
+        # self.autoencoder.load_all_autoencoders(ae_folder_path)
+        # for i in range(3):
+        #     self.autoencoder.autoencoders[i].to(self.device)
+        #     self.autoencoder.autoencoders[i].eval()
 
         # Define action and observation spaces
+        # self._observation_spaces = {
+        #     i: gym.spaces.Box(low=-np.inf, high=np.inf, shape=(4 * 256,), dtype=np.float32)
+        #     for i in range(self.num_agents)
+        # }
         self._observation_spaces = {
-            i: gym.spaces.Box(low=-np.inf, high=np.inf, shape=(4 * 256,), dtype=np.float32)
+            i:gym.spaces.Box(low=-20.0, high=1.0, shape=(env.D, env.X, env.Y), dtype=np.float32)
             for i in range(self.num_agents)
         }
         self._action_spaces = {
-            i: gym.spaces.Box(low=np.array([0, 0]), high=np.array([2*40, 2*40]), dtype=np.int32)
+            i: gym.spaces.Box(low=np.array([-40, -40]), high=np.array([40, 40]), dtype=np.int32)
             for i in range(self.num_agents)
         }
 
@@ -71,23 +75,23 @@ class RLLibEnvWrapper(MultiAgentEnv):
     def reset(self, *, seed=None, options=None):
         print("RLLibEnvWrapper reset called")
         observations, _ = self.env.reset(seed=seed, options=options)
-        battery_levels = self.env.get_battery_levels()
-        encoded_obs = self._encode_observations(observations, battery_levels)
-        print(f"Reset returned observations for {len(encoded_obs)} agents")
-        return encoded_obs, {}
+        # battery_levels = self.env.get_battery_levels()
+        # encoded_obs = self._encode_observations(observations, battery_levels)
+        print(f"Reset returned observations for {len(observations)} agents")
+        return observations, {}
 
     def step(self, action_dict):
         # print(f"RLLibEnvWrapper step called with actions for {len(action_dict)} agents")
-        observations, rewards, terminated, truncated, info = self.env.step(action_dict)
-        battery_levels = self.env.get_battery_levels()
-        encoded_obs = self._encode_observations(observations, battery_levels)
+        obs, rewards, terminated, truncated, info = self.env.step(action_dict)
+        # battery_levels = self.env.get_battery_levels()
+        # encoded_obs = self._encode_observations(observations, battery_levels)
 
         if terminated["__all__"]:
             for agent_id in action_dict:
                 info[agent_id] = {"episode_done": True}
             
-        print(f"Step returned: obs={len(encoded_obs)}, rewards={len(rewards)}, terminated={terminated['__all__']}")
-        return encoded_obs, rewards, terminated, truncated, info
+        print(f"Step returned: obs={len(obs)}, rewards={len(rewards)}, terminated={terminated['__all__']}")
+        return obs, rewards, terminated, truncated, info
 
     def _encode_observations(self, observations, battery_levels):
         encoded_observations = {}

@@ -28,9 +28,11 @@ def env_creator(env_config):
 logdir = "./custom_ray_results"
 # Update the policies in the config
 num_agents = 10  # Adjust based on your environment
-obs_shape = (4 * 256,)  # Adjusted for encoded observation space (4 layers + 1 battery layer, 256 encoding size)
-action_space = spaces.Box(low=np.array([0, 0]), high=np.array([2*40, 2*40]), dtype=np.int32)
-obs_space = spaces.Box(low=-np.inf, high=np.inf, shape=(4 * 256,), dtype=np.float32)
+# obs_shape = (4 * 256,)  # Adjusted for encoded observation space (4 layers + 1 battery layer, 256 encoding size)
+obs_shape = (4, 276, 155)
+action_space = spaces.Box(low=np.array([-40, -40]), high=np.array([40, 40]), dtype=np.int32)
+# obs_space = spaces.Box(low=-np.inf, high=np.inf, shape=(4 * 256,), dtype=np.float32)
+obs_space =  spaces.Box(low=-20.0, high=1.0, shape=(4, 276, 155), dtype=np.float32)
 
 # Set up multi-agent policies
 # policies = {
@@ -65,22 +67,34 @@ config = (
 
     )
     .training(
-        lr=1e-3,
+        lr_schedule=[(0, 0.1), (10000, 0.01), (50000, 0.001)],
+        # exploration_config= {"type": "EpsilonGreedy", "initial_epsilon": 1.0, "final_epsilon": 0.02, "epsilon_timesteps": 50000},
         gamma=0.99,
         lambda_=0.95,
-        # clip_param=0.2,
-        vf_clip_param=1000.0,
-        entropy_coeff=0.1,
-        train_batch_size=250,  # Adjusted based on expected episode length and number of agents
-        sgd_minibatch_size=250,
-        num_sgd_iter=1,  # Moderate number of SGD steps
+        clip_param=100,
+        vf_clip_param=100,
+        entropy_coeff_schedule=[(0, 0.5), (100000, 0.2), (1000000,0.1), (10000000, 0.01)],
+        # entropy_coeff=0.1,
+        train_batch_size=625,  # Adjusted based on expected episode length and number of agents
+        sgd_minibatch_size=625,
+        num_sgd_iter=10,  # Moderate number of SGD steps
         # _enable_learner_api=False,
+        model = {
+            "conv_filters": [
+                [16, [4, 4], 2],
+                [32, [4, 4], 2],
+                [64, [4, 4], 2],
+                [128, [4, 4], 2],
+                [256, [4, 4], 2],
+                [512, [1, 9], 1]
+            ]
+        }   
     )
     .framework("torch")
     .rollouts(
         # env_runner_cls=MultiAgentEnvRunner,
         num_rollout_workers=5,
-        rollout_fragment_length=50,  # Match with avg episode length
+        rollout_fragment_length=125,  # Match with avg episode length
         batch_mode="truncate_episodes",
         sample_timeout_s=500  # Allow more time for slow environments
     )
@@ -104,7 +118,7 @@ config.env_config = {
 # Build the algorithm
 algo = config.build()
 
-for i in range(100000):
+for i in range(1000000):
     print(f"Iteration: {i}")
     result = algo.train()
     

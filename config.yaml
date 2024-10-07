@@ -25,7 +25,7 @@ n_targets: 20
 n_jammers: 7
 jamming_radius: 20 #This is radius, in comparison to comms_range. That is why it is a smaller value then comms_range, but looks bigger relitivly.  
 
-seed: 1
+seed: 0
 
 generate_rand_map: true
 # outer_border: null
