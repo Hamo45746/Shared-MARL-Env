@@ -37,6 +37,7 @@ class Environment(MultiAgentEnv):
         self.comm_range = self.config['comm_range']
         self.use_task_allocation = self.config.get('use_task_allocation_with_continuous', False)
         self.using_goals = self.config.get('using_goals', False)
+        self.real_world_pixel_scale = self.config['real_world_pixel_scale']
 
         self.seed_value = self.config.get('seed', None)
         if self.seed_value == "None":
@@ -63,7 +64,10 @@ class Environment(MultiAgentEnv):
         # Assumes static environment map - this is for task allocation
         self.path_processor = PathProcessor(self.map_matrix, self.X, self.Y)
         self.explored_cells = set()  # Set to track explored cells
+        self.explored_free_cells = set()
         self.seen_targets = set()  # Set to track unique targets seen by any agent
+        self.all_invalid_moves = 0
+        self.total_free_cells = self.calculate_free_cells()
 
         # Initialise environment 
         self.initialise_agents()
@@ -94,12 +98,19 @@ class Environment(MultiAgentEnv):
         self.Y = int(original_y * self.map_scale)
         resized_map = resize(original_map, (self.X, self.Y), order=0, preserve_range=True, anti_aliasing=False)
         return (resized_map != 0).astype(int) # 0 for obstacles, 1 for free space
-
+    
+    def calculate_free_cells(self):
+        total_free_cells = 0
+        for dx in range(0, self.X):
+            for dy in range(0, self.Y):
+                if not self.map_matrix[int(dx), int(dy)] == 0:
+                    total_free_cells += 1
+        return total_free_cells
 
     def initialise_agents(self):
         agent_positions = self.config.get('agent_positions')
         self.agents = agent_utils.create_agents(self.num_agents, self.map_matrix, self.obs_range, self.np_random, 
-                                                self.path_processor, agent_positions, agent_type=self.agent_type, randinit=True)
+                                                self.path_processor, self.real_world_pixel_scale, agent_positions, agent_type=self.agent_type, randinit=True)
         self.agent_layer = AgentLayer(self.X, self.Y, self.agents)
         self.agent_name_mapping = dict(zip(self.agents, list(range(self.num_agents))))
 
@@ -124,13 +135,13 @@ class Environment(MultiAgentEnv):
         elif self.agent_type == 'task_allocation':
             self.action_space = spaces.Discrete((2 * self.agents[0].max_distance + 1) ** 2)
         else:
-            self.action_space = spaces.Box(low=-0.5, high=0.5, shape=(2,), dtype=np.float32)
+            self.action_space = spaces.Box(low=-5, high=5, shape=(2,), dtype=np.float32)
 
     def define_observation_space(self):
         if self.agent_type == 'continuous':
             self.observation_space = spaces.Dict({
                 "map": spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32),
-                "velocity": spaces.Box(low=-8.0, high=8.0, shape=(2,), dtype=np.float32),
+                "velocity": spaces.Box(low=-30.0, high=30.0, shape=(2,), dtype=np.float32),
                 "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32)
         })
         elif self.agent_type == "discrete":
@@ -192,9 +203,6 @@ class Environment(MultiAgentEnv):
 
     def reset(self, seed=None, options: dict = None):
         """ Reset the environment for a new episode"""
-        # Preserve the last episode's metrics in class variables
-        self.last_seen_targets = len(self.seen_targets)
-        self.last_map_explored_percentage = self.calculate_explored_percentage()
 
         self._seed(self.seed_value if seed is None else seed)
         super().reset(seed=self.seed_value if seed is None else seed)
@@ -219,6 +227,8 @@ class Environment(MultiAgentEnv):
         # Reset seen targets and explored cells
         self.seen_targets = set()
         self.explored_cells = set()
+        self.explored_free_cells = set()
+        self.all_invalid_moves = 0
 
         observations = {}
         for agent_id in range(self.num_agents):
@@ -237,6 +247,29 @@ class Environment(MultiAgentEnv):
             }
         
         encoded_observations = self.encode_observation(observations)
+
+        # #this is for centralised critic 2
+        # obs_dict = {}  # This will store observations for all agents
+
+        # for agent_id, agent_obs in encoded_observations.items():  # Assuming current_observations holds the obs for each agent
+        #     # Collect the observations of other agents
+        #     other_agents_obs = []
+        #     for other_agent_id, other_agent_obs in encoded_observations.items():
+        #         if other_agent_id != agent_id:
+        #             other_agents_obs.append(other_agent_obs['encoded_map'])  # Only add the 'encoded_map', but you can add more if needed
+
+        #     # Convert the list of other_agents_obs to a numpy array of shape (num_agents, 4, 32) or whatever your expected shape is
+        #     other_agents_obs_array = np.array(other_agents_obs)
+
+        #     # Now add the current agent's observations, including 'other_agents_obs'
+        #     obs_dict[agent_id] = {
+        #         'encoded_map': agent_obs['encoded_map'],
+        #         'velocity': agent_obs['velocity'],
+        #         'goal': agent_obs['goal'],
+        #         'other_agents_obs': other_agents_obs_array  # This includes all other agents' encoded maps
+        #     }
+
+        # return obs_dict, {}
 
         return encoded_observations, {}
 
@@ -314,8 +347,8 @@ class Environment(MultiAgentEnv):
             if self.use_task_allocation and agent_id in self.task_goals:
                 agent.set_goal_area(self.task_goals[agent_id])
 
-            if np.linalg.norm(agent.velocity) > 0.2:
-                current_direction = np.arctan2(agent.velocity[1], agent.velocity[0])
+            if np.linalg.norm(agent.real_velocity) > 5:
+                current_direction = np.arctan2(agent.real_velocity[1], agent.real_velocity[0])
                 desired_direction = np.arctan2(action[1], action[0])
                 angle_diff = desired_direction - current_direction
                 angle_diff = np.arctan2(np.sin(angle_diff), np.cos(angle_diff))  
@@ -364,11 +397,38 @@ class Environment(MultiAgentEnv):
         if terminated["__all__"]:
             info["__common__"] = {
                 "unique_targets_seen": len(self.seen_targets),
-                "map_explored_percentage": self.calculate_explored_percentage()
+                "map_explored_percentage": self.calculate_explored_percentage(),
+                "map_explored_free_percentage": self.calculate_explored_free_percentage(),
+                "all_invalid_moves": self.calc_invalid_moves(),
             }
             # Store or log these metrics before they get reset
             self.last_seen_targets = len(self.seen_targets)
             self.last_map_explored_percentage = self.calculate_explored_percentage()
+            self.last_free_explored_percentage = self.calculate_explored_free_percentage()
+            self.all_invalid_moves = self.calc_invalid_moves()
+
+        # #for centralised critic 2
+        # obs_dict = {}  # This will store observations for all agents
+
+        # for agent_id, agent_obs in encoded_observations.items():  # Assuming current_observations holds the obs for each agent
+        #     # Collect the observations of other agents
+        #     other_agents_obs = []
+        #     for other_agent_id, other_agent_obs in encoded_observations.items():
+        #         if other_agent_id != agent_id:
+        #             other_agents_obs.append(other_agent_obs['encoded_map'])  # Only add the 'encoded_map', but you can add more if needed
+
+        #     # Convert the list of other_agents_obs to a numpy array of shape (num_agents, 4, 32) or whatever your expected shape is
+        #     other_agents_obs_array = np.array(other_agents_obs)
+
+        #     # Now add the current agent's observations, including 'other_agents_obs'
+        #     obs_dict[agent_id] = {
+        #         'encoded_map': agent_obs['encoded_map'],
+        #         'velocity': agent_obs['velocity'],
+        #         'goal': agent_obs['goal'],
+        #         'other_agents_obs': other_agents_obs_array  # This includes all other agents' encoded maps
+        #     }
+
+        # return obs_dict, rewards, terminated, truncated, info
     
         # If i'm collecting observations I have to return observations. Once the auto encoder is trained I can return encoded observation
         return encoded_observations, rewards, terminated, truncated, info
@@ -388,6 +448,8 @@ class Environment(MultiAgentEnv):
                     cell = (int(agent_pos[0] + dx), int(agent_pos[1] + dy))
                     if agent.inbounds(cell[0], cell[1]):
                         self.explored_cells.add(cell)
+                    if agent.inbounds(cell[0], cell[1]) and not agent.inbuilding(cell[0], cell[1]):
+                        self.explored_free_cells.add(cell)
 
             # Check if agent has found a target
             for target_id, target in enumerate(self.target_layer.targets):
@@ -407,7 +469,19 @@ class Environment(MultiAgentEnv):
         explored_percentage = len(self.explored_cells) / total_cells * 100
         return explored_percentage
     
-
+    def calculate_explored_free_percentage(self):
+        """
+        Calculate the percentage of the map explored by agents.
+        """
+        explored_percentage = len(self.explored_free_cells) / self.total_free_cells * 100
+        return explored_percentage
+    
+    def calc_invalid_moves(self):
+        for agent_id in range(self.num_agents):
+            agent = self.agent_layer.agents[agent_id]
+            self.all_invalid_moves += agent.total_invalid_moves
+        return self.all_invalid_moves
+       
     def update_observations(self): #Alex had this one
         observations = {}
         for agent_id in range(self.num_agents):
@@ -425,7 +499,7 @@ class Environment(MultiAgentEnv):
             #local_states[agent_id] = agent.get_state()  # This returns the local_state
             local_states[agent_id] = {
                 "map": agent.get_observation_state()["map"],
-                "velocity": agent.velocity,
+                "velocity": agent.real_velocity,
                 "goal": agent.goal_area if self.use_task_allocation else np.zeros((2,))
             }
             
@@ -788,7 +862,7 @@ class Environment(MultiAgentEnv):
         obs = self.collect_obs(self.agent_layer, agent_id)
         obs = obs.transpose((0,2,1))
         obs = np.clip(obs, self.observation_space["map"].low, self.observation_space["map"].high)
-        velocity = self.agents[agent_id].velocity
+        velocity = self.agents[agent_id].real_velocity
 
         goal_info = self.agents[agent_id].goal_area if self.use_task_allocation else np.zeros((2,))
 
@@ -1061,6 +1135,31 @@ class Environment(MultiAgentEnv):
                     jammed_area.add((x, y))
 
         return jammed_area
+    
+    def central_critic_observer(agent_obs, **kwargs):
+        """Rewrites the agent obs to include other agents' observations for training."""
+
+        # Assuming agent_obs is a dictionary like: {agent_id: obs_data}
+        # We need to update each agent's obs to include others' obs and actions.
+        new_obs = {}
+
+        for agent_id, obs in agent_obs.items():
+            # This is where we create a combined observation for each agent.
+            # For each agent, include their own observation, plus others' observations and actions.
+            combined_obs = {
+                "own_obs": obs,
+                "other_obs": {},  # Add other agent's encoded maps, velocities, and goals.
+            }
+            
+            for other_agent_id, other_obs in agent_obs.items():
+                if other_agent_id != agent_id:
+                    combined_obs["other_obs"][f"agent_{other_agent_id}_encoded_map"] = other_obs['encoded_map']
+                    combined_obs["other_obs"][f"agent_{other_agent_id}_velocity"] = other_obs['velocity']
+                    combined_obs["other_obs"][f"agent_{other_agent_id}_goal"] = other_obs['goal']
+            
+            new_obs[agent_id] = combined_obs
+
+        return new_obs
 
 
     def _seed(self, seed=None):
@@ -1074,6 +1173,7 @@ class Environment(MultiAgentEnv):
         running = True
         step_count = 0
         collected_data = []
+        self.calculate_explored_free_percentage()
 
         while running and step_count < max_steps:
             for event in pygame.event.get():
@@ -1083,6 +1183,7 @@ class Environment(MultiAgentEnv):
             # Generate new actions for all agents in every step
             action_dict = {agent_id: agent.get_next_action() for agent_id, agent in enumerate(self.agents)}
             observations, rewards, terminated, truncated, self.info = self.step(action_dict)
+            print(observations)
             collected_data.append(observations)
             self.render()  
             step_count += 1
@@ -1119,6 +1220,8 @@ class Environment(MultiAgentEnv):
         collected_data = []
         targets_seen_over_time = []
         map_explored_over_time = []
+        map_explored_free_over_time = []
+        invalid_actions_over_time = []
 
         while running and step_count < max_steps:
             for event in pygame.event.get():
@@ -1137,7 +1240,8 @@ class Environment(MultiAgentEnv):
                 #policy = trainer.get_policy(f"policy_{agent_id}") # This is for decentralised learning and execuition - remove for CENTRALISED
                 #action = policies[agent_id].compute_single_action(obs, explore=False)[0] #This is for CTDE
                 #action = policy.compute_single_action(obs, explore=False)[0] # This is for CTCE
-                action = trainer.compute_single_action(obs, policy_id="policy_0", explore=False) #this choses action in the right range
+                #action = trainer.compute_single_action(obs, policy_id="policy_0", explore=False) #this choses action in the right range
+                action = trainer.compute_single_action(encoded_obs, policy_id="policy_0") #allowing it to explore
                 action_dict[agent_id] = action
 
             observations, rewards, terminated, truncated, self.info = self.step(action_dict)
@@ -1148,6 +1252,8 @@ class Environment(MultiAgentEnv):
             # Collect metrics for plotting
             targets_seen_over_time.append(len(self.seen_targets))
             map_explored_over_time.append(self.calculate_explored_percentage())
+            map_explored_free_over_time.append(self.calculate_explored_free_percentage())
+            invalid_actions_over_time.append(self.all_invalid_moves)
 
             if terminated.get("__all__", False) or truncated.get("__all__", False):
                 break
@@ -1162,15 +1268,15 @@ class Environment(MultiAgentEnv):
         pygame.quit()
 
         # Plot the collected metrics
-        self.plot_simulation_metrics(targets_seen_over_time, map_explored_over_time, iteration)
+        self.plot_simulation_metrics(targets_seen_over_time, map_explored_over_time, map_explored_free_over_time, invalid_actions_over_time, iteration)
 
         return collected_data
     
-    def plot_simulation_metrics(self, targets_seen, map_explored, iteration=None):
+    def plot_simulation_metrics(self, targets_seen, map_explored, map_explored_free, invalid_actions_over_time, iteration=None):
         plt.figure(figsize=(12, 5))
 
         # Plot unique targets seen
-        plt.subplot(1, 2, 1)
+        plt.subplot(2, 2, 1)
         plt.plot(targets_seen, label='Unique Targets Seen')
         plt.xlabel('Step')
         plt.ylabel('Unique Targets Seen')
@@ -1178,11 +1284,27 @@ class Environment(MultiAgentEnv):
         plt.legend()
 
         # Plot map explored percentage
-        plt.subplot(1, 2, 2)
+        plt.subplot(2, 2, 2)
         plt.plot(map_explored, label='Map Explored Percentage')
         plt.xlabel('Step')
         plt.ylabel('Map Explored (%)')
         plt.title('Map Explored Percentage During Simulation')
+        plt.legend()
+
+        # Plot map explored percentage
+        plt.subplot(2, 2, 3)
+        plt.plot(map_explored_free, label='Map Explored Free Space Percentage')
+        plt.xlabel('Step')
+        plt.ylabel('Map Explored (%)')
+        plt.title('Map Explored Free Space Percentage During Simulation')
+        plt.legend()
+
+        # Plot map explored percentage
+        plt.subplot(2, 2, 4)
+        plt.plot(invalid_actions_over_time, label='Invalid actions over time')
+        plt.xlabel('Step')
+        plt.ylabel('Invalid actions(%)')
+        plt.title('Invalid actions During Simulation')
         plt.legend()
 
         if iteration is not None:
@@ -1196,3 +1318,105 @@ class Environment(MultiAgentEnv):
             plt.savefig(f'simulation_metrics.png')
         plt.show()
         plt.close()
+
+    def run_simulation_with_centralised_critic(self, checkpoint_dir, params_path, max_steps=900, iteration=None):
+        # Load the configuration from the params.pkl file
+        with open(params_path, "rb") as f:
+            config = pickle.load(f)
+
+        # Register the custom environment
+        register_env("custom_multi_agent_env", lambda config: Environment(config_path=config["config_path"], render_mode=config.get("render_mode", "human")))
+
+        # Recreate the trainer with the loaded configuration
+        trainer = PPO(config=config)
+        trainer.restore(checkpoint_dir)
+
+        # Policy for centralized critic learning
+        policy = trainer.get_policy("policy_0")  # Centralized critic uses this policy for all agents
+
+        running = True
+        step_count = 0
+        collected_data = []
+        targets_seen_over_time = []
+        map_explored_over_time = []
+        map_explored_free_over_time = []
+        invalid_actions_over_time = []
+
+        while running and step_count < max_steps:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+
+            action_dict = {}
+            all_observations = {}
+
+            # Step 1: Collect observations for all agents
+            for agent_id in range(self.num_agents):
+                obs = self.safely_observe(agent_id)
+                encoded_obs = self.encode_observation({agent_id: obs})[agent_id]  # Encode observation
+                
+                # Structure observation for the agent
+                agent_obs = {
+                    "encoded_map": encoded_obs["encoded_map"].reshape(4, 32).astype(np.float32),  # Adjust the shape for the policy
+                    "velocity": np.array(encoded_obs["velocity"], dtype=np.float32),
+                    "goal": np.array(encoded_obs["goal"], dtype=np.float32)
+                }
+                
+                all_observations[agent_id] = agent_obs
+
+            # Step 2: Build the centralized observation for each agent
+            for agent_id in range(self.num_agents):
+                # Extract this agent's own observation
+                agent_obs = all_observations[agent_id]
+
+                # Build the observation for centralized critic (including other agents' observations)
+                other_agents_obs = []
+                for other_agent_id, other_agent_obs in all_observations.items():
+                    if other_agent_id != agent_id:
+                        other_agents_obs.append(other_agent_obs["encoded_map"])
+
+                # Convert the list of other agents' observations to a numpy array
+                other_agents_obs_array = np.array(other_agents_obs).astype(np.float32)  # Shape: (num_agents-1, 4, 32)
+
+                # Create the full centralized observation for this agent
+                centralized_obs = {
+                    "encoded_map": agent_obs["encoded_map"],
+                    "velocity": agent_obs["velocity"],
+                    "goal": agent_obs["goal"],
+                    "other_agents_obs": other_agents_obs_array  # Adding other agents' observations
+                }
+
+                # Step 3: Compute the action using the centralized observation
+                action = trainer.compute_single_action(centralized_obs, policy_id="policy_0")  # Centralized policy
+                action_dict[agent_id] = action
+
+            # Step 4: Step the environment with the actions from all agents
+            observations, rewards, terminated, truncated, self.info = self.step(action_dict)
+            collected_data.append(observations)
+            self.render()
+            step_count += 1
+
+            # Collect metrics for plotting
+            targets_seen_over_time.append(len(self.seen_targets))
+            map_explored_over_time.append(self.calculate_explored_percentage())
+            map_explored_free_over_time.append(self.calculate_explored_free_percentage())
+            invalid_actions_over_time.append(self.all_invalid_moves)
+
+            # Break if the episode is done (all agents terminated or truncated)
+            if terminated.get("__all__", False) or truncated.get("__all__", False):
+                break
+
+        # Save the environment snapshot after the iteration
+        if iteration is not None:
+            map_filename = f"outputs/environment_snapshot_iteration_{iteration}.png"
+        else:
+            map_filename = "outputs/environment_snapshot.png"
+
+        pygame.image.save(self.screen, map_filename)
+        self.reset()
+        pygame.quit()
+
+        # Plot the collected metrics
+        self.plot_simulation_metrics(targets_seen_over_time, map_explored_over_time, map_explored_free_over_time, invalid_actions_over_time, iteration)
+
+        return collected_data

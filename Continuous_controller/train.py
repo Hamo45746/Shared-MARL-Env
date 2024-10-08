@@ -19,10 +19,14 @@ class CustomMetricsCallback(DefaultCallbacks):
         env = base_env.get_sub_environments()[0]
         unique_targets_seen = env.last_seen_targets
         map_explored_percentage = env.last_map_explored_percentage
+        map_free_space_explored_percentage = env.last_free_explored_percentage
+        invalid_actions = env.all_invalid_moves
         
         # Store custom metrics
         episode.custom_metrics["unique_targets_seen"] = unique_targets_seen
         episode.custom_metrics["map_explored_percentage"] = map_explored_percentage
+        episode.custom_metrics["free_space_explored_percentage"] = map_free_space_explored_percentage
+        episode.custom_metrics["invalid_moves"] = invalid_actions
 
 def env_creator(env_config):
     return Environment(config_path=env_config["config_path"], render_mode=None)
@@ -48,12 +52,12 @@ config["local_dir"] = logdir
 config["callbacks"] = CustomMetricsCallback
 
 # Update the policies in the config
-num_agents = 5  # Example, adjust based on your environment
-obs_shape = (4, 32) #NEED TO ADJUST TO ENCODED OBSERVATION SPACE
-action_space = spaces.Box(low=-0.5, high=0.5, shape=(2,), dtype=np.float32)
+num_agents = 5  # Example, adjust based on environment
+obs_shape = (4, 32) #Encoder obs space
+action_space = spaces.Box(low=-5, high=5, shape=(2,), dtype=np.float32)
 obs_space = spaces.Dict({
     "encoded_map": spaces.Box(low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32),
-    "velocity": spaces.Box(low=-8.0, high=8.0, shape=(2,), dtype=np.float32),
+    "velocity": spaces.Box(low=-30, high=30, shape=(2,), dtype=np.float32),
     "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32)
 })
 # This is the config for cnetralised training - one policy
@@ -71,7 +75,7 @@ config["multiagent"]["policy_mapping_fn"] = policy_mapping_fn
 # Initialize the PPO trainer
 trainer = PPO(config=config)
 # Train the agents
-for i in range(300):
+for i in range(200):
     print(f"Training iteration {i}")
     result = trainer.train()
 
@@ -82,6 +86,8 @@ for i in range(300):
     map_explored_percentage_min = result['env_runners']['custom_metrics'].get("map_explored_percentage_min")
     map_explored_percentage_mean = result['env_runners']['custom_metrics'].get("map_explored_percentage_mean")
     map_explored_percentage_max = result['env_runners']['custom_metrics'].get("map_explored_percentage_max")
+    map_free_explored_percentage_mean = result['env_runners']['custom_metrics'].get("free_space_explored_percentage_mean")
+    invalid_actions = result['env_runners']['custom_metrics'].get("invalid_moves_mean")
 
     print(f"Iteration: {i}, "
           f"Episode Reward Mean: {result['env_runners']['episode_reward_mean']}, "
@@ -92,11 +98,13 @@ for i in range(300):
           f"Unique targets seen mean: {targets_found_mean},"
           f"Unique targets seen max: {targets_found_max},"
           f"Map Explored Percentage min: {map_explored_percentage_min:.2f}%,"
-          f"Map Explored Percentage mean: {map_explored_percentage_mean:.2f}%"
-          f"Map Explored Percentage max: {map_explored_percentage_max:.2f}%")
+          f"Map Explored Percentage mean: {map_explored_percentage_mean:.2f}%,"
+          f"Map Explored Percentage max: {map_explored_percentage_max:.2f},"
+          f"Map Free Space Explored Percentage mean: {map_free_explored_percentage_mean:.2f},"
+          f"Invalid_actions: {invalid_actions:.2f}")
     
     #need to checkpoint more often 
-    if (i + 1) % 20 == 0:
+    if (i + 1) % 10 == 0:
         checkpoint_dir = trainer.save(logdir)
 
     if (i + 1) % 50 == 0:
@@ -104,7 +112,7 @@ for i in range(300):
         latest_folder = max(glob.glob(os.path.join('/Users/alexandramartinwallace/ray_results/', '*/')), key=os.path.getmtime)
         params_path = os.path.join(latest_folder, "params.pkl")
         env2 = Environment(config_path="config.yaml")
-        env2.run_simulation_with_policy(checkpoint_dir=checkpoint_dir, params_path=params_path, max_steps=700, iteration=i)
+        env2.run_simulation_with_policy(checkpoint_dir=checkpoint_dir, params_path=params_path, max_steps=900, iteration=i)
 
 #Ensure TensorBoard logs are being written
 final_checkpoint_dir = trainer.save(logdir)

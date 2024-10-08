@@ -12,19 +12,22 @@ def calculate_continuous_reward(agent, env):
              reward -= 1
 
     if not agent.valid_move:
-        reward -= 5
+        reward -= 9
 
-    #velocity reward - not going to use this - or maybe i should??
+    #Combined velocity and percentage reward
     velocity_norm = np.linalg.norm(agent.observation_state["velocity"])
-    if velocity_norm > 2:
-        #print('here')
-        reward -= 10
-
     percentage_new_information = agent.gains_information() 
-    if percentage_new_information > 0:
-        reward += (percentage_new_information*2)
+
+    # Large positive reward for new area and under max velocity.
+    # Very small percentage for over max velocity 
+    if velocity_norm <= agent.max_velocity:
+        reward += percentage_new_information*6
     else:
-        reward -= 5
+        capped_percentage = agent.max_velocity / velocity_norm
+        reward += (percentage_new_information * capped_percentage)/4
+
+    if percentage_new_information == 0:
+        reward -= 3
 
     obs_half_range = agent._obs_range // 2
     agent_pos = agent.current_position()
@@ -42,12 +45,7 @@ def calculate_continuous_reward(agent, env):
     # if agent.communicates_information():
     #     reward += 8
 
-    # # Check if the agent calls the obstacle avoidance method
-    # if agent.calls_obstacle_avoidance():
-    #     print("obs avoidance")
-    #     reward -= 10
-
-    # check if the agent has to0 large angle choice 
+    # check if the agent has too large angle choice 
     # if agent.angle_change():
     #     reward -= 2
 
@@ -57,16 +55,12 @@ def calculate_continuous_reward(agent, env):
             if agent.goal_step_counter < 60:
                 if current_distance_to_goal < 40:
                     reward += 100 
-                    print("within 40")
                     agent.goal_step_counter += 1
                 elif current_distance_to_goal < agent.previous_distance_to_goal:
-                    print("getting closer")
                     reward += 40
                 elif current_distance_to_goal >= agent.previous_distance_to_goal:
-                    print("getting futher way")
                     reward -= 3
             else:
-                print("post goal reward")
                 reward += 5
             agent.previous_distance_to_goal = current_distance_to_goal
 

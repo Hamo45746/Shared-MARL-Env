@@ -6,7 +6,7 @@ grid_size:
 
 pixel_scale: 4 #Going down reduces the pixel_size, which reduces the map
 map_scale: 0.18 #Going up makes to map larger
-real_word_pixel_scale: 12 #what size in meters one pixles is in the real world
+real_world_pixel_scale: 7 #what size in meters one pixles is in the real world
 
 obs_range: 17 #13
 comm_range: 40 #10

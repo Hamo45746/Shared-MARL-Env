@@ -19,10 +19,14 @@ class CustomMetricsCallback(DefaultCallbacks):
         env = base_env.get_sub_environments()[0]
         unique_targets_seen = env.last_seen_targets
         map_explored_percentage = env.last_map_explored_percentage
+        map_free_space_explored_percentage = env.last_free_explored_percentage
+        invalid_actions = env.all_invalid_moves
         
         # Store custom metrics
         episode.custom_metrics["unique_targets_seen"] = unique_targets_seen
         episode.custom_metrics["map_explored_percentage"] = map_explored_percentage
+        episode.custom_metrics["free_space_explored_percentage"] = map_free_space_explored_percentage
+        episode.custom_metrics["invalid_moves"] = invalid_actions
 
 def env_creator(env_config):
     return Environment(config_path=env_config["config_path"], render_mode=env_config.get("render_mode", "human"))
@@ -45,7 +49,7 @@ config["callbacks"] = CustomMetricsCallback
 
 # Update the policies in the config
 num_agents = 5
-obs_shape = (4, 32)  # Adjust based on your encoded observation space
+obs_shape = (4, 32)  
 action_space = spaces.Box(low=-5, high=5, shape=(2,), dtype=np.float32)
 obs_space = spaces.Dict({
     "encoded_map": spaces.Box(low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32),
@@ -61,14 +65,6 @@ config["multiagent"]["policy_mapping_fn"] = policy_mapping_fn
 # Initialize the PPO trainer
 trainer = PPO(config=config)
 
-# Lists to store metrics for plotting
-targets_seen_over_time_min = []
-targets_seen_over_time_mean = []
-targets_seen_over_time_max = []
-map_explored_over_time_min = []
-map_explored_over_time_mean = []
-map_explored_over_time_max = []
-
 # Path to the latest policy checkpoint in the custom_ray_results folder
 checkpoint_dir = "/Users/alexandramartinwallace/Documents/Uni/METR4911/Working/Shared-MARL-Env/custom_ray_results"
 
@@ -78,7 +74,7 @@ if os.path.exists(checkpoint_dir):
     trainer.restore(checkpoint_dir)
 
 # Resume Training from the last checkpoint
-for i in range(300, 450):  # Continue training from iteration 200 onwards
+for i in range(200, 350):  # Continue training from iteration 200 onwards
     print(f"Training iteration {i}")
     result = trainer.train()
 
@@ -89,14 +85,8 @@ for i in range(300, 450):  # Continue training from iteration 200 onwards
     map_explored_percentage_min = result['env_runners']['custom_metrics'].get("map_explored_percentage_min")
     map_explored_percentage_mean = result['env_runners']['custom_metrics'].get("map_explored_percentage_mean")
     map_explored_percentage_max = result['env_runners']['custom_metrics'].get("map_explored_percentage_max")
-
-    # Append metrics to lists for plotting
-    targets_seen_over_time_min.append(targets_found_min)
-    targets_seen_over_time_mean.append(targets_found_mean)
-    targets_seen_over_time_max.append(targets_found_max)
-    map_explored_over_time_min.append(map_explored_percentage_min)
-    map_explored_over_time_mean.append(map_explored_percentage_mean)
-    map_explored_over_time_max.append(map_explored_percentage_max)
+    map_free_explored_percentage_mean = result['env_runners']['custom_metrics'].get("free_space_explored_percentage_mean")
+    invalid_actions = result['env_runners']['custom_metrics'].get("invalid_moves_mean")
 
     print(f"Iteration: {i}, "
           f"Episode Reward Mean: {result['env_runners']['episode_reward_mean']}, "
@@ -108,7 +98,9 @@ for i in range(300, 450):  # Continue training from iteration 200 onwards
           f"Unique targets seen max: {targets_found_max},"
           f"Map Explored Percentage min: {map_explored_percentage_min:.2f}%,"
           f"Map Explored Percentage mean: {map_explored_percentage_mean:.2f}%,"
-          f"Map Explored Percentage max: {map_explored_percentage_max:.2f}%")
+          f"Map Explored Percentage max: {map_explored_percentage_max:.2f}%,"
+          f"Map Free Space Explored Percentage mean: {map_free_explored_percentage_mean:.2f},"
+          f"Invalid_actions: {invalid_actions:.2f}")
 
     # Save the checkpoint every 20 iterations
     if (i + 1) % 20 == 0:
@@ -119,36 +111,6 @@ for i in range(300, 450):  # Continue training from iteration 200 onwards
         latest_folder = max(glob.glob(os.path.join('/Users/alexandramartinwallace/ray_results/', '*/')), key=os.path.getmtime)
         params_path = os.path.join(latest_folder, "params.pkl")
         env2 = Environment(config_path="config.yaml")
-        env2.run_simulation_with_policy(checkpoint_dir=checkpoint_dir, params_path=params_path, max_steps=100, iteration=i)
+        env2.run_simulation_with_policy(checkpoint_dir=checkpoint_dir, params_path=params_path, max_steps=900, iteration=i)
 # Ensure TensorBoard logs are being written
 final_checkpoint_dir = trainer.save("/Users/alexandramartinwallace/Documents/Uni/METR4911/Working/Shared-MARL-Env/custom_ray_results")
-
-# Plot the metrics
-plt.figure(figsize=(12, 5))
-
-# Plot unique targets seen
-plt.subplot(1, 2, 1)
-plt.plot(targets_seen_over_time_min, label='Unique Targets Seen_min')
-plt.plot(targets_seen_over_time_mean, label='Unique Targets Seen_mean')
-plt.plot(targets_seen_over_time_max, label='Unique Targets Seen_max')
-plt.xlabel('Iteration')
-plt.ylabel('Unique Targets Seen')
-plt.title('Unique Targets Seen Over Training')
-plt.legend()
-
-# Plot map explored percentage
-plt.subplot(1, 2, 2)
-plt.plot(map_explored_over_time_min, label='Map Explored Percentage_min')
-plt.plot(map_explored_over_time_mean, label='Map Explored Percentage_mean')
-plt.plot(map_explored_over_time_max, label='Map Explored Percentage_max')
-plt.xlabel('Iteration')
-plt.ylabel('Map Explored (%)')
-plt.title('Map Explored Percentage Over Training')
-plt.legend()
-
-# Save the plot to a file
-plt.tight_layout()
-plt.savefig('training_metrics.png')
-plt.show()
-plt.close()
-
