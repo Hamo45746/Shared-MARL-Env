@@ -26,15 +26,20 @@ class RewardCalculator:
             # Calculate improvements in metrics
             if self.prev_team_metrics is not None and self.prev_agent_contributions is not None:
                 # Individual contribution rewards
-                map_contribution = current_agent_contributions[agent_id, 0] - self.prev_agent_contributions[agent_id, 0]
-                rewards[agent_id] += map_contribution * 0.1 * (1 + current_team_metrics['map_seen'] / 100)
-
+                print(f'Agent {agent_id}')
+                # map_contribution = current_agent_contributions[agent_id, 0] - self.prev_agent_contributions[agent_id, 0]
+                # map_reward =  map_contribution * 0.05 #* (1 + current_team_metrics['map_seen'] / 100)
+                # rewards[agent_id] += map_reward
+                # print(f'Map reward: {map_reward}')
                 target_contribution = current_agent_contributions[agent_id, 1] - self.prev_agent_contributions[agent_id, 1]
-                rewards[agent_id] += target_contribution * 10
-
+                target_reward = target_contribution * 5
+                rewards[agent_id] += target_reward
+                print(f'Target reward: {target_reward}')
                 jammer_contribution = current_agent_contributions[agent_id, 2] - self.prev_agent_contributions[agent_id, 2]
-                rewards[agent_id] += jammer_contribution * 15
-
+                jammer_reward = jammer_contribution * 10
+                rewards[agent_id] += jammer_reward
+                print(f'Jammer reward: {jammer_reward}')
+                
                 # Team-wide improvement rewards
                 # map_improvement = current_team_metrics['map_seen'] - self.prev_team_metrics['map_seen']
                 # rewards[agent_id] += map_improvement * 0.05
@@ -48,26 +53,26 @@ class RewardCalculator:
             # Jammer destruction reward (agent-specific)
             for jammer in current_destroyed_jammers - self.prev_destroyed_jammers:
                 if jammer.destroyed_by == agent_id:
-                    rewards[agent_id] += 300  # Significant reward for destroying a jammer
+                    rewards[agent_id] += 1000  # Significant reward for destroying a jammer
 
             # Communication network reward
             # network_size = len(self.env.networks[agent_id]) if agent_id in self.env.networks else 0
             # rewards[agent_id] += network_size 
 
         # Completion bonus (team-wide)
-        completion_bonus = 0
-        if current_team_metrics['map_seen'] >= 90:
-            completion_bonus += 1000
-        if current_team_metrics['targets_seen'] == 100:
-            completion_bonus += 1000
-        if current_team_metrics['jammers_destroyed'] == 100:
-            completion_bonus += 3000
+        # completion_bonus = 0
+        # if current_team_metrics['map_seen'] >= 90:
+        #     completion_bonus += 1000
+        # if current_team_metrics['targets_seen'] == 100:
+        #     completion_bonus += 1000
+        # if current_team_metrics['jammers_destroyed'] == 100:
+        #     completion_bonus += 3000
         
-        # Distribute completion bonus equally among active agents
-        active_agents = [i for i in range(self.num_agents) if not self.env.agents[i].is_terminated()]
-        if active_agents:
-            for agent_id in active_agents:
-                rewards[agent_id] += completion_bonus / len(active_agents)
+        # # Distribute completion bonus equally among active agents
+        # active_agents = [i for i in range(self.num_agents) if not self.env.agents[i].is_terminated()]
+        # if active_agents:
+        #     for agent_id in active_agents:
+        #         rewards[agent_id] += completion_bonus / len(active_agents)
 
         self.prev_team_metrics = current_team_metrics
         self.prev_agent_contributions = current_agent_contributions

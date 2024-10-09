@@ -67,7 +67,7 @@ config = (
 
     )
     .training(
-        lr_schedule=[(0, 0.1), (10000, 0.01), (50000, 0.001)],
+        lr=1e-3,
         # exploration_config= {"type": "EpsilonGreedy", "initial_epsilon": 1.0, "final_epsilon": 0.02, "epsilon_timesteps": 50000},
         gamma=0.99,
         lambda_=0.95,

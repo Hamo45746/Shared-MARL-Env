@@ -23,7 +23,9 @@ checkpoint_dir = '/home/rppl/Documents/SAAB_thesis/Shared-MARL-Env/custom_ray_re
 # params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-01_12-21-59a397lzbr/params.pkl'
 # params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-02_16-06-385k0zuxpi/params.pkl'
 # params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-03_18-32-210lb7aswp/params.pkl'
-params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-07_13-22-48pgrbf7s2/params.pkl'
+# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-07_13-22-48pgrbf7s2/params.pkl'
+# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-07_16-15-01y0epuqo1/params.pkl'
+params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-09_09-47-425_0_zy7r/params.pkl'
 
 num_agents = 10
 

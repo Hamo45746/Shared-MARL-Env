@@ -70,7 +70,7 @@ class Environment(gym.Env):
         self.current_step = 0
         self.render_modes = render_mode
         self.screen = None
-        # pygame.init() # Comment this out when not rendering
+        pygame.init() # Comment this out when not rendering
         self.networks = []
         self.agent_to_network = {}
         self.comm_matrix = None
@@ -310,14 +310,14 @@ class Environment(gym.Env):
                 goal = agent.action_to_waypoint(action)
                 self.current_waypoints[agent_id] = goal
                 self.agent_paths[agent_id] = self.path_processor.get_path(start, goal)
-
+        
         # Find min path length among non-terminated agents with valid paths
         valid_path_lengths = [len(path) for agent_id, path in self.agent_paths.items()
-                            if not self.agents[agent_id].is_terminated() and path != []]
+                            if not self.agents[agent_id].is_terminated() and len(path)>1]
         
         # If there are no valid paths, set min_path_length to 0
         min_path_length = min(valid_path_lengths) if valid_path_lengths else 0
-
+        # print(min_path_length)
         # Move agents and targets for min_path_length steps
         for step in range(min_path_length):
 
@@ -357,7 +357,7 @@ class Environment(gym.Env):
             self.update_exploration_metrics()
 
             self.current_step += 1
-            # self.render()
+            self.render()
             # self.save_render_image(self.current_step)
             # print(f"battery: {self.get_battery_levels()}")
 
@@ -459,15 +459,15 @@ class Environment(gym.Env):
             # Check for seen targets
             for target_id, target in enumerate(self.target_layer.targets):
                 target_pos = np.array(target.current_position())
-                if np.all(np.abs(target_pos - agent_pos) <= obs_range//2) and not self.targets_seen[target_id]:
-                    self.targets_seen[target_id] = True
+                if np.all(np.abs(target_pos - agent_pos) <= obs_range//2): #and not self.targets_seen[target_id]:
+                    # self.targets_seen[target_id] = True
                     self.agent_contributions[agent_id, 1] += 1
             
             # Check for seen jammers
             for jammer_id, jammer in enumerate(self.jammer_layer.jammers):
                 jammer_pos = np.array(jammer.current_position())
-                if np.all(np.abs(jammer_pos - agent_pos) <= obs_range//2) and not self.jammers_seen[jammer_id]:
-                    self.jammers_seen[jammer_id] = True
+                if np.all(np.abs(jammer_pos - agent_pos) <= obs_range//2): #and not self.jammers_seen[jammer_id]:
+                    # self.jammers_seen[jammer_id] = True
                     self.agent_contributions[agent_id, 2] += 1
                     
     
