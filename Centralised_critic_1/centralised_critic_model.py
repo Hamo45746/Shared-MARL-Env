@@ -61,5 +61,4 @@ class CentralisedCriticModel(TorchModelV2, nn.Module):
         # global_obs and global_actions should be provided from the postprocessing function
         global_obs = getattr(self, '_global_obs', torch.zeros_like(self._obs_concat))
         global_actions = getattr(self, '_global_actions', torch.zeros((self._obs_concat.size(0), self.act_dim * self.num_agents), device=self._obs_concat.device))
-
         return self.central_value_function(self._obs_concat, global_obs, global_actions)

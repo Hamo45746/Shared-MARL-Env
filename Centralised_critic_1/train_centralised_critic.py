@@ -33,7 +33,7 @@ class CustomMetricsCallback(DefaultCallbacks):
         episode.custom_metrics["free_space_explored_percentage"] = map_free_space_explored_percentage
         episode.custom_metrics["invalid_moves"] = invalid_actions
 
-# Load the configuration file
+# Load the configuration file - Maybe this would be bettter as marl config 
 with open("marl_config.yaml", "r") as file:
     config = yaml.safe_load(file)
 
@@ -96,16 +96,17 @@ config["model"] = {
 # Initialize the PPO trainer
 trainer = PPO(config=config)
 
-#THIS WAS TO RESTORE
-# Path to the latest policy checkpoint in the custom_ray_results folder
-checkpoint_dir = "/Users/alexandramartinwallace/Documents/Uni/METR4911/Working/Shared-MARL-Env/custom_ray_results"
-# Restore from the checkpoint if it exists
-if os.path.exists(checkpoint_dir):
-    print(f"Restoring from checkpoint: {checkpoint_dir}")
-    trainer.restore(checkpoint_dir)
+# #THIS WAS TO RESTORE
+# # Path to the latest policy checkpoint in the custom_ray_results folder
+# checkpoint_dir = "/Users/alexandramartinwallace/Documents/Uni/METR4911/Working/Shared-MARL-Env/custom_ray_results"
+# # Restore from the checkpoint if it exists
+# if os.path.exists(checkpoint_dir):
+#     print(f"Restoring from checkpoint: {checkpoint_dir}")
+#     trainer.restore(checkpoint_dir)
 
 # Train the agents
-for i in range(200):
+for i in range(150):
+#for i in range(150, 250):
     print(f"Training iteration {i}")
     result = trainer.train()
 

@@ -12,22 +12,22 @@ def calculate_continuous_reward(agent, env):
              reward -= 1
 
     if not agent.valid_move:
-        reward -= 9
+        reward -= 30
 
     #Combined velocity and percentage reward
     velocity_norm = np.linalg.norm(agent.observation_state["velocity"])
-    percentage_new_information = agent.gains_information() 
+    percentage_new_information = agent.gains_information()
 
     # Large positive reward for new area and under max velocity.
     # Very small percentage for over max velocity 
     if velocity_norm <= agent.max_velocity:
         reward += percentage_new_information*6
-    else:
-        capped_percentage = agent.max_velocity / velocity_norm
-        reward += (percentage_new_information * capped_percentage)/4
+    # else:
+    #     capped_percentage = agent.max_velocity / velocity_norm
+    #     reward += (percentage_new_information * capped_percentage)/6
 
     if percentage_new_information == 0:
-        reward -= 3
+        reward -= 5
 
     obs_half_range = agent._obs_range // 2
     agent_pos = agent.current_position()
@@ -37,13 +37,17 @@ def calculate_continuous_reward(agent, env):
     #     target_pos = target.current_position()
     #     if (agent_pos[0] - obs_half_range <= target_pos[0] <= agent_pos[0] + obs_half_range and 
     #         agent_pos[1] - obs_half_range <= target_pos[1] <= agent_pos[1] + obs_half_range):
-    #         reward += 60
+    #         if percentage_new_information > 3:
+    #             reward += 20
+    #         else:
+    #             reward += 1
+            
 
     # Check if the agent communicates information to other drones
     # Agents only get this reward for one time step when they communicate and then they don't get it 
     # again for another 30 time steps - so it needs to be larger 
     # if agent.communicates_information():
-    #     reward += 8
+    #     reward += 40
 
     # check if the agent has too large angle choice 
     # if agent.angle_change():

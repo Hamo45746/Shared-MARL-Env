@@ -51,14 +51,12 @@ class ContinuousAgent(BaseAgent):
         return spaces.Box(low=-5, high=5, shape=(2,), dtype=np.float32)
 
     def step(self, action):
-        # Convert action to acceleration (assuming action is in range [-1, 1] and maps to [-1, 1] km/h)
         acceleration = action #acceleration = action * 2.0
         # Adjust velocity
         self.real_velocity += acceleration
         # Clamp velocity to the desired range
-        self.real_velocity = np.clip(self.real_velocity, -30.0, 30.0)  # Adjust as per requirements
+        self.real_velocity = np.clip(self.real_velocity, -16.0, 16.0)  # For implementation adjust to 16
         self.velocity = self.real_velocity / self.real_world_pixel_scale
-        self.real_world_pixel_scale
         # Determine the new direction based on the constraints
         # Determine the number of sub-steps based on the current velocity
         speed = np.linalg.norm(self.velocity)
@@ -205,7 +203,7 @@ class ContinuousAgent(BaseAgent):
         for x in range(self.observation_state["map"].shape[1]):
             for y in range(self.observation_state["map"].shape[2]):
                 pos = (int(self.current_pos[0] - self._obs_range // 2 + x), int(self.current_pos[1] - self._obs_range // 2 + y))
-                if pos not in self.observed_areas:
+                if pos not in self.observed_areas and self.inbounds(pos[0], pos[1]) and not self.inbuilding(pos[0], pos[1]):
                     self.observed_areas.add(pos)
                     new_information_count += 1
 
