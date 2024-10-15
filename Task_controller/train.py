@@ -27,12 +27,12 @@ def env_creator(env_config):
 
 logdir = "./custom_ray_results"
 # Update the policies in the config
-num_agents = 10  # Adjust based on your environment
-# obs_shape = (4 * 256,)  # Adjusted for encoded observation space (4 layers + 1 battery layer, 256 encoding size)
-obs_shape = (4, 276, 155)
-action_space = spaces.Box(low=np.array([-40, -40]), high=np.array([40, 40]), dtype=np.int32)
-# obs_space = spaces.Box(low=-np.inf, high=np.inf, shape=(4 * 256,), dtype=np.float32)
-obs_space =  spaces.Box(low=-20.0, high=1.0, shape=(4, 276, 155), dtype=np.float32)
+num_agents = 1  # Adjust based on your environment
+obs_shape = (4 * 256,)  # Adjusted for encoded observation space (4 layers + 1 battery layer, 256 encoding size)
+# obs_shape = (4, 276, 155)
+action_space = spaces.Box(low=np.array([-20, -20]), high=np.array([20, 20]), dtype=np.int32)
+obs_space = spaces.Box(low=-np.inf, high=np.inf, shape=(4 * 256,), dtype=np.float32)
+# obs_space =  spaces.Box(low=-20.0, high=1.0, shape=(4, 276, 155), dtype=np.float32)
 
 # Set up multi-agent policies
 # policies = {
@@ -73,28 +73,38 @@ config = (
         lambda_=0.95,
         clip_param=100,
         vf_clip_param=100,
-        entropy_coeff_schedule=[(0, 0.5), (100000, 0.2), (1000000,0.1), (10000000, 0.01)],
+        # entropy_coeff_schedule=[(0, 0.9), (100000, 0.5), (1000000,0.2), (10000000, 0.01)],
         # entropy_coeff=0.1,
-        train_batch_size=625,  # Adjusted based on expected episode length and number of agents
-        sgd_minibatch_size=625,
+        train_batch_size=50,  # Adjusted based on expected episode length and number of agents
+        sgd_minibatch_size=50, # These were 625 when using multiple workers
         num_sgd_iter=10,  # Moderate number of SGD steps
         # _enable_learner_api=False,
+        # model = {
+        #     "conv_filters": [
+        #         [16, [4, 4], 2],
+        #         [32, [4, 4], 2],
+        #         [64, [4, 4], 2],
+        #         [128, [4, 4], 2],
+        #         [256, [4, 4], 2],
+        #         [512, [1, 9], 1]
+        #     ]
+        # }   
         model = {
-            "conv_filters": [
-                [16, [4, 4], 2],
-                [32, [4, 4], 2],
-                [64, [4, 4], 2],
-                [128, [4, 4], 2],
-                [256, [4, 4], 2],
-                [512, [1, 9], 1]
-            ]
-        }   
+            "fcnet_hiddens": [1024, 1024]
+        }
     )
     .framework("torch")
+    # .rollouts(
+    #     # env_runner_cls=MultiAgentEnvRunner,
+    #     num_rollout_workers=5,
+    #     rollout_fragment_length=125,  # Match with avg episode length
+    #     batch_mode="truncate_episodes",
+    #     sample_timeout_s=500  # Allow more time for slow environments
+    # )
     .rollouts(
         # env_runner_cls=MultiAgentEnvRunner,
-        num_rollout_workers=5,
-        rollout_fragment_length=125,  # Match with avg episode length
+        num_rollout_workers=1,
+        rollout_fragment_length=50,  # Match with avg episode length
         batch_mode="truncate_episodes",
         sample_timeout_s=500  # Allow more time for slow environments
     )

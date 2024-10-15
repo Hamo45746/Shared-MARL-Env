@@ -16,7 +16,7 @@ class TaskAllocationAgent(DiscreteAgent):
         n_layers=4,
         seed=10,
         flatten=False,
-        max_steps_per_action=40,
+        max_steps_per_action=20,
         initial_battery=100,
         move_battery_cost=0.1,
         communicate_battery_cost=0.05
