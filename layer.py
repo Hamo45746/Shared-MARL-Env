@@ -62,7 +62,7 @@ class AgentLayer:
             self.layer_state[int(pos[0]), int(pos[1])] = -20  # Clear the position in the layer state
 
     def get_state_matrix(self):
-        """Returns a matrix representing the positions of all allies."""
+        """Returns a matrix representing the positions of all agents."""
         #self.update() 
         return self.layer_state[:]
     

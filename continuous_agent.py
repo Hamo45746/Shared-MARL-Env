@@ -32,18 +32,19 @@ class ContinuousAgent(BaseAgent):
         self.previous_distance_to_goal = None
         self.goal_step_counter = 0
         self.valid_move = True
+        self.velocity_cap = False
         self.stuck_steps = 0
         self.max_stuck_steps = 20
         self.communication_timer = 30
         self.real_world_pixel_scale = real_world_pixel_scale
-        self.max_velocity = 16.0
+        self.max_velocity = 10.0
         self.total_invalid_moves = 0
 
     @property
     def observation_space(self):
         return spaces.Dict({
             "map": spaces.Box(low=-20, high=1, shape=self._obs_shape, dtype=np.float32),
-            "velocity": spaces.Box(low=-30.0, high=30.0, shape=(2,), dtype=np.float32),
+            "velocity": spaces.Box(low=-16.0, high=16.0, shape=(2,), dtype=np.float32),
             "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32),
         })
     @property
@@ -53,20 +54,30 @@ class ContinuousAgent(BaseAgent):
     def step(self, action):
         acceleration = action #acceleration = action * 2.0
         # Adjust velocity
-        self.real_velocity += acceleration
-        # Clamp velocity to the desired range
-        self.real_velocity = np.clip(self.real_velocity, -16.0, 16.0)  # For implementation adjust to 16
+        proposed_velocity = self.real_velocity + acceleration
+
+        if np.linalg.norm(proposed_velocity) > self.max_velocity:
+            proposed_velocity = (proposed_velocity / np.linalg.norm(proposed_velocity)) * self.max_velocity
+            self.velocity_cap = True
+        else:
+            self.velocity_cap = False
+
+        self.real_velocity = proposed_velocity 
+
+        real_displacement = self.real_velocity + (0.5*acceleration)
+
         self.velocity = self.real_velocity / self.real_world_pixel_scale
+        displacement = real_displacement / self.real_world_pixel_scale
         # Determine the new direction based on the constraints
         # Determine the number of sub-steps based on the current velocity
         speed = np.linalg.norm(self.velocity)
         num_sub_steps = max(1, int((speed // 2) * 2))
-        sub_step_velocity = self.velocity / num_sub_steps
+        sub_step_displacement = displacement / num_sub_steps
         self.valid_move = True
 
         # Check all sub-steps before making the move
         for _ in range(num_sub_steps):
-            self.temp_pos = self.current_pos + sub_step_velocity
+            self.temp_pos = self.current_pos + sub_step_displacement
 
             if not (self.inbounds(self.temp_pos[0], self.temp_pos[1]) and not self.inbuilding(self.temp_pos[0], self.temp_pos[1])):
                 self.valid_move = False

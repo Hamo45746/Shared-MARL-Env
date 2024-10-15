@@ -13,9 +13,9 @@ from centralised_critic_model import CentralisedCriticModel
 # Register the custom centralized critic model
 ModelCatalog.register_custom_model("centralised_critic_model", CentralisedCriticModel)
 config_path = '/Users/alexandramartinwallace/Documents/Uni/METR4911/Working/Shared-MARL-Env/config.yaml' 
-checkpoint_dir = '/Users/alexandramartinwallace/Documents/Uni/METR4911/Working/Shared-MARL-Env/custom_ray_results/'
-#checkpoint_dir = '/Users/alexandramartinwallace/Documents/Uni/METR4911/Working/Shared-MARL-Env/outputs/10of10/custom_ray_results/'
-params_path = '/Users/alexandramartinwallace/ray_results/PPO_custom_multi_agent_env_2024-10-12_19-26-054568b3f6/params.pkl'
+#checkpoint_dir = '/Users/alexandramartinwallace/Documents/Uni/METR4911/Working/Shared-MARL-Env/custom_ray_results/'
+checkpoint_dir = '/Users/alexandramartinwallace/Documents/Uni/METR4911/Working/Shared-MARL-Env/outputs/14of10SE/custom_ray_results/'
+params_path = '/Users/alexandramartinwallace/ray_results/PPO_custom_multi_agent_env_2024-10-13_16-27-45z0d4pxfo/params.pkl'
 env2 = Environment(config_path)
 # Make sure to load the environment registration
 register_env("custom_multi_agent_env", lambda config: Environment(config_path=config["config_path"], render_mode=config.get("render_mode", "human")))

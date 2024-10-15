@@ -143,7 +143,7 @@ class Environment(MultiAgentEnv):
         if self.agent_type == 'continuous':
             self.observation_space = spaces.Dict({
                 "map": spaces.Box(low=-20, high=1, shape=(4, self.obs_range, self.obs_range), dtype=np.float32),
-                "velocity": spaces.Box(low=-30.0, high=30.0, shape=(2,), dtype=np.float32),
+                "velocity": spaces.Box(low=-16.0, high=16.0, shape=(2,), dtype=np.float32),
                 "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32)
         })
         elif self.agent_type == "discrete":
@@ -562,9 +562,9 @@ class Environment(MultiAgentEnv):
         if self.current_step >= max_steps:
             return True
         
-        all_targets_found = len(self.seen_targets) >= self.total_targets
-        if all_targets_found:
-            return True
+        # all_targets_found = len(self.seen_targets) >= self.total_targets
+        # if all_targets_found:
+        #     return True
         
         return False
 
@@ -593,10 +593,10 @@ class Environment(MultiAgentEnv):
                         int(self.pixel_scale * agent.path[j + 1][0] + self.pixel_scale / 2),
                         int(self.pixel_scale * agent.path[j + 1][1] + self.pixel_scale / 2)
                     )
-                    if i<6:
+                    if i<5:
                         pygame.draw.line(self.screen, (255, i*60, 0), start_pos, end_pos, 2)  # Draw red line
                     else:
-                        pygame.draw.line(self.screen, (255, 0, i*40), start_pos, end_pos, 2)
+                        pygame.draw.line(self.screen, (255, 0, (i-5)*50), start_pos, end_pos, 2)
      
             
     def draw_targets(self):
@@ -926,6 +926,7 @@ class Environment(MultiAgentEnv):
                     agent.communication_timer = 0
                     self.total_communication += 1
                 else:
+                    agent.communicate = True
                     agent.communication_timer += 1
 
     def update_networks(self):
@@ -1104,31 +1105,6 @@ class Environment(MultiAgentEnv):
                     jammed_area.add((x, y))
 
         return jammed_area
-    
-    def central_critic_observer(agent_obs, **kwargs):
-        """Rewrites the agent obs to include other agents' observations for training."""
-
-        # Assuming agent_obs is a dictionary like: {agent_id: obs_data}
-        # We need to update each agent's obs to include others' obs and actions.
-        new_obs = {}
-
-        for agent_id, obs in agent_obs.items():
-            # This is where we create a combined observation for each agent.
-            # For each agent, include their own observation, plus others' observations and actions.
-            combined_obs = {
-                "own_obs": obs,
-                "other_obs": {},  # Add other agent's encoded maps, velocities, and goals.
-            }
-            
-            for other_agent_id, other_obs in agent_obs.items():
-                if other_agent_id != agent_id:
-                    combined_obs["other_obs"][f"agent_{other_agent_id}_encoded_map"] = other_obs['encoded_map']
-                    combined_obs["other_obs"][f"agent_{other_agent_id}_velocity"] = other_obs['velocity']
-                    combined_obs["other_obs"][f"agent_{other_agent_id}_goal"] = other_obs['goal']
-            
-            new_obs[agent_id] = combined_obs
-
-        return new_obs
 
 
     def _seed(self, seed=None):

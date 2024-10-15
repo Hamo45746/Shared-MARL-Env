@@ -21,7 +21,7 @@ ModelCatalog.register_custom_model("centralised_critic_model", CentralisedCritic
 class CustomMetricsCallback(DefaultCallbacks):
     def on_episode_end(self, *, worker, base_env, policies, episode, **kwargs):
         # Retrieve custom metrics from the environment
-        env = base_env.get_sub_environments()[0]
+        env = base_env.get_sub_environments()[0] 
         unique_targets_seen = env.last_seen_targets
         map_explored_percentage = env.last_map_explored_percentage
         map_free_space_explored_percentage = env.last_free_explored_percentage
@@ -58,7 +58,7 @@ obs_shape = (4, 32) #Encoder obs space
 action_space = spaces.Box(low=-5, high=5, shape=(2,), dtype=np.float32)
 obs_space = spaces.Dict({
     "encoded_map": spaces.Box(low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32),
-    "velocity": spaces.Box(low=-30, high=30, shape=(2,), dtype=np.float32),
+    "velocity": spaces.Box(low=-16, high=16, shape=(2,), dtype=np.float32),
     "goal": spaces.Box(low=-2000, high=2000, shape=(2,), dtype=np.float32)
 })
 # This is the config for cnetralised training - one policy
@@ -105,7 +105,7 @@ trainer = PPO(config=config)
 #     trainer.restore(checkpoint_dir)
 
 # Train the agents
-for i in range(150):
+for i in range(125):
 #for i in range(150, 250):
     print(f"Training iteration {i}")
     result = trainer.train()

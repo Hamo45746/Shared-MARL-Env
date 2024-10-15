@@ -20,21 +20,29 @@ map_path: 'maps/city_image_1.npy'
 #map_path: 'maps/city_image_4.npy'
 #map_path: 'maps/city_image_2.npy'
 #map_path: 'maps/city_image_3.npy'
+#map_path: 'maps/city_image_5.npy'
 
 n_agents: 5
 n_targets: 20
 n_jammers: 5
 jamming_radius: 20 #This is radius, in comparison to comms_range. That is why it is a smaller value then comms_range, but looks bigger relitivly.  
 
-seed: None 
+seed: 20
 
 # This is for testing purposes
+# agent_positions:
+#  - [17, 39]
+#  - [16, 17]
+#  - [17, 37]
+#  - [15, 13]
+#  - [18, 19]
+
 agent_positions:
- - [17, 39]
- - [16, 17]
- - [17, 37]
- - [15, 13]
- - [18, 19]
+ - [80, 120]
+ - [81, 118]
+ - [82, 119]
+ - [79, 122]
+ - [77, 121]
 
 jammer_discovery_reward: 50
 target_discovery_reward: 100
