@@ -459,16 +459,22 @@ class Environment(gym.Env):
             # Check for seen targets
             for target_id, target in enumerate(self.target_layer.targets):
                 target_pos = np.array(target.current_position())
-                if np.all(np.abs(target_pos - agent_pos) <= obs_range//2): #and not self.targets_seen[target_id]:
-                    # self.targets_seen[target_id] = True
+                if np.all(np.abs(target_pos - agent_pos) <= obs_range//2) and not self.targets_seen[target_id]:
+                    self.targets_seen[target_id] = True
                     self.agent_contributions[agent_id, 1] += 1
             
             # Check for seen jammers
             for jammer_id, jammer in enumerate(self.jammer_layer.jammers):
                 jammer_pos = np.array(jammer.current_position())
-                if np.all(np.abs(jammer_pos - agent_pos) <= obs_range//2): #and not self.jammers_seen[jammer_id]:
-                    # self.jammers_seen[jammer_id] = True
+                if np.all(np.abs(jammer_pos - agent_pos) <= obs_range//2) and not self.jammers_seen[jammer_id]:
+                    self.jammers_seen[jammer_id] = True
                     self.agent_contributions[agent_id, 2] += 1
+            
+            metrics = self.get_metrics()
+            print(f"Map seen: {metrics['map_seen']}")
+            print(f"Tarets seen: {metrics['targets_seen']}")
+            print(f"Jammers seen: {metrics['jammers_seen']}")
+            print(f"Jammers destroyed: {metrics['jammers_destroyed']}")
                     
     
     def get_metrics(self):

@@ -7,6 +7,7 @@ class RewardCalculator:
         self.prev_team_metrics = None
         self.prev_agent_contributions = None
         self.prev_destroyed_jammers = set()
+        self.prev_positions = {i: None for i in range(self.num_agents)}
 
     def calculate_final_rewards(self, actions_dict):
         rewards = {i: 0.0 for i in range(self.num_agents)}
@@ -23,22 +24,30 @@ class RewardCalculator:
             #     invalid_action_penalty = self.check_invalid_action(agent_id, actions_dict[agent_id])
             #     rewards[agent_id] += invalid_action_penalty
 
+            # Penalty for staying still
+            # current_pos = self.env.agent_layer.agents[agent_id].current_position()
+            # if self.prev_positions[agent_id] is not None:
+            #     if np.array_equal(current_pos, self.prev_positions[agent_id]):
+            #         rewards[agent_id] += -20.0
+
+            # self.prev_positions[agent_id] = current_pos
+
             # Calculate improvements in metrics
             if self.prev_team_metrics is not None and self.prev_agent_contributions is not None:
                 # Individual contribution rewards
-                print(f'Agent {agent_id}')
-                # map_contribution = current_agent_contributions[agent_id, 0] - self.prev_agent_contributions[agent_id, 0]
-                # map_reward =  map_contribution * 0.05 #* (1 + current_team_metrics['map_seen'] / 100)
-                # rewards[agent_id] += map_reward
+                # print(f'Agent {agent_id}')
+                map_contribution = current_agent_contributions[agent_id, 0] - self.prev_agent_contributions[agent_id, 0]
+                map_reward =  map_contribution * 0.05 #* (1 + current_team_metrics['map_seen'] / 100)
+                rewards[agent_id] += map_reward
                 # print(f'Map reward: {map_reward}')
                 target_contribution = current_agent_contributions[agent_id, 1] - self.prev_agent_contributions[agent_id, 1]
                 target_reward = target_contribution * 5
                 rewards[agent_id] += target_reward
-                print(f'Target reward: {target_reward}')
+                # print(f'Target reward: {target_reward}')
                 jammer_contribution = current_agent_contributions[agent_id, 2] - self.prev_agent_contributions[agent_id, 2]
                 jammer_reward = jammer_contribution * 10
                 rewards[agent_id] += jammer_reward
-                print(f'Jammer reward: {jammer_reward}')
+                # print(f'Jammer reward: {jammer_reward}')
                 
                 # Team-wide improvement rewards
                 # map_improvement = current_team_metrics['map_seen'] - self.prev_team_metrics['map_seen']
