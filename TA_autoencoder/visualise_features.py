@@ -12,12 +12,12 @@ def get_conv_layers(model):
             conv_layers.append(module)
     return conv_layers
 
-def visualize_features(autoencoder, layer_index, num_features=5, num_layers=4, input_shape=(1, 276, 155), num_iterations=30, learning_rate=0.1):
-    device = next(autoencoder.parameters()).device
-    conv_layers = get_conv_layers(autoencoder.autoencoders[layer_index].encoder)
+def visualise_features(layer_autoencoder, num_features=5, num_layers=4, input_shape=(1, 276, 155), num_iterations=30, learning_rate=0.1):
+    device = next(layer_autoencoder.parameters()).device
+    conv_layers = get_conv_layers(layer_autoencoder.encoder)
     
     fig, axes = plt.subplots(num_layers, num_features, figsize=(15, 3*num_layers))
-    fig.suptitle(f'Top {num_features} Features for Each Layer of Autoencoder {layer_index}')
+    fig.suptitle(f'Top {num_features} Features for Each Layer of Autoencoder')
     
     for layer, conv_layer in enumerate(conv_layers[:num_layers]):
         for i in range(num_features):
@@ -53,18 +53,25 @@ def visualize_features(autoencoder, layer_index, num_features=5, num_layers=4, i
 
 def main():
     # Load your autoencoders
-    autoencoder = EnvironmentAutoencoder()
-    autoencoder.load_all_autoencoders('/path/to/your/autoencoder/folder')
+    env_autoencoder = EnvironmentAutoencoder()
+    env_autoencoder.load_all_autoencoders('/path/to/your/autoencoder/folder')
     
-    # Move autoencoder to the appropriate device
+    # Set up device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    autoencoder = autoencoder.to(device)
-
-    # Visualize features for each autoencoder
+    
+    # Visualise features for each autoencoder
     for i in range(3):
-        fig = visualize_features(autoencoder, i)
+        # Move the specific LayerAutoencoder to the device
+        layer_autoencoder = env_autoencoder.autoencoders[i].to(device)
+        
+        input_shape = (1, 276, 155)
+        
+        fig = visualise_features(layer_autoencoder, input_shape=input_shape)
         fig.savefig(f'autoencoder_{i}_features.png', dpi=300, bbox_inches='tight')
         plt.close(fig)
+        
+        # Move the LayerAutoencoder back to CPU to free up GPU memory
+        layer_autoencoder.cpu()
 
 if __name__ == "__main__":
     main()
