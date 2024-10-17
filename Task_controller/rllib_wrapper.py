@@ -25,11 +25,12 @@ class RLLibEnvWrapper(MultiAgentEnv):
 
         # Define action and observation spaces
         self._observation_spaces = {
-            i: gym.spaces.Box(low=-np.inf, high=np.inf, shape=(5 * 256,), dtype=np.float32)
+            i: gym.spaces.Box(low=-np.inf, high=np.inf, shape=(4 * 256,), dtype=np.float32)
             for i in range(self.num_agents)
         }
+
         self._action_spaces = {
-            i: gym.spaces.Discrete((2 * 15 + 1) ** 2)
+            i: gym.spaces.Discrete((2 * 20 + 1) ** 2)
             for i in range(self.num_agents)
         }
 
@@ -63,8 +64,8 @@ class RLLibEnvWrapper(MultiAgentEnv):
             encoded_full_state.append(encoded_layer)
         
         # Add battery information as a repeated 256-element vector
-        battery_vector = np.full(256, battery, dtype=np.float32)
-        encoded_full_state.append(battery_vector)
+        # battery_vector = np.full(256, battery, dtype=np.float32)
+        # encoded_full_state.append(battery_vector)
         
         return np.concatenate(encoded_full_state).flatten()
 
@@ -73,14 +74,14 @@ class RLLibEnvWrapper(MultiAgentEnv):
         observations, _ = self.env.reset(seed=seed, options=options)
         battery_levels = self.env.get_battery_levels()
         encoded_obs = self._encode_observations(observations, battery_levels)
-        print(f"Reset returned observations for {len(encoded_obs)} agents")
+        print(f"Reset returned observations for {len(observations)} agents")
         return encoded_obs, {}
 
     def step(self, action_dict):
         # print(f"RLLibEnvWrapper step called with actions for {len(action_dict)} agents")
-        observations, rewards, terminated, truncated, info = self.env.step(action_dict)
+        obs, rewards, terminated, truncated, info = self.env.step(action_dict)
         battery_levels = self.env.get_battery_levels()
-        encoded_obs = self._encode_observations(observations, battery_levels)
+        encoded_obs = self._encode_observations(obs, battery_levels)
 
         if terminated["__all__"]:
             for agent_id in action_dict:
@@ -94,10 +95,10 @@ class RLLibEnvWrapper(MultiAgentEnv):
         for agent_id, obs in observations.items():
             if self.env.agents[agent_id].is_terminated():
                 # Terminated state: map layer = all 1's, other layers = -20's, battery = 0
-                terminated_state = np.zeros((5, 256), dtype=np.float32)
+                terminated_state = np.zeros((4, 256), dtype=np.float32)
                 terminated_state[0, :] = 1.0  # Map layer with all 1's
                 terminated_state[1:4, :] = -20.0  # Other layers with -20's
-                terminated_state[4, :] = 0.0  # Battery layer with 0
+                # terminated_state[4, :] = 0.0  # Battery layer with 0
                 encoded_observations[agent_id] = terminated_state.flatten()
             else:
                 full_state = obs['full_state']
@@ -110,3 +111,7 @@ class RLLibEnvWrapper(MultiAgentEnv):
 
     def close(self):
         return self.env.close()
+    
+    def get_metrics(self):
+        # Call the environment's get_metrics function.
+        return self.env.get_metrics()

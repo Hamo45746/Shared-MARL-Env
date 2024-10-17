@@ -17,9 +17,17 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 config_path = '/home/rppl/Documents/SAAB_thesis/Shared-MARL-Env/config.yaml'
-checkpoint_dir = '/home/rppl/Documents/SAAB_thesis/Shared-MARL-Env/custom_ray_results/'
+checkpoint_dir = '/home/rppl/Documents/SAAB_thesis/Shared-MARL-Env/custom_ray_results_7_10/'
 # params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-09-26_19-36-27leycfxt5/params.pkl'
-params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-09-30_11-31-23pf54fj0l/params.pkl'
+# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-09-30_11-31-23pf54fj0l/params.pkl'
+# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-01_12-21-59a397lzbr/params.pkl'
+# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-02_16-06-385k0zuxpi/params.pkl'
+params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-03_18-32-210lb7aswp/params.pkl'
+# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-07_13-22-48pgrbf7s2/params.pkl'
+# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-07_16-15-01y0epuqo1/params.pkl'
+# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-09_12-52-510uais6xu/params.pkl'  
+# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-09_13-36-49otlgbjr5/params.pkl' 
+# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-15_19-33-52zdl2z0my/params.pkl'
 
 num_agents = 10
 
@@ -37,7 +45,7 @@ def policy_mapping_fn(agent_id, **kwargs):
 # Create the environment
 env_config = {
     "config_path": config_path,
-    "ae_folder_path": "/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data/AE_save_06_09"
+    "ae_folder_path": "home/rppl/Documents/SAAB_thesis/AE_save_06_09"
 }
 env = env_creator(env_config)
 
@@ -52,12 +60,9 @@ def run_simulation_with_policy(env, checkpoint_dir, params_path, max_steps=100, 
     register_env("custom_multi_agent_env", env_creator)
 
     # Recreate the trainer with the loaded configuration
-    # trainer = config.build()
     algo = PPO(config=config)
     # Restore the checkpoint from the checkpoint directory
-    # trainer.restore(checkpoint_dir)
     algo.restore(checkpoint_dir)
-    # trainer = Algorithm.from_checkpoint(checkpoint_dir)
 
     obs_dict, _ = env.reset()
     running = True
@@ -69,32 +74,17 @@ def run_simulation_with_policy(env, checkpoint_dir, params_path, max_steps=100, 
         action_dict = {}
         
         for agent_id, obs in obs_dict.items():
-            # action = trainer.compute_single_action(obs, policy_id=policy_mapping_fn(agent_id), explore=True)
-            # action = algo.compute_single_action(obs, policy_id=policy_mapping_fn(agent_id), explore=True)
-            # policy = algo.get_policy(f"policy_{agent_id}") # Use this for individual per agent policies.
+             # policy = algo.get_policy(f"policy_{agent_id}") # Use this for individual per agent policies.
             action = policy.compute_single_action(obs, explore=True)[0]
             action_dict[agent_id] = action
-        # action = trainer.compute_actions(obs_dict, explore=False)
  
         obs_dict, rewards, terminated, truncated, info = env.step(action_dict)
-        # collected_data.append({
-        #     'observations': obs,
-        #     'rewards': rewards,
-        #     'terminated': terminated,
-        #     'truncated': truncated,
-        #     'info': info
-        # })
+
         step_count += 1
 
         if terminated.get("__all__", False) or truncated.get("__all__", False):
             break
         
-    # if iteration is not None:
-    #     map_filename = f"outputs/environment_snapshot_iteration_{iteration}.png"
-    # else:
-    #     map_filename = "outputs/environment_snapshot.png"
-
-    # return collected_data
 
 # Run the simulation
-run_simulation_with_policy(env, checkpoint_dir=checkpoint_dir, params_path=params_path, max_steps=50)
+run_simulation_with_policy(env, checkpoint_dir=checkpoint_dir, params_path=params_path, max_steps=500)

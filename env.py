@@ -13,12 +13,15 @@ from layer import AgentLayer, JammerLayer, TargetLayer
 from gymnasium.utils import seeding
 # from Task_controller.reward import RewardCalculator
 from Task_controller.simplified_reward import RewardCalculator
+# from Task_controller.rewardV3 import RewardCalculator
 from Continuous_controller.reward import calculate_continuous_reward
 # from gym.spaces import Dict as GymDict, Box, Discrete
 # from gym import spaces
 from gymnasium import spaces
 from path_processor_simple import PathProcessor
 import matplotlib.pyplot as plt
+import os
+from PIL import Image
 
 
 
@@ -68,13 +71,26 @@ class Environment(gym.Env):
         self.current_step = 0
         self.render_modes = render_mode
         self.screen = None
-        # pygame.init() # Comment this out when not rendering
+        pygame.init() # Comment this out when not rendering
         self.networks = []
         self.agent_to_network = {}
         self.comm_matrix = None
         self.jammed_agents = set()
         # Array, index is agent_id, cell contains agentlayer array of cells that have been seen by each agent
         self.reward_calculator = RewardCalculator(self)
+        self.total_cells = self.X * self.Y
+        # Initialise team metrics
+        # Use numpy arrays for faster operations
+        self.map_seen = np.zeros((self.X, self.Y), dtype=bool)
+        self.targets_seen = np.zeros(self.num_targets, dtype=bool)
+        self.jammers_seen = np.zeros(self.num_jammers, dtype=bool)
+        
+        # Track individual agent contributions
+        self.agent_contributions = np.zeros((self.num_agents, 3), dtype=int)  # [map, targets, jammers]
+        
+        self.prev_team_metrics = np.zeros(4)  # [map, targets, jammers, jammers_destroyed]
+        self.prev_agent_contributions = np.zeros((self.num_agents, 3))
+    
     
     def load_map(self): # NEW
         original_map = np.load(self.config['map_path'])[:, :, 0]
@@ -205,6 +221,8 @@ class Environment(gym.Env):
         
         if seed is not None:
             self.seed_value = seed
+        # else:
+        #     self.seed_value = np.random.randint(0, 1000000)
         self.seed(self.seed_value)
 
         # Load and process the map
@@ -235,6 +253,12 @@ class Environment(gym.Env):
         self.update_all_agents_obs()
         
         self.reward_calculator.reset()
+        self.map_seen.fill(False)
+        self.targets_seen.fill(False)
+        self.jammers_seen.fill(False)
+        self.agent_contributions.fill(0)
+        self.prev_team_metrics.fill(0)
+        self.prev_agent_contributions.fill(0)
 
         return self.get_obs(), {}
 
@@ -250,6 +274,16 @@ class Environment(gym.Env):
             else:
                 observations[agent_id] = agent.get_observation()
         return observations
+
+
+    # def get_obs(self):
+    #     observations = {}
+    #     for agent_id, agent in enumerate(self.agents):
+    #         if agent.is_terminated():
+    #             observations[agent_id] = np.full(self.observation_space['full_state'].shape, -20, dtype=np.float16)
+    #         else:
+    #             observations[agent_id] = agent.get_observation()['full_state']
+    #     return observations
     
     
     def update_all_agents_obs(self):
@@ -276,12 +310,19 @@ class Environment(gym.Env):
                 goal = agent.action_to_waypoint(action)
                 self.current_waypoints[agent_id] = goal
                 self.agent_paths[agent_id] = self.path_processor.get_path(start, goal)
+        
+        # # Find min path length among non-terminated agents with valid paths
+        # valid_path_lengths = [len(path) for agent_id, path in self.agent_paths.items()
+        #                     if not self.agents[agent_id].is_terminated() and len(path)>1]
+        
+        # # If there are no valid paths, set min_path_length to 0
+        # min_path_length = min(valid_path_lengths) if valid_path_lengths else 0
+        # # print(min_path_length)
+        # # Move agents and targets for min_path_length steps
 
         # Find the maximum path length among non-terminated agents
         max_path_length = max(len(path) for agent_id, path in self.agent_paths.items() 
                             if not self.agents[agent_id].is_terminated())
-
-        # Move agents and targets for max_path_length steps
         for step in range(max_path_length):
 
             active_agents = [agent_id for agent_id, agent in enumerate(self.agents) if not agent.is_terminated()]
@@ -315,9 +356,13 @@ class Environment(gym.Env):
 
             # Update observations and share them
             self.share_and_update_observations()
+            
+            # Update exploration metrics after all movements
+            self.update_exploration_metrics()
 
             self.current_step += 1
-            # self.render()
+            self.render()
+            # self.save_render_image(self.current_step)
             # print(f"battery: {self.get_battery_levels()}")
 
             if not active_agents:
@@ -325,7 +370,8 @@ class Environment(gym.Env):
 
         # Get final rewards
         rewards = self.reward_calculator.calculate_final_rewards(actions_dict)
-        
+       
+        # Get final observations
         observations = self.get_obs()
         
         done = {agent_id: agent.is_terminated() for agent_id in range(self.num_agents)}
@@ -398,12 +444,52 @@ class Environment(gym.Env):
     def get_battery_levels(self):
         return {agent_id: agent.get_battery() for agent_id, agent in enumerate(self.agents)}
     
-    
+
     def action_to_waypoint(self, action):
         # Convert the action (which is now an index) to a waypoint (x, y) coordinate
         x = action // self.Y
         y = action % self.Y
         return np.array([x, y])
+    
+    
+    def update_exploration_metrics(self):
+        obs_range = self.obs_range
+        for agent_id, agent in enumerate(self.agent_layer.agents):
+            if agent.is_terminated():
+                continue
+            
+            agent_pos = np.array(agent.current_position())
+            
+            # Update seen map cells
+            x_min, x_max = max(0, agent_pos[0] - obs_range//2), min(self.X, agent_pos[0] + obs_range//2 + 1)
+            y_min, y_max = max(0, agent_pos[1] - obs_range//2), min(self.Y, agent_pos[1] + obs_range//2 + 1)
+            new_cells = np.sum(~self.map_seen[x_min:x_max, y_min:y_max])
+            self.map_seen[x_min:x_max, y_min:y_max] = True
+            self.agent_contributions[agent_id, 0] += new_cells
+            
+            # Check for seen targets
+            for target_id, target in enumerate(self.target_layer.targets):
+                target_pos = np.array(target.current_position())
+                if np.all(np.abs(target_pos - agent_pos) <= obs_range//2) and not self.targets_seen[target_id]:
+                    self.targets_seen[target_id] = True
+                    self.agent_contributions[agent_id, 1] += 1
+            
+            # Check for seen jammers
+            for jammer_id, jammer in enumerate(self.jammer_layer.jammers):
+                jammer_pos = np.array(jammer.current_position())
+                if np.all(np.abs(jammer_pos - agent_pos) <= obs_range//2) and not self.jammers_seen[jammer_id]:
+                    self.jammers_seen[jammer_id] = True
+                    self.agent_contributions[agent_id, 2] += 1
+
+                    
+    
+    def get_metrics(self):
+        return {
+            'map_seen': np.sum(self.map_seen) / self.map_seen.size * 100,
+            'targets_seen': np.sum(self.targets_seen) / self.num_targets * 100,
+            'jammers_seen': np.sum(self.jammers_seen) / self.num_jammers * 100,
+            'jammers_destroyed': len(self.jammer_layer.destroyed_jammers) / self.num_jammers * 100
+        }
     
     
     def is_valid_action(self, agent_id, action):
@@ -996,6 +1082,24 @@ class Environment(gym.Env):
         
         full_state_section = agent.full_state[1:2, x_start:x_end, y_start:y_end]
         print(full_state_section)
+
+
+    def save_render_image(self, step):
+        """Save an image of the current render frame."""
+        if self.screen is None:
+            return
+
+        image_dir = "episode_images"
+        os.makedirs(image_dir, exist_ok=True)
+
+        pygame.display.flip() # Update full display surface to screen
+        pygame_surface = pygame.display.get_surface()
+        
+        # Convert pygame surface to PIL image
+        image_str = pygame.image.tostring(pygame_surface, 'RGB')
+        image = Image.frombytes('RGB', pygame_surface.get_size(), image_str)
+
+        image.save(f"{image_dir}/step_{step:04d}.png")
     
     
 def print_agent_full_state_region(agent, global_state, region_size=20):

@@ -17,9 +17,17 @@ framework: torch
 
 model:
   # use_lstm: True
-  fcnet_hiddens: [1024, 1024]
-  fcnet_activation: relu
-  vf_share_layers: True
+  # fcnet_hiddens: [1024, 1024]
+  # fcnet_activation: relu
+  # vf_share_layers: True
+  conv_filters: [
+    [16, [4, 4], 2],
+    [32, [4, 4], 2],
+    [64, [4, 4], 2],
+    [128, [4, 4], 2],
+    [256, [4, 4], 2],
+    [512, [9, 5], 1]
+  ]
 
 local_dir: "./custom_ray_results"
 
@@ -29,7 +37,7 @@ multiagent:
       - None
       - Box
       - [-inf, inf]
-      - [1280]  # Flattened observation space
+      - [1024]  # Flattened observation space
       - {}  # Modify action space if necessary
     # policy_1: # Uncomment these for training a policy per agent
     #   - None
