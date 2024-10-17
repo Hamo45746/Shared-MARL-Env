@@ -105,7 +105,7 @@ class RLLibEnvWrapper(MultiAgentEnv):
                 # terminated_state[4, :] = 0.0  # Battery layer with 0
                 encoded_observations[agent_id] = terminated_state.flatten()
             else:
-                full_state = obs#['full_state']
+                full_state = obs['full_state']
                 battery = battery_levels[agent_id]
                 encoded_observations[agent_id] = self.encode_full_state(full_state, battery)
         return encoded_observations
