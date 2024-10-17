@@ -120,6 +120,7 @@ config = (
     )
     .training(
         lr=1e-3,
+        # exploration_config= {"type": "EpsilonGreedy", "initial_epsilon": 1.0, "final_epsilon": 0.02, "epsilon_timesteps": 50000},
         gamma=0.99,
         lambda_=0.95,
         # clip_param=100,
@@ -129,9 +130,16 @@ config = (
         train_batch_size=50,  # Adjusted based on expected episode length and number of agents
         sgd_minibatch_size=50, # These were 625 when using multiple workers
         num_sgd_iter=1,  # Moderate number of SGD steps
-        
+        # _enable_learner_api=False,
     )
     .framework("torch")
+    # .rollouts(
+    #     # env_runner_cls=MultiAgentEnvRunner,
+    #     num_rollout_workers=5,
+    #     rollout_fragment_length=125,  # Match with avg episode length
+    #     batch_mode="truncate_episodes",
+    #     sample_timeout_s=500  # Allow more time for slow environments
+    # )
     .rollouts(
         # env_runner_cls=MultiAgentEnvRunner,
         num_rollout_workers=0,

@@ -33,6 +33,10 @@ class RLLibEnvWrapper(MultiAgentEnv):
             i: gym.spaces.Discrete((2 * 20 + 1) ** 2)
             for i in range(self.num_agents)
         }
+        # self._action_spaces = {
+        #     i: gym.spaces.Discrete((2 * 20 + 1) ** 2)
+        #     for i in range(self.num_agents)
+        # }
 
         # Define combined spaces for MultiAgentEnv
         self.observation_space = gym.spaces.Dict(self._observation_spaces)
@@ -87,7 +91,7 @@ class RLLibEnvWrapper(MultiAgentEnv):
             for agent_id in action_dict:
                 info[agent_id] = {"episode_done": True}
             
-        print(f"Step returned: obs={len(encoded_obs)}, rewards={len(rewards)}, terminated={terminated['__all__']}")
+        print(f"Step returned: obs={len(obs)}, rewards={len(rewards)}, terminated={terminated['__all__']}")
         return encoded_obs, rewards, terminated, truncated, info
 
     def _encode_observations(self, observations, battery_levels):
@@ -101,7 +105,7 @@ class RLLibEnvWrapper(MultiAgentEnv):
                 # terminated_state[4, :] = 0.0  # Battery layer with 0
                 encoded_observations[agent_id] = terminated_state.flatten()
             else:
-                full_state = obs['full_state']
+                full_state = obs#['full_state']
                 battery = battery_levels[agent_id]
                 encoded_observations[agent_id] = self.encode_full_state(full_state, battery)
         return encoded_observations
