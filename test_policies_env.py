@@ -17,16 +17,18 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 config_path = '/home/rppl/Documents/SAAB_thesis/Shared-MARL-Env/config.yaml'
-checkpoint_dir = '/home/rppl/Documents/SAAB_thesis/Shared-MARL-Env/custom_ray_results_02_10/'
+checkpoint_dir = '/home/rppl/Documents/SAAB_thesis/Shared-MARL-Env/custom_ray_results_7_10/'
 # params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-09-26_19-36-27leycfxt5/params.pkl'
 # params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-09-30_11-31-23pf54fj0l/params.pkl'
-params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-01_12-21-59a397lzbr/params.pkl'
+# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-01_12-21-59a397lzbr/params.pkl'
 # params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-02_16-06-385k0zuxpi/params.pkl'
-# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-03_18-32-210lb7aswp/params.pkl'
+params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-03_18-32-210lb7aswp/params.pkl'
 # params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-07_13-22-48pgrbf7s2/params.pkl'
 # params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-07_16-15-01y0epuqo1/params.pkl'
 # params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-09_12-52-510uais6xu/params.pkl'  
-# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-09_13-36-49otlgbjr5/params.pkl'
+# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-09_13-36-49otlgbjr5/params.pkl' 
+# params_path = '/home/rppl/ray_results/PPO_custom_multi_agent_env_2024-10-15_19-33-52zdl2z0my/params.pkl'
+
 num_agents = 10
 
 

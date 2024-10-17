@@ -36,6 +36,10 @@ class RLLibEnvWrapper(MultiAgentEnv):
             i: gym.spaces.Box(low=np.array([-20, -20]), high=np.array([20, 20]), dtype=np.int32)
             for i in range(self.num_agents)
         }
+        # self._action_spaces = {
+        #     i: gym.spaces.Discrete((2 * 20 + 1) ** 2)
+        #     for i in range(self.num_agents)
+        # }
 
         # Define combined spaces for MultiAgentEnv
         self.observation_space = gym.spaces.Dict(self._observation_spaces)
@@ -114,3 +118,7 @@ class RLLibEnvWrapper(MultiAgentEnv):
 
     def close(self):
         return self.env.close()
+    
+    def get_metrics(self):
+        # Call the environment's get_metrics function.
+        return self.env.get_metrics()

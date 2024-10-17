@@ -233,20 +233,22 @@ def main_test_specific():
     H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
     # AUTOENCODER_FILE = 'AE_save_23_08/autoencoder_1_best.pth'  # Update this to the Autoencoder to test
     # AUTOENCODER_FILE = 'AE_save_4_09/autoencoder_1_best.pth'
-    AUTOENCODER_FILE = 'autoencoder_2_best.pth' # double channels - map
+    # AUTOENCODER_FILE = 'AE_save_06_09/autoencoder_2_best.pth' # double channels - map
+    AUTOENCODER_FILE = 'AE_save_06_09/autoencoder_1_best.pth'
+    # AUTOENCODER_FILE = 'AE_save_06_09/autoencoder_0_best.pth'
     OUTPUT_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data/training_visualisations'  # Update this path
 
     autoencoder_path = os.path.join(H5_FOLDER, AUTOENCODER_FILE)
     autoencoder = EnvironmentAutoencoder()
-    autoencoder.load_single_autoencoder(autoencoder_path, 2)
-    test_specific_autoencoder(autoencoder, H5_FOLDER, OUTPUT_FOLDER, autoencoder_index=2)
+    autoencoder.load_single_autoencoder(autoencoder_path, 1)
+    test_specific_autoencoder(autoencoder, H5_FOLDER, OUTPUT_FOLDER, autoencoder_index=1)
     
     
 def main_test_autoencoder_performance():
     # Constants
     H5_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data'
     TEST_SET_FOLDER = '/media/rppl/T7 Shield/METR4911/TA_autoencoder_h5_data/test_data'
-    AE_SAVE_FOLDER = 'AE_save_23_08'
+    AE_SAVE_FOLDER = 'AE_save_06_09'
     TEST_SET_SIZE = 10  # Number of H5 files to use for testing
     TRAIN_SET_SIZE = 20  # Number of H5 files to use for training comparison
     SAMPLES_PER_FILE = 100  # Number of samples to take from each file
@@ -255,14 +257,15 @@ def main_test_autoencoder_performance():
         return np.mean((original - reconstructed) ** 2)
 
     def load_autoencoders(device):
+        ae_path = os.path.join(H5_FOLDER, AE_SAVE_FOLDER)
         autoencoders = []
-        for i in range(3):  # Load the three separate autoencoders
-            ae_path = os.path.join(H5_FOLDER, AE_SAVE_FOLDER, f"autoencoder_{i}_best.pth")
-            checkpoint = torch.load(ae_path, map_location=device)
-            ae = LayerAutoencoder(is_map=(i == 0)).to(device)
-            ae.load_state_dict(checkpoint['model_state_dicts'][i])
-            ae.eval()
-            autoencoders.append(ae)
+        autoencoder = EnvironmentAutoencoder()
+        autoencoder.load_all_autoencoders(ae_path)
+        for i in range(3):
+            autoencoder.autoencoders[i].to(device)
+            autoencoder.autoencoders[i].eval()
+            autoencoders.append(autoencoder.autoencoders[i])
+        
         return autoencoders
 
     def process_file(file_path, autoencoders, device):
@@ -395,6 +398,6 @@ def main():
 
 if __name__ == "__main__":
     # main()
-    main_test_specific()
+    # main_test_specific()
     # main_test_data()
-    # main_test_autoencoder_performance()
+    main_test_autoencoder_performance()

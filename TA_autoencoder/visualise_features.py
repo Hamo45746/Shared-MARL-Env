@@ -47,7 +47,7 @@ def visualise_features(layer_autoencoder, num_features=5, num_layers=4, input_sh
             axes[layer, i].axis('off')
             axes[layer, i].set_title(f'Layer {layer+1}, Feature {i+1}')
     
-    plt.colorbar(im, ax=axes.ravel().tolist(), shrink=0.8)
+    # plt.colorbar(im, ax=axes.ravel().tolist(), shrink=0.8)
     plt.tight_layout()
     return fig
 

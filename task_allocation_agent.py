@@ -28,9 +28,10 @@ class TaskAllocationAgent(DiscreteAgent):
         self.steps_taken = 0
         self.path_preprocessor = path_preprocessor
         self.randomiser = randomiser
-        self._action_space = spaces.Box(low=np.array([-self.max_distance, -self.max_distance]),
-                                        high=np.array([self.max_distance, self.max_distance]),
-                                        dtype=np.int32)
+        # self._action_space = spaces.Box(low=np.array([-self.max_distance, -self.max_distance]),
+                                        # high=np.array([self.max_distance, self.max_distance]),
+                                        # dtype=np.int32)
+        self._action_space = spaces.Discrete((2 * self.max_distance + 1) ** 2)
         self.battery = initial_battery
         self.move_battery_cost = move_battery_cost
         self.communicate_battery_cost = communicate_battery_cost
@@ -59,7 +60,7 @@ class TaskAllocationAgent(DiscreteAgent):
         if self.is_terminated():
             return self.current_pos
         
-        waypoint = self.action_to_absolute_waypoint(action)
+        waypoint = self.action_to_waypoint(action)
         if not self.path:
             self.path = self.compute_path(tuple(self.current_pos), waypoint)
         
@@ -108,6 +109,41 @@ class TaskAllocationAgent(DiscreteAgent):
         
         return (int(x), int(y))
 
+    # def action_to_waypoint(self, action):
+    #     grid_size = 2 * self.max_distance + 1  # Total grid size (41 in this case)
+        
+    #     # Total number of actions corresponding to the grid
+    #     total_actions = grid_size ** 2
+
+    #     # Calculate the column (x) and row (y) indices based on the action
+    #     dx = action % grid_size  # Column index based on action
+    #     dy = action // grid_size  # Row index based on action
+
+    #     # # Create decoupled dx and dy for uniformity
+    #     # # This introduces more randomness by allowing each direction to be represented
+    #     # if row % 2 == 0:
+    #     #     dy = (row // 2) - self.max_distance  # Up/Down movement based on row
+    #     #     dx = (col - self.max_distance)  # Left/Right movement based on col
+    #     # else:
+    #     #     dx = (row // 2) - self.max_distance  # Left/Right movement based on row
+    #     #     dy = (col - self.max_distance)  # Up/Down movement based on col
+
+    #     # Clip to keep within boundaries
+    #     x = np.clip(self.current_pos[0] + dx, 0, self.xs - 1)
+    #     y = np.clip(self.current_pos[1] + dy, 0, self.ys - 1)
+
+    #     return (x, y)
+    
+
+    # def action_to_waypoint(self, action):
+    #     dx = (action % (2 * self.max_distance + 1)) - self.max_distance
+    #     dy = (action // (2 * self.max_distance + 1)) - self.max_distance
+    #     x = np.clip(self.current_pos[0] + dx, 0, self.xs - 1)
+    #     y = np.clip(self.current_pos[1] + dy, 0, self.ys - 1)
+    #     return (x, y)
+
+
+
     def get_valid_actions(self):
         valid_actions = []
         for ax in range(2 * self.max_distance + 1):
@@ -116,6 +152,14 @@ class TaskAllocationAgent(DiscreteAgent):
                 if not self.inbuilding(x, y):
                     valid_actions.append(np.array([ax, ay]))
         return valid_actions
+
+    # def get_valid_actions(self):
+    #     valid_actions = []
+    #     for action in range(self._action_space.n):
+    #         waypoint = self.action_to_waypoint(action)
+    #         if not self.inbuilding(*waypoint):
+    #             valid_actions.append(action)
+    #     return valid_actions
 
     def get_next_action(self):
         valid_actions = self.get_valid_actions()

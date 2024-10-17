@@ -13,6 +13,7 @@ from layer import AgentLayer, JammerLayer, TargetLayer
 from gymnasium.utils import seeding
 # from Task_controller.reward import RewardCalculator
 from Task_controller.simplified_reward import RewardCalculator
+# from Task_controller.rewardV3 import RewardCalculator
 from Continuous_controller.reward import calculate_continuous_reward
 # from gym.spaces import Dict as GymDict, Box, Discrete
 # from gym import spaces
@@ -469,12 +470,7 @@ class Environment(gym.Env):
                 if np.all(np.abs(jammer_pos - agent_pos) <= obs_range//2) and not self.jammers_seen[jammer_id]:
                     self.jammers_seen[jammer_id] = True
                     self.agent_contributions[agent_id, 2] += 1
-            
-            metrics = self.get_metrics()
-            print(f"Map seen: {metrics['map_seen']}")
-            print(f"Tarets seen: {metrics['targets_seen']}")
-            print(f"Jammers seen: {metrics['jammers_seen']}")
-            print(f"Jammers destroyed: {metrics['jammers_destroyed']}")
+
                     
     
     def get_metrics(self):
