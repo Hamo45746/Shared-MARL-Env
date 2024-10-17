@@ -47,7 +47,7 @@ class RewardCalculator:
         agent = self.env.agents[agent_id]
         valid_actions = agent.get_valid_actions()
         if action not in valid_actions:
-            return -50.0  # Significant penalty for invalid action
+            return -10.0  # Significant penalty for invalid action
         return 0.0
 
     def observation_reward(self, agent):
@@ -71,7 +71,7 @@ class RewardCalculator:
         for jammer_id, (prev_state, current_state) in enumerate(zip(self.prev_jammer_states,
                                                                     [j.get_destroyed() for j in self.env.jammers])):
             if not prev_state and current_state and self.env.jammers[jammer_id].destroyed_by == agent_id:
-                reward += 1000  # 100 points for destroying a jammer
+                reward += 1000  # 1000 points for destroying a jammer
         return reward
 
     def communication_network_reward(self, agent_id):

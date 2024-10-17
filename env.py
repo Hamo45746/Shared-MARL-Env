@@ -12,8 +12,8 @@ from layer import AgentLayer, JammerLayer, TargetLayer
 # from gym.utils import seeding
 from gymnasium.utils import seeding
 # from Task_controller.reward import RewardCalculator
-from Task_controller.simplified_reward import RewardCalculator
-# from Task_controller.rewardV3 import RewardCalculator
+# from Task_controller.simplified_reward import RewardCalculator
+from Task_controller.rewardV3 import RewardCalculator
 from Continuous_controller.reward import calculate_continuous_reward
 # from gym.spaces import Dict as GymDict, Box, Discrete
 # from gym import spaces

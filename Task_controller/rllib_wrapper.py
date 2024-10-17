@@ -25,7 +25,7 @@ class RLLibEnvWrapper(MultiAgentEnv):
 
         # Define action and observation spaces
         self._observation_spaces = {
-            i: gym.spaces.Box(low=-np.inf, high=np.inf, shape=(4 * 256,), dtype=np.float32)
+            i: gym.spaces.Box(low=-np.inf, high=np.inf, shape=(4 * 256 + 2,), dtype=np.float32)
             for i in range(self.num_agents)
         }
 
@@ -33,10 +33,6 @@ class RLLibEnvWrapper(MultiAgentEnv):
             i: gym.spaces.Discrete((2 * 20 + 1) ** 2)
             for i in range(self.num_agents)
         }
-        # self._action_spaces = {
-        #     i: gym.spaces.Discrete((2 * 20 + 1) ** 2)
-        #     for i in range(self.num_agents)
-        # }
 
         # Define combined spaces for MultiAgentEnv
         self.observation_space = gym.spaces.Dict(self._observation_spaces)
@@ -50,7 +46,7 @@ class RLLibEnvWrapper(MultiAgentEnv):
     # def observation_space(self):
     #     return self._observation_spaces
 
-    def encode_full_state(self, full_state, battery):
+    def encode_full_state(self, full_state, battery, agent_id):
         encoded_full_state = []
         for i in range(self.D):
             if i == 0:
@@ -70,8 +66,11 @@ class RLLibEnvWrapper(MultiAgentEnv):
         # Add battery information as a repeated 256-element vector
         # battery_vector = np.full(256, battery, dtype=np.float32)
         # encoded_full_state.append(battery_vector)
+
+        #Add agent position
+        agent_position = self.env.agent_layer.get_position(agent_id)
         
-        return np.concatenate(encoded_full_state).flatten()
+        return np.concatenate(encoded_full_state + [np.array(agent_position)]).flatten()
 
     def reset(self, *, seed=None, options=None):
         print("RLLibEnvWrapper reset called")
@@ -99,15 +98,15 @@ class RLLibEnvWrapper(MultiAgentEnv):
         for agent_id, obs in observations.items():
             if self.env.agents[agent_id].is_terminated():
                 # Terminated state: map layer = all 1's, other layers = -20's, battery = 0
-                terminated_state = np.zeros((4, 256), dtype=np.float32)
-                terminated_state[0, :] = 1.0  # Map layer with all 1's
-                terminated_state[1:4, :] = -20.0  # Other layers with -20's
-                # terminated_state[4, :] = 0.0  # Battery layer with 0
-                encoded_observations[agent_id] = terminated_state.flatten()
+                terminated_state = np.zeros((4 * 256 + 2,), dtype=np.float32)
+                terminated_state[:256] = 1.0  # Map layer with all 1's
+                terminated_state[256:4*256] = -20.0  # Other layers with -20's
+                terminated_state[4*256:] = 0.0  # Position (0,0)
+                encoded_observations[agent_id] = terminated_state
             else:
                 full_state = obs['full_state']
                 battery = battery_levels[agent_id]
-                encoded_observations[agent_id] = self.encode_full_state(full_state, battery)
+                encoded_observations[agent_id] = self.encode_full_state(full_state, battery, agent_id)
         return encoded_observations
 
     def render(self, mode='human'):

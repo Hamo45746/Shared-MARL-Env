@@ -38,38 +38,6 @@ class CustomMetricsCallback(DefaultCallbacks):
             episode.custom_metrics[key] = value
 
 
-# torch, _ = try_import_torch()
-
-# class DeterministicWrapper(TorchDistributionWrapper):
-#     def __init__(self, inputs, model=None):
-#         super().__init__(inputs, model)
-        
-#         # Ensure that inputs are on the same device as the model
-#         device = inputs.device if isinstance(inputs, torch.Tensor) else torch.device("cpu")
-        
-#         # Normal distribution with mean = inputs and stddev = 1
-#         self.dist = torch.distributions.Normal(inputs.to(device), torch.tensor([1.0]).to(device))
-
-#     def deterministic_sample(self):
-#         self.last_sample = self.dist.mean
-#         return self.last_sample
-
-#     def sample(self):
-#         return self.deterministic_sample()
-
-#     def logp(self, actions):
-#         return self.dist.log_prob(actions).sum(dim=-1)  # Sum over action dimensions
-
-#     def entropy(self):
-#         return self.dist.entropy().sum(dim=-1)  # Sum over action dimensions
-
-#     @staticmethod
-#     def required_model_output_shape(action_space, model_config):
-#         return action_space.shape
-
-# ModelCatalog.register_custom_action_dist("deterministic_torch", DeterministicWrapper)
-
-
 def env_creator(env_config):
     from env import Environment
     env = Environment(config_path=env_config["config_path"])
@@ -78,12 +46,12 @@ def env_creator(env_config):
 logdir = "./custom_ray_results"
 # Update the policies in the config
 num_agents = 10  # Adjust based on your environment
-obs_shape = (4 * 256,)  # Adjusted for encoded observation space (4 layers + 1 battery layer, 256 encoding size)
+obs_shape = (4 * 256 + 2,)  # Adjusted for encoded observation space (4 layers + 1 battery layer, 256 encoding size)
 # obs_shape = (4, 276, 155)
 # action_space = spaces.Box(low=np.array([-20, -20]), high=np.array([20, 20]), dtype=np.int32)
 action_space = spaces.Discrete((2 * 20 + 1) ** 2)
 
-obs_space = spaces.Box(low=-np.inf, high=np.inf, shape=(4 * 256,), dtype=np.float32)
+obs_space = spaces.Box(low=-np.inf, high=np.inf, shape=obs_shape, dtype=np.float32)
 # obs_space =  spaces.Box(low=-20.0, high=1.0, shape=(4, 276, 155), dtype=np.float32)
 
 # Set up multi-agent policies
